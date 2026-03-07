@@ -2,15 +2,15 @@ CC ?= gcc
 LVGL_DIR_NAME ?= lvgl
 LVGL_DIR ?= ${shell pwd}
 
-CFLAGS ?= -O2 -g0 -I$(LVGL_DIR)/ -Iinclude/ \
+CFLAGS ?= -O2 -g0 -DUSE_DRM=1 -I$(LVGL_DIR)/ -Iinclude/ \
 	-Wall -Wextra \
 	-Wno-unused-function \
 	-Wno-unused-parameter \
 	-Wno-missing-field-initializers \
 	-Wno-sign-compare \
-	$(shell pkg-config --cflags sdl2)
+	$(shell pkg-config --cflags libdrm)
 
-LDFLAGS ?= -lm -lpthread $(shell pkg-config --libs sdl2)
+LDFLAGS ?= -lm -lpthread $(shell pkg-config --libs libdrm)
 
 BIN = proxmox_display
 BUILD_DIR = build

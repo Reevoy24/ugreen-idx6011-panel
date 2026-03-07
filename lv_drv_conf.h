@@ -53,14 +53,19 @@
  *  DRM/KMS device (/dev/dri/card0)
  *-----------------------------------------*/
 #ifndef USE_DRM
-#  define USE_DRM             0
+#  define USE_DRM             1
+#endif
+
+#if USE_DRM
+#  define DRM_CARD            "/dev/dri/card0"
+#  define DRM_CONNECTOR_ID    -1
 #endif
 
 /*------------------------------
- *  SDL2 — renders via X11/DRM to MIPI panel
+ *  SDL2
  *------------------------------*/
 #ifndef USE_SDL
-#  define USE_SDL             1
+#  define USE_SDL             0
 #endif
 
 #if USE_SDL

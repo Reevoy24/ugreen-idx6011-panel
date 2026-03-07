@@ -29,6 +29,8 @@ static void kill_existing(void) {
     system("killall plymouthd 2>/dev/null");
 }
 
+// OS will display login screen on the display if bound, so we unbind first
+// Works on Proxmox, assumed working on most Linux distros
 static void unbind_vt_console(void) {
     int fd = open("/sys/class/vtconsole/vtcon1/bind", O_WRONLY);
     if (fd >= 0) {
@@ -45,8 +47,6 @@ int main(int argc, char *argv[]) {
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
-
-    setenv("DISPLAY", ":0", 1);
 
     kill_existing();
     unbind_vt_console();
