@@ -3,8 +3,7 @@
 
 #include "lvgl/lvgl.h"
 
-int display_init(void);
-lv_display_t *display_get(void);
+int display_init(const char *drm_card);
 void display_render(void);
 void display_close(void);
 

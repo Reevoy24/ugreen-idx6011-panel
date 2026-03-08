@@ -17,6 +17,7 @@ static char *find_drm_card(void)
     while ((ent = readdir(dir)) != NULL) {
         if (strncmp(ent->d_name, "card", 4) == 0) {
             char *path = malloc(256);
+            if (!path) { closedir(dir); return NULL; }
             snprintf(path, 256, "/dev/dri/%s", ent->d_name);
             closedir(dir);
             return path;
@@ -26,7 +27,7 @@ static char *find_drm_card(void)
     return NULL;
 }
 
-int display_init(void)
+int display_init(const char *drm_card)
 {
     lv_init();
     lv_tick_set_cb(custom_tick_get);
@@ -37,7 +38,12 @@ int display_init(void)
         return -1;
     }
 
-    char *path = find_drm_card();
+    char *path = NULL;
+    if (drm_card && drm_card[0]) {
+        path = strdup(drm_card);
+    } else {
+        path = find_drm_card();
+    }
     if (!path) {
         fprintf(stderr, "No DRM device found\n");
         return -1;
@@ -56,11 +62,6 @@ int display_init(void)
 
     fprintf(stderr, "DRM display initialized: %dx%d\n", w, h);
     return 0;
-}
-
-lv_display_t *display_get(void)
-{
-    return disp;
 }
 
 void display_render(void)

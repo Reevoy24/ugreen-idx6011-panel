@@ -21,6 +21,28 @@ static int json_get_int(const char *json, const char *key, int *value) {
     return 0;
 }
 
+static int json_get_str(const char *json, const char *key, char *buf, size_t buf_size) {
+    char search[256];
+    snprintf(search, sizeof(search), "\"%s\":", key);
+
+    const char *found = strstr(json, search);
+    if (!found) return -1;
+
+    found += strlen(search);
+    while (*found == ' ' || *found == '\t' || *found == '\n') found++;
+    if (*found != '"') return -1;
+    found++;
+
+    const char *end = strchr(found, '"');
+    if (!end) return -1;
+
+    size_t len = (size_t)(end - found);
+    if (len >= buf_size) len = buf_size - 1;
+    memcpy(buf, found, len);
+    buf[len] = '\0';
+    return 0;
+}
+
 int config_load(config_t *config) {
     if (!config) return -1;
 
@@ -29,6 +51,12 @@ int config_load(config_t *config) {
     config->show_temp = 1;
     config->show_uptime = 1;
     config->use_celsius = 1;
+    config->drm_card[0] = '\0';
+    config->opnsense_url[0] = '\0';
+    config->opnsense_key[0] = '\0';
+    config->opnsense_secret[0] = '\0';
+    snprintf(config->wan_interface, sizeof(config->wan_interface), "wan");
+    config->wan_max_mbps = 1000;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -44,14 +72,20 @@ int config_load(config_t *config) {
         return -1;
     }
 
-    fread(json, 1, size, fp);
-    json[size] = '\0';
+    size_t nread = fread(json, 1, size, fp);
+    json[nread] = '\0';
     fclose(fp);
 
     json_get_int(json, "refresh_rate", &config->refresh_rate);
     json_get_int(json, "fps", &config->fps);
     json_get_int(json, "show_temp", &config->show_temp);
     json_get_int(json, "show_uptime", &config->show_uptime);
+    json_get_str(json, "drm_card", config->drm_card, sizeof(config->drm_card));
+    json_get_str(json, "opnsense_url", config->opnsense_url, sizeof(config->opnsense_url));
+    json_get_str(json, "opnsense_key", config->opnsense_key, sizeof(config->opnsense_key));
+    json_get_str(json, "opnsense_secret", config->opnsense_secret, sizeof(config->opnsense_secret));
+    json_get_str(json, "wan_interface", config->wan_interface, sizeof(config->wan_interface));
+    json_get_int(json, "wan_max_mbps", &config->wan_max_mbps);
 
     free(json);
     return 0;

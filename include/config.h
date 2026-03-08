@@ -11,6 +11,12 @@ typedef struct {
     int show_temp;
     int show_uptime;
     int use_celsius;
+    char drm_card[64];
+    char opnsense_url[256];
+    char opnsense_key[256];
+    char opnsense_secret[256];
+    char wan_interface[32];
+    int wan_max_mbps;
 } config_t;
 
 int config_load(config_t *config);

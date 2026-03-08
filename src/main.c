@@ -13,6 +13,7 @@
 #include "gui.h"
 #include "config.h"
 #include "backlight.h"
+#include "opnsense.h"
 
 static volatile int running = 1;
 static volatile int signal_count = 0;
@@ -49,18 +50,23 @@ int main(int argc, char *argv[]) {
     if (config_load(&config) != 0)
         fprintf(stderr, "Warning: Failed to load config, using defaults\n");
 
-    if (display_init() != 0) {
+    if (display_init(config.drm_card) != 0) {
         fprintf(stderr, "Display init failed\n");
         return 1;
     }
 
     backlight_on();
 
-    lv_obj_t *screen = gui_create_dashboard();
+    int has_opnsense = (opnsense_init(&config) == 0);
+    if (has_opnsense)
+        fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
+
+    lv_obj_t *screen = gui_create_dashboard(has_opnsense, config.wan_max_mbps);
 
     uint32_t last_stats_update = 0;
     uint32_t stats_interval = config.refresh_rate * 1000;
     system_stats_t stats;
+    opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
 
     while (running) {
@@ -71,6 +77,10 @@ int main(int argc, char *argv[]) {
         if (now - last_stats_update >= stats_interval) {
             if (system_stats_collect(&stats) == 0)
                 gui_update_dashboard(screen, &stats);
+            if (has_opnsense && opnsense_collect(&opn_stats) == 0) {
+                gui_update_opnsense(&opn_stats);
+                gui_update_wan_throughput(opn_stats.wan_in_bps, opn_stats.wan_out_bps);
+            }
             last_stats_update = now;
         }
 
@@ -79,6 +89,7 @@ int main(int argc, char *argv[]) {
     }
 
     backlight_off();
+    if (has_opnsense) opnsense_cleanup();
     gui_cleanup();
     display_close();
 

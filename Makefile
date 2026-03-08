@@ -8,9 +8,10 @@ CFLAGS ?= -O2 -g0 -DLV_CONF_INCLUDE_SIMPLE -I$(LVGL_DIR)/ -Iinclude/ \
 	-Wno-unused-parameter \
 	-Wno-missing-field-initializers \
 	-Wno-sign-compare \
-	$(shell pkg-config --cflags libdrm)
+	$(shell pkg-config --cflags libdrm) \
+	$(shell pkg-config --cflags libcurl)
 
-LDFLAGS ?= -lm -lpthread $(shell pkg-config --libs libdrm)
+LDFLAGS ?= -lm -lpthread $(shell pkg-config --libs libdrm) $(shell pkg-config --libs libcurl)
 
 BIN = proxmox_display
 BUILD_DIR = build
@@ -23,6 +24,7 @@ CSRCS += ./src/system_stats.c
 CSRCS += ./src/gui.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
+CSRCS += ./src/opnsense.c
 
 # Include LVGL build files (v9 includes drivers)
 include $(LVGL_DIR)/lvgl/lvgl.mk
