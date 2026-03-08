@@ -55,6 +55,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    backlight_init();
     backlight_on();
 
     int has_opnsense = (opnsense_init(&config) == 0);
