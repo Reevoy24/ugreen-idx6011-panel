@@ -24,10 +24,13 @@ static void signal_handler(int sig) {
     if (signal_count >= 2) _exit(1);
 }
 
+/*
+This kills the services that are present on UGOS
+Not needed on other systems
 static void kill_existing(void) {
     system("killall mini_screen 2>/dev/null");
     system("killall plymouthd 2>/dev/null");
-}
+}*/
 
 // OS will display login screen on the display if bound, so we unbind first
 // Works on Proxmox, assumed working on most Linux distros
