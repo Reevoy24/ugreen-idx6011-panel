@@ -6,6 +6,7 @@
 
 lv_obj_t *gui_create_dashboard(void);
 void gui_update_dashboard(lv_obj_t *screen, const system_stats_t *stats);
+void gui_update_clock(void);
 void gui_cleanup(void);
 
 #endif

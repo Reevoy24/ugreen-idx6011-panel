@@ -76,6 +76,8 @@ int main(int argc, char *argv[]) {
     while (running) {
         uint32_t now = custom_tick_get();
 
+        gui_update_clock();
+
         if (now - last_stats_update >= stats_interval) {
             if (system_stats_collect(&stats) == 0)
                 gui_update_dashboard(screen, &stats);
