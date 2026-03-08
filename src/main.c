@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
-    kill_existing();
+    //kill_existing();
     unbind_vt_console();
 
     config_t config;
