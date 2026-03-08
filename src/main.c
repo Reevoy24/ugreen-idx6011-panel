@@ -24,14 +24,6 @@ static void signal_handler(int sig) {
     if (signal_count >= 2) _exit(1);
 }
 
-/*
-This kills the services that are present on UGOS
-Not needed on other systems
-static void kill_existing(void) {
-    system("killall mini_screen 2>/dev/null");
-    system("killall plymouthd 2>/dev/null");
-}*/
-
 // OS will display login screen on the display if bound, so we unbind first
 // Works on Proxmox, assumed working on most Linux distros
 static void unbind_vt_console(void) {
@@ -51,15 +43,13 @@ int main(int argc, char *argv[]) {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
-    //kill_existing();
     unbind_vt_console();
 
     config_t config;
     if (config_load(&config) != 0)
         fprintf(stderr, "Warning: Failed to load config, using defaults\n");
 
-    int width, height;
-    if (display_init(&width, &height) != 0) {
+    if (display_init() != 0) {
         fprintf(stderr, "Display init failed\n");
         return 1;
     }

@@ -2,7 +2,7 @@ CC ?= gcc
 LVGL_DIR_NAME ?= lvgl
 LVGL_DIR ?= ${shell pwd}
 
-CFLAGS ?= -O2 -g0 -DUSE_DRM=1 -I$(LVGL_DIR)/ -Iinclude/ \
+CFLAGS ?= -O2 -g0 -DLV_CONF_INCLUDE_SIMPLE -I$(LVGL_DIR)/ -Iinclude/ \
 	-Wall -Wextra \
 	-Wno-unused-function \
 	-Wno-unused-parameter \
@@ -24,9 +24,11 @@ CSRCS += ./src/gui.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
 
-# Include LVGL and driver build files
+# Include LVGL build files (v9 includes drivers)
 include $(LVGL_DIR)/lvgl/lvgl.mk
-include $(LVGL_DIR)/lv_drivers/lv_drivers.mk
+
+# Clear Arm
+ASRCS :=
 
 OBJEXT ?= .o
 

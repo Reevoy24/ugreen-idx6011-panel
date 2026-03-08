@@ -3,8 +3,8 @@
 
 #include "lvgl/lvgl.h"
 
-int display_init(int *width, int *height);
-lv_disp_t *display_get(void);
+int display_init(void);
+lv_display_t *display_get(void);
 void display_render(void);
 void display_close(void);
 
