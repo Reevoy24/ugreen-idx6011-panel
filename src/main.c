@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
     if (has_opnsense)
         fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
 
-    lv_obj_t *screen = gui_create_dashboard(has_opnsense, config.wan_max_mbps);
+    gui_create_dashboard(has_opnsense, config.wan_max_mbps);
 
     uint32_t last_stats_update = 0;
     uint32_t stats_interval = config.refresh_rate * 1000;
@@ -93,9 +93,11 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (api_wake_requested()) {
+        if (api_get_state() && screen_asleep) {
             last_touch_time = now;
             screen_asleep = 0;
+        } else if (!api_get_state() && !screen_asleep) {
+            screen_asleep = 1;
         }
 
         if (has_touch && !screen_asleep && bl_timeout_ms > 0 &&
@@ -114,7 +116,7 @@ int main(int argc, char *argv[]) {
 
         if (now - last_stats_update >= stats_interval) {
             if (system_stats_collect(&stats) == 0)
-                gui_update_dashboard(screen, &stats);
+                gui_update_dashboard(&stats);
             if (has_opnsense && opnsense_collect(&opn_stats) == 0) {
                 gui_update_opnsense(&opn_stats);
                 gui_update_wan_throughput(opn_stats.wan_in_bps, opn_stats.wan_out_bps);

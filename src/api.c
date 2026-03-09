@@ -13,8 +13,7 @@ static int server_fd = -1;
 static pthread_t api_thread;
 static volatile int api_running = 0;
 static int current_brightness = 100;
-static int current_state = 1;
-static volatile int wake_flag = 0;
+static volatile int current_state = 1;
 
 static void send_response(int fd, int code, const char *body) {
     char buf[512];
@@ -44,7 +43,6 @@ static void handle_post(int fd, const char *body) {
     if (s) {
         if (strstr(s, "\"on\"")) {
             current_state = 1;
-            wake_flag = 1;
             backlight_set(current_brightness);
         } else if (strstr(s, "\"off\"")) {
             current_state = 0;
@@ -62,7 +60,6 @@ static void handle_post(int fd, const char *body) {
         current_brightness = val;
         if (val > 0) {
             current_state = 1;
-            wake_flag = 1;
             backlight_set(val);
         } else {
             current_state = 0;
@@ -118,12 +115,8 @@ void api_set_state(int on) {
     current_state = on;
 }
 
-int api_wake_requested(void) {
-    if (wake_flag) {
-        wake_flag = 0;
-        return 1;
-    }
-    return 0;
+int api_get_state(void) {
+    return current_state;
 }
 
 int api_start(int port) {

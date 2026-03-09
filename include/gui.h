@@ -6,7 +6,7 @@
 #include "opnsense.h"
 
 lv_obj_t *gui_create_dashboard(int show_opnsense, int wan_max_mbps);
-void gui_update_dashboard(lv_obj_t *screen, const system_stats_t *stats);
+void gui_update_dashboard(const system_stats_t *stats);
 void gui_update_opnsense(const opnsense_stats_t *stats);
 void gui_update_wan_throughput(float wan_in_bps, float wan_out_bps);
 void gui_update_clock(void);

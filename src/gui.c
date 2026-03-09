@@ -313,8 +313,7 @@ void gui_update_clock(void) {
     lv_label_set_text(date_label, buf);
 }
 
-void gui_update_dashboard(lv_obj_t *screen, const system_stats_t *stats) {
-    (void)screen;
+void gui_update_dashboard(const system_stats_t *stats) {
     char text[64];
 
     if (cpu_bar)
