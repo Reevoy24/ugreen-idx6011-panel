@@ -1,0 +1,13 @@
+[Unit]
+Description=Ugreen NAS Front Panel Display
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStartPre=-/bin/sh -c 'echo "i2c-CUST0000:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null'
+ExecStart=/usr/bin/ug-paneld
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

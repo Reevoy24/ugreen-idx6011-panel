@@ -1,0 +1,104 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: debian:12
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y build-essential libdrm-dev libcurl4-openssl-dev pkg-config git
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build
+        run: make
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build .deb package
+        run: |
+          PKG="ug-paneld_${{ steps.version.outputs.version }}_amd64"
+          mkdir -p "${PKG}/DEBIAN"
+          mkdir -p "${PKG}/usr/bin"
+          mkdir -p "${PKG}/lib/systemd/system"
+          mkdir -p "${PKG}/etc/ug-paneld"
+          mkdir -p "${PKG}/etc/modprobe.d"
+
+          cp ug-paneld "${PKG}/usr/bin/"
+          cp ug-paneld.service "${PKG}/lib/systemd/system/"
+          echo "blacklist i2c_hid_acpi" > "${PKG}/etc/modprobe.d/no-i2c-hid.conf"
+
+          cat > "${PKG}/DEBIAN/control" << EOF
+          Package: ug-paneld
+          Version: ${{ steps.version.outputs.version }}
+          Architecture: amd64
+          Maintainer: Adam Conway
+          Depends: libdrm2, libcurl4
+          Description: Front panel display controller for Ugreen iDX6011 Pro NAS
+           Drives the 258x960 display, backlight, and touchscreen from userspace.
+           Built with LVGL v9.5.
+          EOF
+
+          # Remove leading spaces from control file
+          sed -i 's/^          //' "${PKG}/DEBIAN/control"
+
+          cat > "${PKG}/DEBIAN/postinst" << 'EOF'
+          #!/bin/sh
+          systemctl daemon-reload
+          systemctl enable ug-paneld 2>/dev/null || true
+          echo "ug-paneld installed. Start with: systemctl start ug-paneld"
+          EOF
+          sed -i 's/^          //' "${PKG}/DEBIAN/postinst"
+          chmod 755 "${PKG}/DEBIAN/postinst"
+
+          cat > "${PKG}/DEBIAN/prerm" << 'EOF'
+          #!/bin/sh
+          systemctl stop ug-paneld 2>/dev/null || true
+          systemctl disable ug-paneld 2>/dev/null || true
+          EOF
+          sed -i 's/^          //' "${PKG}/DEBIAN/prerm"
+          chmod 755 "${PKG}/DEBIAN/prerm"
+
+          cat > "${PKG}/DEBIAN/conffiles" << EOF
+          /etc/ug-paneld/config.json
+          /etc/modprobe.d/no-i2c-hid.conf
+          EOF
+
+          dpkg-deb --build "${PKG}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: "*.deb"
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: deb-package
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.deb"
+          generate_release_notes: true
