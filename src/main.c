@@ -89,6 +89,7 @@ int main(int argc, char *argv[]) {
             if (screen_asleep) {
                 backlight_on();
                 screen_asleep = 0;
+                api_set_state(1);
             }
         }
 
@@ -101,6 +102,7 @@ int main(int argc, char *argv[]) {
             (now - last_touch_time >= bl_timeout_ms)) {
             backlight_off();
             screen_asleep = 1;
+            api_set_state(0);
         }
 
         if (screen_asleep) {

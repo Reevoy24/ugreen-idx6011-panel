@@ -114,6 +114,10 @@ static void *api_loop(void *arg) {
     return NULL;
 }
 
+void api_set_state(int on) {
+    current_state = on;
+}
+
 int api_wake_requested(void) {
     if (wake_flag) {
         wake_flag = 0;
