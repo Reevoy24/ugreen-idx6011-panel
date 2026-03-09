@@ -1,11 +1,11 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define CONFIG_FILE_PATH "/etc/proxmox-display/config.json"
-#define DEFAULT_REFRESH_RATE 2
+#define CONFIG_FILE_PATH "/etc/ug-paneld/config.json"
+#define DEFAULT_POLL_RATE 2
 
 typedef struct {
-    int refresh_rate;
+    int poll_rate;
     char drm_card[64];
     char opnsense_url[256];
     char opnsense_key[256];

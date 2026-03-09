@@ -28,7 +28,7 @@ static void signal_handler(int sig) {
 }
 
 // OS will display login screen on the display if bound, so we unbind first
-// Works on Proxmox, assumed working on most Linux distros
+// Works on Proxmox, Debian, and most Linux distros
 static void unbind_vt_console(void) {
     int fd = open("/sys/class/vtconsole/vtcon1/bind", O_WRONLY);
     if (fd >= 0) {
@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
     gui_create_dashboard(has_opnsense, config.wan_max_mbps);
 
     uint32_t last_stats_update = 0;
-    uint32_t stats_interval = config.refresh_rate * 1000;
+    uint32_t stats_interval = config.poll_rate * 1000;
     uint32_t bl_timeout_ms = config.backlight_timeout * 1000;
     uint32_t last_touch_time = custom_tick_get();
     int screen_asleep = 0;

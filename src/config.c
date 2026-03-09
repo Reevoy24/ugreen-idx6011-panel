@@ -46,7 +46,7 @@ static int json_get_str(const char *json, const char *key, char *buf, size_t buf
 int config_load(config_t *config) {
     if (!config) return -1;
 
-    config->refresh_rate = DEFAULT_REFRESH_RATE;
+    config->poll_rate = DEFAULT_POLL_RATE;
     config->drm_card[0] = '\0';
     config->opnsense_url[0] = '\0';
     config->opnsense_key[0] = '\0';
@@ -75,7 +75,7 @@ int config_load(config_t *config) {
     json[nread] = '\0';
     fclose(fp);
 
-    json_get_int(json, "refresh_rate", &config->refresh_rate);
+    json_get_int(json, "poll_rate", &config->poll_rate);
     json_get_str(json, "drm_card", config->drm_card, sizeof(config->drm_card));
     json_get_str(json, "opnsense_url", config->opnsense_url, sizeof(config->opnsense_url));
     json_get_str(json, "opnsense_key", config->opnsense_key, sizeof(config->opnsense_key));

@@ -12,7 +12,7 @@
 #define BAR_HEIGHT 6
 #define DISP_W 258
 #define DISP_H 960
-#define WP_PATH "A:/etc/proxmox-display/wallpaper.png"
+#define WP_PATH "A:/etc/ug-paneld/wallpaper.png"
 
 /* Wallpaper buffer, decoded once at startup */
 static uint8_t *wp_buf = NULL;

@@ -13,7 +13,7 @@ CFLAGS ?= -O2 -g0 -DLV_CONF_INCLUDE_SIMPLE -I$(LVGL_DIR)/ -Iinclude/ \
 
 LDFLAGS ?= -lm -lpthread $(shell pkg-config --libs libdrm) $(shell pkg-config --libs libcurl)
 
-BIN = proxmox_display
+BIN = ug-paneld
 BUILD_DIR = build
 
 # Project source files
