@@ -55,6 +55,7 @@ int config_load(config_t *config) {
     config->wan_max_mbps = 1000;
     snprintf(config->touch_device, sizeof(config->touch_device), "/dev/i2c-2");
     config->backlight_timeout = 30;
+    config->api_port = 0;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -83,6 +84,7 @@ int config_load(config_t *config) {
     json_get_int(json, "wan_max_mbps", &config->wan_max_mbps);
     json_get_str(json, "touch_device", config->touch_device, sizeof(config->touch_device));
     json_get_int(json, "backlight_timeout", &config->backlight_timeout);
+    json_get_int(json, "api_port", &config->api_port);
 
     free(json);
     return 0;

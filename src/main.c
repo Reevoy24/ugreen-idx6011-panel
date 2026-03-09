@@ -15,6 +15,7 @@
 #include "backlight.h"
 #include "opnsense.h"
 #include "touch.h"
+#include "api.h"
 
 static volatile int running = 1;
 static volatile int signal_count = 0;
@@ -59,6 +60,9 @@ int main(int argc, char *argv[]) {
     backlight_init();
     backlight_on();
 
+    if (config.api_port > 0)
+        api_start(config.api_port);
+
     int has_touch = (touch_init(config.touch_device) == 0);
     int has_opnsense = (opnsense_init(&config) == 0);
     if (has_opnsense)
@@ -88,6 +92,11 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        if (api_wake_requested()) {
+            last_touch_time = now;
+            screen_asleep = 0;
+        }
+
         if (has_touch && !screen_asleep && bl_timeout_ms > 0 &&
             (now - last_touch_time >= bl_timeout_ms)) {
             backlight_off();
@@ -115,6 +124,7 @@ int main(int argc, char *argv[]) {
         nanosleep(&sleep_ts, NULL);
     }
 
+    api_stop();
     backlight_off();
     if (has_touch) touch_cleanup();
     if (has_opnsense) opnsense_cleanup();

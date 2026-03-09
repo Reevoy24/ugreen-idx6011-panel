@@ -14,6 +14,7 @@ typedef struct {
     int wan_max_mbps;
     char touch_device[64];
     int backlight_timeout;
+    int api_port;
 } config_t;
 
 int config_load(config_t *config);
