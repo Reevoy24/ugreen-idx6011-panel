@@ -73,7 +73,6 @@ jobs:
           chmod 755 "${PKG}/DEBIAN/prerm"
 
           cat > "${PKG}/DEBIAN/conffiles" << EOF
-          /etc/ug-paneld/config.json
           /etc/modprobe.d/no-i2c-hid.conf
           EOF
 
