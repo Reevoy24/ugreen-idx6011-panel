@@ -22,7 +22,18 @@ The iDX6011 Pro has three hardware interfaces on the front panel. This project c
 | Backlight | ITE IT55xx Embedded Controller | x86 port I/O (`0x62`/`0x66`) | `iopl(3)` + `outb`/`inb` |
 | Touchscreen | Awinic AXS15231B | I2C bus 2, address `0x3b` | `/dev/i2c-2` via `ioctl` |
 
-## Build & Usage
+## Install from release
+
+Download the latest `.deb` from the [releases page](../../releases) and install it:
+
+```bash
+dpkg -i ug-paneld_*_amd64.deb
+systemctl start ug-paneld
+```
+
+This installs the binary, systemd service, and blacklists the `i2c-hid-acpi` module. The service is enabled automatically on install.
+
+## Build from source
 
 ### Dependencies
 
@@ -68,24 +79,9 @@ ug-paneld
 
 Press `Ctrl+C` twice to exit. The backlight turns off on shutdown.
 
-### Start at Boot
+### Start at boot
 
-```ini
-# /etc/systemd/system/ug-paneld.service
-[Unit]
-Description=NAS Display Dashboard
-After=multi-user.target
-
-[Service]
-Type=simple
-ExecStartPre=-/bin/sh -c 'echo "i2c-CUST0000:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null'
-ExecStart=/usr/bin/ug-paneld
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
+If you built from source, copy the included service file:
 
 ```bash
 cp ug-paneld.service /etc/systemd/system/
