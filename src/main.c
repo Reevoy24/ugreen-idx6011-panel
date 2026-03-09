@@ -58,7 +58,8 @@ int main(int argc, char *argv[]) {
     }
 
     backlight_init();
-    backlight_on();
+    backlight_set(config.brightness);
+    api_set_brightness(config.brightness);
 
     if (config.api_port > 0)
         api_start(config.api_port);
@@ -87,7 +88,7 @@ int main(int argc, char *argv[]) {
         if (has_touch && touch_is_pressed()) {
             last_touch_time = now;
             if (screen_asleep) {
-                backlight_on();
+                backlight_set(api_get_brightness());
                 screen_asleep = 0;
                 api_set_state(1);
             }

@@ -1,7 +1,7 @@
 #include "backlight.h"
 #include <stdio.h>
 #include <sys/io.h>
-#include <unistd.h>
+#include <time.h>
 
 #define EC_SC   0x66
 #define EC_DATA 0x62
@@ -18,7 +18,8 @@ static int ec_wait_ibf_clear(void) {
     for (int i = 0; i < 5000; i++) {
         if (!(inb(EC_SC) & EC_IBF))
             return 0;
-        usleep(100);
+        struct timespec ts = { .tv_nsec = 100000 };
+        nanosleep(&ts, NULL);
     }
     return -1;
 }

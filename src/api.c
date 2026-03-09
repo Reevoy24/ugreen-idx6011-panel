@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -98,7 +99,10 @@ static void *api_loop(void *arg) {
         socklen_t len = sizeof(client);
         int fd = accept(server_fd, (struct sockaddr *)&client, &len);
         if (fd < 0) {
-            if (api_running) usleep(10000);
+            if (api_running) {
+                struct timespec ts = { .tv_nsec = 10000000 };
+                nanosleep(&ts, NULL);
+            }
             continue;
         }
 
@@ -117,6 +121,16 @@ void api_set_state(int on) {
 
 int api_get_state(void) {
     return current_state;
+}
+
+int api_get_brightness(void) {
+    return current_brightness;
+}
+
+void api_set_brightness(int val) {
+    if (val < 1) val = 1;
+    if (val > 100) val = 100;
+    current_brightness = val;
 }
 
 int api_start(int port) {
