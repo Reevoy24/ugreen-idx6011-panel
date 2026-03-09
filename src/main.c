@@ -14,6 +14,7 @@
 #include "config.h"
 #include "backlight.h"
 #include "opnsense.h"
+#include "touch.h"
 
 static volatile int running = 1;
 static volatile int signal_count = 0;
@@ -58,6 +59,7 @@ int main(int argc, char *argv[]) {
     backlight_init();
     backlight_on();
 
+    int has_touch = (touch_init(config.touch_device) == 0);
     int has_opnsense = (opnsense_init(&config) == 0);
     if (has_opnsense)
         fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
@@ -66,12 +68,36 @@ int main(int argc, char *argv[]) {
 
     uint32_t last_stats_update = 0;
     uint32_t stats_interval = config.refresh_rate * 1000;
+    uint32_t bl_timeout_ms = config.backlight_timeout * 1000;
+    uint32_t last_touch_time = custom_tick_get();
+    int screen_asleep = 0;
     system_stats_t stats;
     opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
 
+    struct timespec sleep_long = { .tv_nsec = 100000000 }; /* 100ms poll while asleep */
+
     while (running) {
         uint32_t now = custom_tick_get();
+
+        if (has_touch && touch_is_pressed()) {
+            last_touch_time = now;
+            if (screen_asleep) {
+                backlight_on();
+                screen_asleep = 0;
+            }
+        }
+
+        if (has_touch && !screen_asleep && bl_timeout_ms > 0 &&
+            (now - last_touch_time >= bl_timeout_ms)) {
+            backlight_off();
+            screen_asleep = 1;
+        }
+
+        if (screen_asleep) {
+            nanosleep(&sleep_long, NULL);
+            continue;
+        }
 
         gui_update_clock();
 
@@ -90,6 +116,7 @@ int main(int argc, char *argv[]) {
     }
 
     backlight_off();
+    if (has_touch) touch_cleanup();
     if (has_opnsense) opnsense_cleanup();
     gui_cleanup();
     display_close();

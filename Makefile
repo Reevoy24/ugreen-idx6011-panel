@@ -25,6 +25,7 @@ CSRCS += ./src/gui.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
 CSRCS += ./src/opnsense.c
+CSRCS += ./src/touch.c
 
 # Include LVGL build files (v9 includes drivers)
 include $(LVGL_DIR)/lvgl/lvgl.mk

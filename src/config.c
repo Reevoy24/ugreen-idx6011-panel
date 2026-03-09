@@ -47,16 +47,14 @@ int config_load(config_t *config) {
     if (!config) return -1;
 
     config->refresh_rate = DEFAULT_REFRESH_RATE;
-    config->fps = DEFAULT_FPS;
-    config->show_temp = 1;
-    config->show_uptime = 1;
-    config->use_celsius = 1;
     config->drm_card[0] = '\0';
     config->opnsense_url[0] = '\0';
     config->opnsense_key[0] = '\0';
     config->opnsense_secret[0] = '\0';
     snprintf(config->wan_interface, sizeof(config->wan_interface), "wan");
     config->wan_max_mbps = 1000;
+    snprintf(config->touch_device, sizeof(config->touch_device), "/dev/i2c-2");
+    config->backlight_timeout = 30;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -77,15 +75,14 @@ int config_load(config_t *config) {
     fclose(fp);
 
     json_get_int(json, "refresh_rate", &config->refresh_rate);
-    json_get_int(json, "fps", &config->fps);
-    json_get_int(json, "show_temp", &config->show_temp);
-    json_get_int(json, "show_uptime", &config->show_uptime);
     json_get_str(json, "drm_card", config->drm_card, sizeof(config->drm_card));
     json_get_str(json, "opnsense_url", config->opnsense_url, sizeof(config->opnsense_url));
     json_get_str(json, "opnsense_key", config->opnsense_key, sizeof(config->opnsense_key));
     json_get_str(json, "opnsense_secret", config->opnsense_secret, sizeof(config->opnsense_secret));
     json_get_str(json, "wan_interface", config->wan_interface, sizeof(config->wan_interface));
     json_get_int(json, "wan_max_mbps", &config->wan_max_mbps);
+    json_get_str(json, "touch_device", config->touch_device, sizeof(config->touch_device));
+    json_get_int(json, "backlight_timeout", &config->backlight_timeout);
 
     free(json);
     return 0;
