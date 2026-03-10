@@ -1,8 +1,10 @@
 # Ugreen Panel Daemon - Display controller for Ugreen's iDX6011 Pro
 
+![ug-paneld running on the Ugreen NAS iDX6011 Pro](./images/ug-paneld-image.JPG)
+
 Ugreen's iDX6011 Pro NAS has a 258x960 portrait display on the front panel. Under UGOS, it shows system stats via a proprietary application (`mini_screen`) that depends on UGOS services and kernel modules.
 
-When running Proxmox, Debian, or other Linux distributions, the display, backlight, and touchscreen don't work out of the box. However, you can use ug-paneld to provide a replacement dashboard that drives all three directly from userspace, without the proprietary UGOS backend.
+When running Proxmox, Debian, or other Linux distributions, the display, backlight, and touchscreen don't work out of the box. Ugreen Panel Daemon (ug-paneld) is a replacement dashboard that drives all three directly from userspace, without the proprietary UGOS backend.
 
 ## What it does
 
@@ -31,7 +33,9 @@ dpkg -i ug-paneld_*_amd64.deb
 systemctl start ug-paneld
 ```
 
-This installs the binary, systemd service, and blacklists the `i2c-hid-acpi` module. The service is enabled automatically on install.
+This installs the binary, systemd service, and blacklists the `i2c-hid-acpi` module. There is a "no-blacklist" .deb package that can be installed if you would prefer to disable the i2c-hid-acpi module yourself. 
+
+The service is enabled automatically on install.
 
 ## Build from source
 
