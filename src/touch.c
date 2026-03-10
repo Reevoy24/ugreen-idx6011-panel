@@ -17,6 +17,8 @@ static const uint8_t read_cmd[8] = {
 };
 
 static int i2c_fd = -1;
+static int fail_count = 0;
+#define MAX_FAILURES 50
 
 int touch_init(const char *i2c_bus) {
     i2c_fd = open(i2c_bus, O_RDWR);
@@ -41,11 +43,25 @@ int touch_is_pressed(void) {
 
     uint8_t buf[AXS_READ_LEN];
 
-    if (write(i2c_fd, read_cmd, sizeof(read_cmd)) != sizeof(read_cmd))
+    if (write(i2c_fd, read_cmd, sizeof(read_cmd)) != sizeof(read_cmd)) {
+        if (++fail_count >= MAX_FAILURES) {
+            fprintf(stderr, "Touch: too many I2C failures, disabling\n");
+            close(i2c_fd);
+            i2c_fd = -1;
+        }
         return 0;
+    }
 
-    if (read(i2c_fd, buf, AXS_READ_LEN) != AXS_READ_LEN)
+    if (read(i2c_fd, buf, AXS_READ_LEN) != AXS_READ_LEN) {
+        if (++fail_count >= MAX_FAILURES) {
+            fprintf(stderr, "Touch: too many I2C failures, disabling\n");
+            close(i2c_fd);
+            i2c_fd = -1;
+        }
         return 0;
+    }
+
+    fail_count = 0;
 
     uint8_t num = buf[1];
     uint8_t event = (buf[2] >> 6) & 0x03;
