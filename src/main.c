@@ -10,6 +10,10 @@
 #include "include/custom_tick.h"
 #include "display.h"
 #include "system_stats.h"
+#include "net_stats.h"
+#include "disk_stats.h"
+#include "pve_stats.h"
+#include "gpu_stats.h"
 #include "gui.h"
 #include "config.h"
 #include "backlight.h"
@@ -81,10 +85,13 @@ int main(int argc, char *argv[]) {
     int has_opnsense = (opnsense_init(&config) == 0);
     if (has_opnsense)
         fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
+    int has_gpu = (gpu_stats_init() == 0);
 
     gui_create_dashboard(has_opnsense, config.wan_max_mbps);
 
     uint32_t last_stats_update = 0;
+    uint32_t last_slow_update = 0;
+    const uint32_t slow_interval = 10000; /* disks + pve every 10 s */
     uint32_t stats_interval = config.poll_rate * 1000;
     uint32_t bl_timeout_ms = config.backlight_timeout * 1000;
     uint32_t last_touch_time = custom_tick_get();
@@ -131,9 +138,27 @@ int main(int argc, char *argv[]) {
         if (now - last_stats_update >= stats_interval) {
             if (system_stats_collect(&stats) == 0)
                 gui_update_dashboard(&stats);
+
+            net_stats_t net;
+            if (net_stats_collect(&net) == 0)
+                gui_update_net(&net);
+
+            if (has_gpu)
+                gui_update_gpu(gpu_stats_usage());
+
             if (has_opnsense && opnsense_collect(&opn_stats) == 0) {
                 gui_update_opnsense(&opn_stats);
                 gui_update_wan_throughput(opn_stats.wan_in_bps, opn_stats.wan_out_bps);
+            }
+
+            if (now - last_slow_update >= slow_interval) {
+                disk_stats_t disks;
+                if (disk_stats_collect(&disks) == 0)
+                    gui_update_disks(&disks);
+                pve_stats_t pve;
+                if (pve_stats_collect(&pve) == 0)
+                    gui_update_pve(&pve);
+                last_slow_update = now;
             }
             last_stats_update = now;
         }
@@ -143,6 +168,7 @@ int main(int argc, char *argv[]) {
     }
 
     api_stop();
+    gpu_stats_cleanup();
     backlight_off();
     if (has_touch) touch_cleanup();
     if (has_opnsense) opnsense_cleanup();

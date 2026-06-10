@@ -74,11 +74,11 @@ int main(void)
     disk_stats_t dk = {
         .count = 5,
         .disks = {
-            { .name = "Festplatte 1", .dev = "sda",     .size_tb = 1.8f, .temp_c = 29, .online = 1 },
-            { .name = "Festplatte 2", .dev = "sdb",     .size_tb = 1.8f, .temp_c = 29, .online = 1 },
-            { .name = "Festplatte 3", .dev = "sdc",     .size_tb = 1.8f, .temp_c = 30, .online = 1 },
-            { .name = "Festplatte 4", .dev = "sdd",     .size_tb = 1.8f, .temp_c = 28, .online = 1 },
-            { .name = "NVMe 1",       .dev = "nvme0n1", .size_tb = 0.5f, .temp_c = 38, .online = 1 },
+            { .dev = "sda",     .is_nvme = 0, .idx = 1, .size_tb = 1.8f, .temp_c = 29, .online = 1 },
+            { .dev = "sdb",     .is_nvme = 0, .idx = 2, .size_tb = 1.8f, .temp_c = 29, .online = 1 },
+            { .dev = "sdc",     .is_nvme = 0, .idx = 3, .size_tb = 1.8f, .temp_c = 30, .online = 1 },
+            { .dev = "sdd",     .is_nvme = 0, .idx = 4, .size_tb = 1.8f, .temp_c = 28, .online = 1 },
+            { .dev = "nvme0n1", .is_nvme = 1, .idx = 1, .size_tb = 0.5f, .temp_c = 38, .online = 1 },
         },
     };
     gui_update_disks(&dk);

@@ -6,6 +6,9 @@ After=multi-user.target
 Type=simple
 # i2c-hid unbinding is handled inside ug-paneld itself (supports both the
 # CUST0000:00 and MSFT8000:00 touchscreen ids and logs what it does).
+# drivetemp provides SATA disk temperatures, i2c-dev the touchscreen bus.
+ExecStartPre=-/sbin/modprobe drivetemp
+ExecStartPre=-/sbin/modprobe i2c-dev
 ExecStart=/usr/bin/ug-paneld
 Restart=always
 RestartSec=5

@@ -814,7 +814,8 @@ void gui_update_disks(const disk_stats_t *disks)
         }
         const disk_info_t *d = &disks->disks[i];
         lv_obj_remove_flag(disk_card[i], LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(disk_name[i], d->name);
+        snprintf(text, sizeof(text), d->is_nvme ? "NVMe %d" : "Festplatte %d", d->idx);
+        lv_label_set_text(disk_name[i], text);
         lv_label_set_text(disk_status[i], d->online ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
         lv_obj_set_style_text_color(disk_status[i],
             lv_color_hex(d->online ? COL_GREEN : COL_RED), 0);

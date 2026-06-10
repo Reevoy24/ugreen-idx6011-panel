@@ -4,8 +4,9 @@
 #define DISK_MAX 8
 
 typedef struct {
-    char name[20];    /* display name: "Festplatte 1", "NVMe 1" */
     char dev[16];     /* kernel name: sda, nvme0n1 */
+    int is_nvme;
+    int idx;          /* 1-based per type, for display names */
     float size_tb;
     float temp_c;     /* < 0 = unknown */
     int online;

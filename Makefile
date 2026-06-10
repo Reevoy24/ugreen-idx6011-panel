@@ -21,6 +21,10 @@ MAINSRC = ./src/main.c
 
 CSRCS += ./src/display.c
 CSRCS += ./src/system_stats.c
+CSRCS += ./src/net_stats.c
+CSRCS += ./src/disk_stats.c
+CSRCS += ./src/pve_stats.c
+CSRCS += ./src/gpu_stats.c
 CSRCS += ./src/gui.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
