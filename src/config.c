@@ -81,7 +81,7 @@ int config_load(config_t *config) {
     snprintf(config->touch_device, sizeof(config->touch_device), "auto");
     config->brightness = 100;
     config->backlight_timeout = 30;
-    config->sleep_brightness = 5;
+    config->sleep_brightness = 0; /* full off — touch stays awake as long as we poll it */
     config->api_port = 0;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");

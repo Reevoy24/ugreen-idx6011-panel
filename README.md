@@ -8,11 +8,27 @@ When running Proxmox, Debian, or other Linux distributions, the display, backlig
 
 ## What it does
 
-- Shows CPU, RAM, disk usage, temperature, and uptime
-- Connects to an OPNsense firewall for gateway status, firmware updates, DHCP leases, DNS blocked stats, and WAN throughput
-- WAN throughput shown as arc gauges
-- Supports a PNG wallpaper (place at `/etc/ug-paneld/wallpaper.png`)
-- Backlight turns off after a configurable idle timeout
+A swipeable multi-page dashboard in the style of the UGOS mini-screen, with a
+working touchscreen:
+
+1. **Home** — date, clock, CPU ring, RAM/temperature, wallpaper
+2. **Hardware** — CPU load with history chart, temperature, memory, Intel GPU load (i915 PMU), uptime
+3. **Network** — total ↓/↑ throughput plus per-interface cards with IPv4/IPv6 and link status
+4. **Disks** — every SATA/NVMe drive with capacity and temperature
+5. **Proxmox** — running VMs/LXCs with status dots (page only appears on PVE hosts)
+6. **OPNsense** — WAN throughput gauges, gateway status, updates, DHCP leases, DNS stats (only when configured)
+
+Swipe down from the top edge for the **settings panel** (like UGOS): brightness
+slider, screen-off timeout, wallpaper switcher, language (Deutsch/English), and
+restart/shutdown buttons with confirmation dialogs. Panel settings persist in
+`/etc/ug-paneld/state.json` — your `config.json` is never rewritten.
+
+Four built-in wallpapers ship with the package; your own 258x960 PNG at
+`/etc/ug-paneld/wallpaper.png` appears as "Custom" in the switcher.
+
+After the idle timeout the screen turns off (pure black frame, backlight off)
+and a tap wakes it — the touch controller stays responsive because the daemon
+keeps polling it.
 
 ## Hardware
 
@@ -20,9 +36,9 @@ The iDX6011 Pro has three hardware interfaces on the front panel. This project c
 
 | Component | Chip | Interface | How we talk to it |
 |-----------|------|-----------|-------------------|
-| Display | MIPI DSI panel (258x960, 32bpp ARGB) | DRM | Standard Linux DRM, auto-detected |
+| Display | eDP panel (258x960, 32bpp ARGB) | DRM | Standard Linux DRM, device + connector auto-detected |
 | Backlight | ITE IT55xx Embedded Controller | x86 port I/O (`0x62`/`0x66`) | `iopl(3)` + `outb`/`inb` |
-| Touchscreen | Awinic AXS15231B | I2C bus 2, address `0x3b` | `/dev/i2c-2` via `ioctl` |
+| Touchscreen | AXS15231B-compatible, ACPI id `CUST0000:00` | I2C, address `0x3b` | bus auto-detected from the ACPI device link |
 
 ## Install from release
 
@@ -157,10 +173,11 @@ All settings are optional. Create `/etc/ug-paneld/config.json`:
     "connector": "auto",
     "drm_probe_timeout": 10,
     "i2c_device": "auto",
-    "touch_device": "/dev/i2c-2",
+    "touch_device": "auto",
     "debug": false,
     "brightness": 100,
     "backlight_timeout": 30,
+    "sleep_brightness": 0,
     "opnsense_url": "https://192.168.1.1:8443",
     "opnsense_key": "your-api-key",
     "opnsense_secret": "your-api-secret",
@@ -168,6 +185,10 @@ All settings are optional. Create `/etc/ug-paneld/config.json`:
     "wan_max_mbps": 1000
 }
 ```
+
+Brightness, screen-off timeout, wallpaper, and language set via the on-screen
+settings panel are stored separately in `/etc/ug-paneld/state.json` and
+override the config defaults.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -177,9 +198,10 @@ All settings are optional. Create `/etc/ug-paneld/config.json`:
 | `drm_probe_timeout` | `10` | Seconds to wait at startup for a connected DRM connector before giving up |
 | `i2c_device` | `auto` | ACPI id to unbind from the `i2c_hid_acpi` driver so the touchscreen is accessible: `auto` (tries the known ids `CUST0000:00` and `MSFT8000:00`), `none` (skip), or a specific id like `MSFT8000:00` |
 | `debug` | `false` | Verbose DRM probe logging |
-| `touch_device` | `/dev/i2c-2` | I2C bus for the touchscreen |
+| `touch_device` | `auto` | Touchscreen I2C bus: `auto` resolves it from the ACPI device link; explicit paths like `/dev/i2c-2` still work |
 | `brightness` | `100` | Backlight brightness (1-100) |
-| `backlight_timeout` | `30` | Seconds before backlight turns off (0 to disable) |
+| `backlight_timeout` | `30` | Seconds before the screen sleeps (0 to disable) |
+| `sleep_brightness` | `0` | Backlight % while asleep. `0` = fully off (a black frame is shown and the touch chip stays poll-awake, so a tap still wakes the screen) |
 | `opnsense_url` | | OPNsense base URL (leave empty to disable) |
 | `opnsense_key` | | OPNsense API key |
 | `opnsense_secret` | | OPNsense API secret |
@@ -320,19 +342,21 @@ Touching center:  0x00 0x01 0x80 0x41 0x01 0x54 ...
 Touching top-left: 0x00 0x01 0x80 0x1f 0x00 0x1e ...
 ```
 
-### Troubleshooting: I2C bus number
+### Troubleshooting: touch
 
-The touchscreen is on the Synopsys DesignWare I2C adapter at PCI `00:15.1`. The Linux bus number (`/dev/i2c-N`) can shift depending on driver load order. If touch isn't working:
+The touchscreen bus is resolved automatically from the ACPI device link
+(`/sys/bus/i2c/devices/i2c-CUST0000:00` → parent `i2c-N`), so bus-number
+shifts between revisions/boots are handled. If touch still misbehaves, check
+`journalctl -u ug-paneld` for the `Touch:` lines (resolved bus, first contact,
+I2C failures).
 
-```bash
-# Find the DesignWare adapters
-for i in /sys/bus/i2c/devices/i2c-*/name; do echo "$i: $(cat $i)"; done
-
-# Scan for 0x3b on each DesignWare bus
-i2cdetect -y -r 2
-```
-
-Then update `touch_device` in your config.
+> [!WARNING]
+> Do not diagnose the touch controller with ug-paneld stopped: the chip
+> auto-sleeps when nobody polls it and then answers every I2C transaction
+> (including HID descriptor reads) with constant `0x23` bytes — which looks
+> exactly like a broken chip. While the daemon runs, its 33–50 ms polling
+> keeps the controller awake; that is also why wake-by-tap works even with
+> the backlight fully off.
 
 ## Debugging on newer iDX6011 Pro revisions
 
