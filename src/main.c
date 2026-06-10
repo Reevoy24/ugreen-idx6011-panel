@@ -158,8 +158,6 @@ int main(int argc, char *argv[]) {
     struct timespec sleep_long = { .tv_nsec = 50000000 }; /* 50ms touch poll while asleep */
 
     while (running) {
-        uint32_t now = custom_tick_get();
-
         /* While awake the LVGL input device polls the touchscreen; while
          * asleep the loop polls it directly and wakes on the poll result. */
         if (screen_asleep) {
@@ -182,13 +180,19 @@ int main(int argc, char *argv[]) {
                 last_touch_time = activity;
         }
 
+        /* Sampled after the wake/poll section so it is never older than the
+         * touch timestamps (an earlier sample caused an unsigned underflow
+         * in the idle check and a wake/sleep oscillation). */
+        uint32_t now = custom_tick_get();
+
         /* Sleep on idle timeout (armed only once touch has proven to work,
          * so a non-working touch can never strand a dark screen) or when
          * switched off via the HTTP API. The screen shows pure black at a
          * minimal backlight level: looks off, no burn-in, and the panel
          * rail keeps the touch controller powered so a tap can wake it. */
         int idle_hit = has_touch && touch_last_activity() != 0 &&
-                       bl_timeout_ms > 0 && (now - last_touch_time >= bl_timeout_ms);
+                       bl_timeout_ms > 0 &&
+                       (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
         if (idle_hit || !api_get_state()) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
