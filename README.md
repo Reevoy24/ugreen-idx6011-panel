@@ -323,12 +323,30 @@ and exits with code 2. The systemd service treats exit code 2 as unrecoverable
 (`RestartPreventExitStatus=2`), so it fails cleanly instead of restart-looping.
 
 If you hit that message, the panel cannot be driven from userspace on that
-boot: the kernel's display driver (i915/xe) never registered a usable
-connector, which is a kernel/firmware issue rather than a ug-paneld one. Things
-worth trying, roughly in order of safety: install the latest BIOS/firmware
-update from Ugreen, and try a newer (or different) kernel where eDP init for
-this panel may be fixed. Once `cat /sys/class/drm/card0-*/status` shows a
-`connected` entry, run `systemctl restart ug-paneld`.
+boot: the kernel's display driver never registered a usable connector.
+
+### Why this happens — and the fix (verified on a newer revision)
+
+On newer iDX6011 Pro revisions the panel's power rail is switched by the
+ITE Embedded Controller (the same EC that drives the backlight), not by the
+Intel PCH. The BIOS declares the panel correctly (eDP on DDI-A/AUX-A, 1 lane,
+258x960 — the VBT is healthy), but with the panel unpowered it never answers
+on the AUX channel, so i915 logs `failed to retrieve link info, disabling eDP`
+and gives up. UGOS powers the panel through its proprietary EC driver
+(`ug_idx6011pro_sio.ko`); vanilla Linux doesn't know it has to.
+
+**The practical fix:** boot UGOS once, then *reboot* (do not power off) and
+boot your Linux/Proxmox drive via the firmware boot menu (usually F11/F12).
+The EC keeps the panel powered, i915 then registers `eDP-1` as `connected`,
+and ug-paneld picks it up automatically.
+
+The EC runs from standby power, so this state survives reboots and even full
+shutdowns — it only resets when the unit loses mains power (unplugged/power
+cut). After that, repeat the UGOS warm-boot trick once.
+
+Note that the DRM card number can change between boots (`card0` vs `card1`);
+ug-paneld scans all of them, so this is only relevant when reading
+`/sys/class/drm/` yourself.
 
 If a connector **is** connected but the display still stays black, set
 `"debug": true` in `/etc/ug-paneld/config.json`, restart the service, and check
