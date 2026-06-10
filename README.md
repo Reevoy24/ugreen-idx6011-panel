@@ -60,16 +60,23 @@ make
 make install   # copies to /usr/bin/ug-paneld
 ```
 
+To build `.deb` packages locally (same layout as the release workflow):
+
+```bash
+./build-deb.sh 1.0.1
+```
+
 ### Run
 
 The application requires root access (for EC port I/O and I2C access).
 
 > [!IMPORTANT]
-> The `i2c-hid-acpi` kernel module will grab the touchscreen's I2C device on boot and block direct access. You need to either unbind it before running, or blacklist it permanently.
+> The `i2c-hid-acpi` kernel module will grab the touchscreen's I2C device on boot and block direct access. ug-paneld unbinds it automatically at startup (it knows both the `CUST0000:00` and `MSFT8000:00` ids used by different hardware revisions, and logs what it did). To do it manually instead:
 
 ```bash
-# Option A: unbind for this session
+# Option A: unbind for this session (the id depends on your hardware revision)
 echo "i2c-CUST0000:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null
+echo "i2c-MSFT8000:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null
 
 # Option B: blacklist permanently
 echo "blacklist i2c_hid_acpi" > /etc/modprobe.d/no-i2c-hid.conf
@@ -100,8 +107,12 @@ All settings are optional. Create `/etc/ug-paneld/config.json`:
 ```json
 {
     "poll_rate": 2,
-    "drm_card": "",
+    "drm_device": "",
+    "connector": "auto",
+    "drm_probe_timeout": 10,
+    "i2c_device": "auto",
     "touch_device": "/dev/i2c-2",
+    "debug": false,
     "brightness": 100,
     "backlight_timeout": 30,
     "opnsense_url": "https://192.168.1.1:8443",
@@ -115,7 +126,11 @@ All settings are optional. Create `/etc/ug-paneld/config.json`:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `poll_rate` | `2` | How often to poll system stats (seconds) |
-| `drm_card` | auto-detect | DRM device path, e.g. `/dev/dri/card0` |
+| `drm_device` | auto-detect | DRM device path, e.g. `/dev/dri/card0`. Empty = scan `/dev/dri/card*`. (Legacy key `drm_card` still works.) |
+| `connector` | `auto` | DRM connector to drive: a name like `eDP-1`/`DSI-1`, a numeric connector id, or `auto` (first connected connector with modes) |
+| `drm_probe_timeout` | `10` | Seconds to wait at startup for a connected DRM connector before giving up |
+| `i2c_device` | `auto` | ACPI id to unbind from the `i2c_hid_acpi` driver so the touchscreen is accessible: `auto` (tries the known ids `CUST0000:00` and `MSFT8000:00`), `none` (skip), or a specific id like `MSFT8000:00` |
+| `debug` | `false` | Verbose DRM probe logging |
 | `touch_device` | `/dev/i2c-2` | I2C bus for the touchscreen |
 | `brightness` | `100` | Backlight brightness (1-100) |
 | `backlight_timeout` | `30` | Seconds before backlight turns off (0 to disable) |
@@ -272,6 +287,53 @@ i2cdetect -y -r 2
 ```
 
 Then update `touch_device` in your config.
+
+## Debugging on newer iDX6011 Pro revisions
+
+Newer revisions of the iDX6011 Pro differ from the original in two ways:
+
+1. **The touchscreen enumerates as `MSFT8000:00` instead of `CUST0000:00`.** ug-paneld handles both automatically; if your unit uses yet another id, set it via `i2c_device` in the config.
+2. **Some unit/kernel combinations fail to bring up the internal panel at all.** `dmesg` then shows lines like `[drm] [ENCODER:...:DDI A/PHY A] failed to retrieve link info, disabling eDP` and `[drm] Cannot find any crtc or sizes`, and every connector under `/sys/class/drm/` stays `disconnected`.
+
+Useful commands when the display stays black:
+
+```bash
+# Which DRM connectors does the kernel expose?
+ls /sys/class/drm/
+
+# Connection status of each connector — exactly one should say "connected"
+for x in /sys/class/drm/card0-*/status; do echo "$x"; cat "$x"; done
+
+# Which I2C devices exist? (shows whether your touchscreen is CUST0000 or MSFT8000)
+ls /sys/bus/i2c/devices/
+
+# What did ug-paneld detect and decide?
+journalctl -u ug-paneld -n 100 --no-pager
+```
+
+At startup ug-paneld probes every DRM device and logs each connector with its
+name, id, status, and modes, then waits up to `drm_probe_timeout` seconds for a
+connected one to appear. If none does, it logs:
+
+```
+No connected DRM connector found; kernel did not expose internal panel.
+```
+
+and exits with code 2. The systemd service treats exit code 2 as unrecoverable
+(`RestartPreventExitStatus=2`), so it fails cleanly instead of restart-looping.
+
+If you hit that message, the panel cannot be driven from userspace on that
+boot: the kernel's display driver (i915/xe) never registered a usable
+connector, which is a kernel/firmware issue rather than a ug-paneld one. Things
+worth trying, roughly in order of safety: install the latest BIOS/firmware
+update from Ugreen, and try a newer (or different) kernel where eDP init for
+this panel may be fixed. Once `cat /sys/class/drm/card0-*/status` shows a
+`connected` entry, run `systemctl restart ug-paneld`.
+
+If a connector **is** connected but the display still stays black, set
+`"debug": true` in `/etc/ug-paneld/config.json`, restart the service, and check
+the journal for which device/connector/mode was handed to LVGL and where setup
+failed.
 
 ## OPNsense Integration
 

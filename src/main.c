@@ -51,8 +51,21 @@ int main(int argc, char *argv[]) {
     config_t config;
     if (config_load(&config) != 0)
         fprintf(stderr, "Warning: Failed to load config, using defaults\n");
+    if (config.debug)
+        fprintf(stderr, "Debug logging enabled\n");
 
-    if (display_init(config.drm_card) != 0) {
+    /* Free the touchscreen from i2c-hid before anything else; harmless if the
+     * module is blacklisted or the device id differs (it just logs). */
+    touch_unbind_i2c_hid(config.i2c_device);
+
+    int dret = display_init(&config);
+    if (dret != DISPLAY_OK) {
+        if (dret == DISPLAY_NO_CONNECTOR) {
+            /* Exit code 2 = unrecoverable on this boot; the service file uses
+             * RestartPreventExitStatus=2 so systemd doesn't restart-loop. */
+            fprintf(stderr, "Display init failed: no connected DRM connector (exit code 2)\n");
+            return 2;
+        }
         fprintf(stderr, "Display init failed\n");
         return 1;
     }

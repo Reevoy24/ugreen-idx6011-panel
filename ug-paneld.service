@@ -4,10 +4,14 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStartPre=-/bin/sh -c 'echo "i2c-CUST0000:00" > /sys/bus/i2c/drivers/i2c_hid_acpi/unbind 2>/dev/null'
+# i2c-hid unbinding is handled inside ug-paneld itself (supports both the
+# CUST0000:00 and MSFT8000:00 touchscreen ids and logs what it does).
 ExecStart=/usr/bin/ug-paneld
 Restart=always
 RestartSec=5
+# Exit code 2 means the kernel exposed no connected DRM connector (internal
+# panel missing/disabled). Restarting cannot fix that, so don't loop.
+RestartPreventExitStatus=2
 
 [Install]
 WantedBy=multi-user.target
