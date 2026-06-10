@@ -2,4 +2,11 @@
 ug-paneld
 *.o
 *.deb
+*.tar.gz
 build/
+
+# Local hardware analysis artifacts
+vbt.bin
+vbt-decoded.txt
+ec-dump-*.txt
+vbt-analyze.sh

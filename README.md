@@ -26,6 +26,8 @@ The iDX6011 Pro has three hardware interfaces on the front panel. This project c
 
 ## Install from release
 
+### Proxmox / Debian / other systemd distros
+
 Download the latest `.deb` from the [releases page](../../releases) and install it:
 
 ```bash
@@ -36,6 +38,44 @@ systemctl start ug-paneld
 This installs the binary, systemd service, and blacklists the `i2c-hid-acpi` module. There is a "no-blacklist" .deb package that can be installed if you would prefer to disable the i2c-hid-acpi module yourself. 
 
 The service is enabled automatically on install.
+
+### TrueNAS SCALE / Community Edition
+
+TrueNAS (Linux-based; CORE/FreeBSD is not supported) has a read-only root
+filesystem, so there is a dedicated tarball instead of a .deb. It installs to
+one of your pools and starts via a TrueNAS Post-Init script, which survives
+reboots and system updates:
+
+```bash
+cd /tmp
+tar xzf ug-paneld_*_truenas_amd64.tar.gz && cd ug-paneld
+sh install.sh /mnt/<your-pool>/ug-paneld
+```
+
+Config lives next to the binary (`/mnt/<your-pool>/ug-paneld/config.json`) and
+is synced to `/etc/ug-paneld/` at each start. See the `README.txt` inside the
+tarball for details.
+
+### Unraid
+
+Unraid rebuilds its root filesystem from flash on every boot, so the Unraid
+tarball persists everything under `/boot/config/ug-paneld/` and hooks into
+`/boot/config/go`:
+
+```bash
+cd /tmp
+tar xzf ug-paneld_*_unraid_amd64.tar.gz && cd ug-paneld
+sh install.sh
+```
+
+Config lives at `/boot/config/ug-paneld/config.json`; apply changes with
+`sh /boot/config/ug-paneld/start.sh`. See the `README.txt` inside the tarball.
+
+> [!NOTE]
+> The TrueNAS and Unraid packages are new and not yet field-tested on those
+> platforms — the binary is identical to the Proxmox/Debian one, only the
+> packaging differs. Feedback welcome. The display/panel behaviour (including
+> the newer-revision EC quirk described below) is identical on all distros.
 
 ## Build from source
 
@@ -63,7 +103,13 @@ make install   # copies to /usr/bin/ug-paneld
 To build `.deb` packages locally (same layout as the release workflow):
 
 ```bash
-./build-deb.sh 1.0.1
+./build-deb.sh 1.0.2
+```
+
+To build the TrueNAS SCALE and Unraid tarballs:
+
+```bash
+./build-tarballs.sh 1.0.2
 ```
 
 ### Run
