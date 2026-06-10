@@ -40,7 +40,7 @@ int main(void)
     lv_display_set_buffers(disp, fb, NULL, sizeof(fb), LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(disp, flush_cb);
 
-    gui_create_dashboard(1, 1000);
+    gui_create_dashboard(1, 1, 1000);
 
     /* --- mock data, roughly matching the UGOS marketing screens --- */
     system_stats_t st = {

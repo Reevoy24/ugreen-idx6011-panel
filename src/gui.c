@@ -626,7 +626,7 @@ static void build_opnsense(int col, int wan_max_mbps)
 
 /* ================= public API ================= */
 
-lv_obj_t *gui_create_dashboard(int show_opnsense, int wan_max_mbps)
+lv_obj_t *gui_create_dashboard(int show_opnsense, int show_pve, int wan_max_mbps)
 {
     lv_obj_t *screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, lv_color_hex(COL_BG), 0);
@@ -643,7 +643,8 @@ lv_obj_t *gui_create_dashboard(int show_opnsense, int wan_max_mbps)
     build_hardware(col++);
     build_network(col++);
     build_disks(col++);
-    build_pve(col++);
+    if (show_pve)
+        build_pve(col++);
     if (show_opnsense)
         build_opnsense(col++, wan_max_mbps);
     page_count = col;

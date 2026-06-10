@@ -8,9 +8,10 @@
 #include "disk_stats.h"
 #include "pve_stats.h"
 
-/* Multi-page dashboard (swipeable tileview):
- * Home, Hardware, Netzwerk, Festplatten, Proxmox, OPNsense (optional). */
-lv_obj_t *gui_create_dashboard(int show_opnsense, int wan_max_mbps);
+/* Multi-page dashboard (swipeable tileview): Home, Hardware, Netzwerk,
+ * Festplatten, Proxmox (only when running on a PVE host), OPNsense (only
+ * when configured). */
+lv_obj_t *gui_create_dashboard(int show_opnsense, int show_pve, int wan_max_mbps);
 
 void gui_update_clock(void);
 void gui_update_dashboard(const system_stats_t *stats);

@@ -87,7 +87,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
     int has_gpu = (gpu_stats_init() == 0);
 
-    gui_create_dashboard(has_opnsense, config.wan_max_mbps);
+    /* The Proxmox page only exists when this host actually is a PVE node;
+     * on TrueNAS/Unraid/plain Debian it is skipped entirely. */
+    pve_stats_t pve_probe;
+    pve_stats_collect(&pve_probe);
+    int has_pve = pve_probe.available;
+    fprintf(stderr, has_pve ? "Proxmox host detected — Proxmox page enabled\n"
+                            : "No Proxmox host detected — Proxmox page disabled\n");
+
+    gui_create_dashboard(has_opnsense, has_pve, config.wan_max_mbps);
 
     uint32_t last_stats_update = 0;
     uint32_t last_slow_update = 0;
@@ -155,9 +163,11 @@ int main(int argc, char *argv[]) {
                 disk_stats_t disks;
                 if (disk_stats_collect(&disks) == 0)
                     gui_update_disks(&disks);
-                pve_stats_t pve;
-                if (pve_stats_collect(&pve) == 0)
-                    gui_update_pve(&pve);
+                if (has_pve) {
+                    pve_stats_t pve;
+                    if (pve_stats_collect(&pve) == 0)
+                        gui_update_pve(&pve);
+                }
                 last_slow_update = now;
             }
             last_stats_update = now;
