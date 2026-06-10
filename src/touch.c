@@ -26,6 +26,11 @@ static const uint8_t read_cmd[8] = {
 static int i2c_fd = -1;
 static int fail_count = 0;
 #define MAX_FAILURES 50
+#define RECONNECT_MS 5000
+
+/* remembered for automatic reconnects after transient I2C failures */
+static char bus_path[32];
+static uint32_t disabled_at = 0;
 
 #define I2C_HID_DRIVER_DIR "/sys/bus/i2c/drivers/i2c_hid_acpi"
 
@@ -161,8 +166,29 @@ int touch_init(const char *i2c_bus) {
         return -1;
     }
 
+    snprintf(bus_path, sizeof(bus_path), "%s", i2c_bus);
     fprintf(stderr, "Touch input: %s addr 0x%02x\n", i2c_bus, AXS_ADDR);
     return 0;
+}
+
+/* After too many I2C failures the fd is closed; the chip may just have lost
+ * power briefly (the EC cuts the panel rail at very low backlight levels),
+ * so keep retrying instead of giving up forever. */
+static void touch_try_reconnect(void) {
+    uint32_t now = custom_tick_get();
+    if (!bus_path[0] || now - disabled_at < RECONNECT_MS)
+        return;
+    disabled_at = now;
+
+    int fd = open(bus_path, O_RDWR);
+    if (fd < 0) return;
+    if (ioctl(fd, I2C_SLAVE, AXS_ADDR) < 0) {
+        close(fd);
+        return;
+    }
+    i2c_fd = fd;
+    fail_count = 0;
+    fprintf(stderr, "Touch: reconnected on %s\n", bus_path);
 }
 
 /* cached state, refreshed by touch_poll() */
@@ -172,24 +198,31 @@ static uint32_t last_activity = 0;
 
 int touch_poll(void) {
     cur_pressed = 0;
-    if (i2c_fd < 0) return 0;
+    if (i2c_fd < 0) {
+        touch_try_reconnect();
+        if (i2c_fd < 0) return 0;
+    }
 
     uint8_t buf[AXS_READ_LEN];
 
     if (write(i2c_fd, read_cmd, sizeof(read_cmd)) != sizeof(read_cmd)) {
         if (++fail_count >= MAX_FAILURES) {
-            fprintf(stderr, "Touch: too many I2C failures, disabling\n");
+            fprintf(stderr, "Touch: too many I2C failures, retrying every %d s\n",
+                    RECONNECT_MS / 1000);
             close(i2c_fd);
             i2c_fd = -1;
+            disabled_at = custom_tick_get();
         }
         return 0;
     }
 
     if (read(i2c_fd, buf, AXS_READ_LEN) != AXS_READ_LEN) {
         if (++fail_count >= MAX_FAILURES) {
-            fprintf(stderr, "Touch: too many I2C failures, disabling\n");
+            fprintf(stderr, "Touch: too many I2C failures, retrying every %d s\n",
+                    RECONNECT_MS / 1000);
             close(i2c_fd);
             i2c_fd = -1;
+            disabled_at = custom_tick_get();
         }
         return 0;
     }

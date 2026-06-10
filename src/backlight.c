@@ -62,9 +62,10 @@ void backlight_off(void) {
 /* On newer hardware revisions the EC's backlight-off (198) also cuts power
  * to the touch controller, which then answers everything with 0x23 garbage
  * and can no longer wake the screen. For the idle timeout we therefore dim
- * to the lowest level that keeps the panel rail (and the touch chip) alive. */
+ * to ~5% — the same level as the brightness slider minimum — which keeps
+ * the panel rail (and the touch chip) alive. */
 void backlight_dim(void) {
-    backlight_write(BL_MAX - 2);
+    backlight_write(BL_MAX - 5 * (BL_MAX - BL_MIN) / 100);
 }
 
 void backlight_set(int percent) {
