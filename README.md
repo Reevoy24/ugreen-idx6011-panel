@@ -340,9 +340,11 @@ boot your Linux/Proxmox drive via the firmware boot menu (usually F11/F12).
 The EC keeps the panel powered, i915 then registers `eDP-1` as `connected`,
 and ug-paneld picks it up automatically.
 
-The EC runs from standby power, so this state survives reboots and even full
-shutdowns — it only resets when the unit loses mains power (unplugged/power
-cut). After that, repeat the UGOS warm-boot trick once.
+The EC stores this state persistently: on the unit this was verified on, the
+panel kept working across reboots, shutdowns, and even a multi-minute mains
+power cut. The UGOS warm-boot trick is therefore a one-time fix. Should the
+panel ever come up dark again (e.g. after an EC reset or firmware update),
+just repeat it.
 
 Note that the DRM card number can change between boots (`card0` vs `card1`);
 ug-paneld scans all of them, so this is only relevant when reading
