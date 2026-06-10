@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
          * way to wake it on revisions where the touch protocol differs. */
         if (has_touch && touch_last_activity() != 0 && !screen_asleep &&
             bl_timeout_ms > 0 && (now - last_touch_time >= bl_timeout_ms)) {
-            backlight_off();
+            backlight_dim(); /* not off: EC-off would cut touch power → no wake */
             screen_asleep = 1;
             api_set_state(0);
         }
