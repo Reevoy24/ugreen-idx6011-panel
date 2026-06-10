@@ -183,8 +183,11 @@ int main(int argc, char *argv[]) {
             screen_asleep = 1;
         }
 
-        if (has_touch && !screen_asleep && bl_timeout_ms > 0 &&
-            (now - last_touch_time >= bl_timeout_ms)) {
+        /* Arm the idle timeout only after touch has proven to work (at least
+         * one real contact seen) — otherwise the screen could go dark with no
+         * way to wake it on revisions where the touch protocol differs. */
+        if (has_touch && touch_last_activity() != 0 && !screen_asleep &&
+            bl_timeout_ms > 0 && (now - last_touch_time >= bl_timeout_ms)) {
             backlight_off();
             screen_asleep = 1;
             api_set_state(0);

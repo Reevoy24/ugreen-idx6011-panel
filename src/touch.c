@@ -191,6 +191,8 @@ int touch_poll(void) {
     cur_x = x;
     cur_y = y;
     cur_pressed = 1;
+    if (last_activity == 0)
+        fprintf(stderr, "Touch: first contact detected at %u,%u — touch is working\n", x, y);
     last_activity = custom_tick_get();
     return 1;
 }
