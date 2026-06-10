@@ -81,6 +81,7 @@ int config_load(config_t *config) {
     snprintf(config->touch_device, sizeof(config->touch_device), "auto");
     config->brightness = 100;
     config->backlight_timeout = 30;
+    config->sleep_brightness = 5;
     config->api_port = 0;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
@@ -117,6 +118,7 @@ int config_load(config_t *config) {
     json_get_str(json, "touch_device", config->touch_device, sizeof(config->touch_device));
     json_get_int(json, "brightness", &config->brightness);
     json_get_int(json, "backlight_timeout", &config->backlight_timeout);
+    json_get_int(json, "sleep_brightness", &config->sleep_brightness);
     json_get_int(json, "api_port", &config->api_port);
 
     free(json);

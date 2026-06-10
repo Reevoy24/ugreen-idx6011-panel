@@ -196,7 +196,12 @@ int main(int argc, char *argv[]) {
         if (idle_hit || !api_get_state()) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
-            backlight_dim();   /* not EC-off: that would cut touch power */
+            /* sleep_brightness 0 = EC full off (no touch wake where the EC
+             * cuts touch power); >0 keeps the touch chip alive */
+            if (config.sleep_brightness <= 0)
+                backlight_off();
+            else
+                backlight_set(config.sleep_brightness);
             screen_asleep = 1;
             api_set_state(0);
             nanosleep(&sleep_long, NULL);

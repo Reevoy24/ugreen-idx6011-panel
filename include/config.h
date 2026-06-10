@@ -19,6 +19,8 @@ typedef struct {
     char touch_device[64];
     int brightness;
     int backlight_timeout;
+    int sleep_brightness;  /* backlight %% while asleep; 0 = EC full off
+                              (touch wake impossible where EC cuts touch power) */
     int api_port;
     int debug;             /* verbose display probe logging */
 } config_t;
