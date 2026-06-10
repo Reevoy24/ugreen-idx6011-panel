@@ -3,7 +3,7 @@
     "drm_device": "",
     "connector": "auto",
     "i2c_device": "auto",
-    "touch_device": "/dev/i2c-2",
+    "touch_device": "auto",
     "brightness": 100,
     "backlight_timeout": 30,
     "debug": false

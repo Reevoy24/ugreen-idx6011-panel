@@ -78,7 +78,7 @@ int config_load(config_t *config) {
     config->opnsense_secret[0] = '\0';
     snprintf(config->wan_interface, sizeof(config->wan_interface), "wan");
     config->wan_max_mbps = 1000;
-    snprintf(config->touch_device, sizeof(config->touch_device), "/dev/i2c-2");
+    snprintf(config->touch_device, sizeof(config->touch_device), "auto");
     config->brightness = 100;
     config->backlight_timeout = 30;
     config->api_port = 0;

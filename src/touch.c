@@ -108,7 +108,46 @@ void touch_unbind_i2c_hid(const char *acpi_id) {
                         "check 'ls /sys/bus/i2c/devices/' for the id on your revision\n");
 }
 
+/* The touchscreen's I2C bus number shifts between hardware revisions and
+ * driver load order. The ACPI device symlink names the real bus:
+ *   /sys/bus/i2c/devices/i2c-CUST0000:00 -> .../i2c-1/i2c-CUST0000:00 */
+static int resolve_touch_bus(char *out, size_t out_size) {
+    for (size_t i = 0; i < KNOWN_TOUCH_ID_COUNT; i++) {
+        char link[96], target[256];
+        snprintf(link, sizeof(link), "/sys/bus/i2c/devices/i2c-%s", known_touch_ids[i]);
+        ssize_t n = readlink(link, target, sizeof(target) - 1);
+        if (n <= 0) continue;
+        target[n] = '\0';
+
+        /* strip the device component, the parent component is the bus */
+        char *slash = strrchr(target, '/');
+        if (!slash) continue;
+        *slash = '\0';
+        slash = strrchr(target, '/');
+        const char *bus_part = slash ? slash + 1 : target;
+
+        int bus;
+        if (sscanf(bus_part, "i2c-%d", &bus) == 1) {
+            snprintf(out, out_size, "/dev/i2c-%d", bus);
+            fprintf(stderr, "Touch: %s found on %s\n", known_touch_ids[i], out);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int touch_init(const char *i2c_bus) {
+    char resolved[32];
+    if (!i2c_bus || !i2c_bus[0] || strcasecmp(i2c_bus, "auto") == 0) {
+        if (resolve_touch_bus(resolved, sizeof(resolved)) == 0) {
+            i2c_bus = resolved;
+        } else {
+            fprintf(stderr, "Touch: no known touchscreen ACPI device found, "
+                            "falling back to /dev/i2c-2\n");
+            i2c_bus = "/dev/i2c-2";
+        }
+    }
+
     i2c_fd = open(i2c_bus, O_RDWR);
     if (i2c_fd < 0) {
         fprintf(stderr, "Warning: Could not open I2C bus %s\n", i2c_bus);
