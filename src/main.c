@@ -16,6 +16,8 @@
 #include "gpu_stats.h"
 #include "gui.h"
 #include "config.h"
+#include "settings.h"
+#include "i18n.h"
 #include "backlight.h"
 #include "opnsense.h"
 #include "touch.h"
@@ -23,6 +25,34 @@
 
 static volatile int running = 1;
 static volatile int signal_count = 0;
+
+static ui_state_t ui_state;
+static uint32_t bl_timeout_ms = 30000;
+
+/* ---- settings panel actions ---- */
+static void act_set_brightness(int pct) {
+    backlight_set(pct);
+    api_set_brightness(pct);
+}
+
+static void act_set_timeout(int seconds) {
+    bl_timeout_ms = (uint32_t)seconds * 1000;
+}
+
+static void act_reboot(void) {
+    fprintf(stderr, "Reboot requested from settings panel\n");
+    backlight_off();
+    /* systemctl on systemd distros, plain reboot on Unraid/others */
+    if (system("systemctl reboot 2>/dev/null || reboot") != 0)
+        fprintf(stderr, "Warning: reboot command failed\n");
+}
+
+static void act_poweroff(void) {
+    fprintf(stderr, "Poweroff requested from settings panel\n");
+    backlight_off();
+    if (system("systemctl poweroff 2>/dev/null || poweroff") != 0)
+        fprintf(stderr, "Warning: poweroff command failed\n");
+}
 
 static void signal_handler(int sig) {
     (void)sig;
@@ -74,9 +104,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* panel-adjustable settings: state.json overrides config defaults */
+    settings_load(&ui_state, config.brightness, config.backlight_timeout);
+    i18n_set_language(ui_state.language);
+    bl_timeout_ms = (uint32_t)ui_state.backlight_timeout * 1000;
+
     backlight_init();
-    backlight_set(config.brightness);
-    api_set_brightness(config.brightness);
+    backlight_set(ui_state.brightness);
+    api_set_brightness(ui_state.brightness);
 
     if (config.api_port > 0)
         api_start(config.api_port);
@@ -95,13 +130,25 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, has_pve ? "Proxmox host detected — Proxmox page enabled\n"
                             : "No Proxmox host detected — Proxmox page disabled\n");
 
-    gui_create_dashboard(has_opnsense, has_pve, config.wan_max_mbps);
+    gui_setup_t setup = {
+        .show_opnsense = has_opnsense,
+        .show_pve = has_pve,
+        .wan_max_mbps = config.wan_max_mbps,
+        .state = &ui_state,
+        .set_brightness = act_set_brightness,
+        .set_timeout = act_set_timeout,
+        .do_reboot = act_reboot,
+        .do_poweroff = act_poweroff,
+    };
+    gui_create_dashboard(&setup);
+
+    if (has_touch)
+        touch_lvgl_register();
 
     uint32_t last_stats_update = 0;
     uint32_t last_slow_update = 0;
     const uint32_t slow_interval = 10000; /* disks + pve every 10 s */
     uint32_t stats_interval = config.poll_rate * 1000;
-    uint32_t bl_timeout_ms = config.backlight_timeout * 1000;
     uint32_t last_touch_time = custom_tick_get();
     int screen_asleep = 0;
     system_stats_t stats;
@@ -113,9 +160,16 @@ int main(int argc, char *argv[]) {
     while (running) {
         uint32_t now = custom_tick_get();
 
-        if (has_touch && touch_is_pressed()) {
-            last_touch_time = now;
-            if (screen_asleep) {
+        /* While awake the LVGL input device polls the touchscreen; while
+         * asleep the loop below polls it directly. Either way the last
+         * activity timestamp drives wake + idle timeout. */
+        if (has_touch) {
+            if (screen_asleep)
+                touch_poll();
+            uint32_t activity = touch_last_activity();
+            if (activity > last_touch_time)
+                last_touch_time = activity;
+            if (screen_asleep && activity && now - activity < 500) {
                 backlight_set(api_get_brightness());
                 screen_asleep = 0;
                 api_set_state(1);

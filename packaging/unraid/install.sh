@@ -13,9 +13,10 @@ MARK_END="# <<< ug-paneld <<<"
 [ -d /boot/config ] || { echo "/boot/config not found — is this Unraid?" >&2; exit 1; }
 [ -f ug-paneld ] || { echo "ug-paneld binary not found — run from the extracted tarball directory." >&2; exit 1; }
 
-mkdir -p "$PERSIST"
+mkdir -p "$PERSIST/wallpapers"
 cp -f ug-paneld "$PERSIST/ug-paneld"
 cp -f start.sh "$PERSIST/start.sh"
+cp -f wallpapers/*.png "$PERSIST/wallpapers/" 2>/dev/null || true
 [ -f "$PERSIST/config.json" ] || cp -f config.json.example "$PERSIST/config.json"
 
 if ! grep -q "$MARK_BEGIN" "$GO" 2>/dev/null; then

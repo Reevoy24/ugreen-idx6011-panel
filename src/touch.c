@@ -1,5 +1,7 @@
 #include "touch.h"
 #include "config.h"
+#include "include/custom_tick.h"
+#include "lvgl/lvgl.h"
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -124,7 +126,13 @@ int touch_init(const char *i2c_bus) {
     return 0;
 }
 
-int touch_is_pressed(void) {
+/* cached state, refreshed by touch_poll() */
+static uint16_t cur_x = 0, cur_y = 0;
+static int cur_pressed = 0;
+static uint32_t last_activity = 0;
+
+int touch_poll(void) {
+    cur_pressed = 0;
     if (i2c_fd < 0) return 0;
 
     uint8_t buf[AXS_READ_LEN];
@@ -180,7 +188,31 @@ int touch_is_pressed(void) {
     if (x >= DISP_W || y >= DISP_H)
         return 0;
 
+    cur_x = x;
+    cur_y = y;
+    cur_pressed = 1;
+    last_activity = custom_tick_get();
     return 1;
+}
+
+uint16_t touch_get_x(void) { return cur_x; }
+uint16_t touch_get_y(void) { return cur_y; }
+uint32_t touch_last_activity(void) { return last_activity; }
+
+static void touch_indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
+    (void)indev;
+    touch_poll();
+    data->state = cur_pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    data->point.x = cur_x;
+    data->point.y = cur_y;
+}
+
+void touch_lvgl_register(void) {
+    if (i2c_fd < 0) return;
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, touch_indev_read_cb);
+    fprintf(stderr, "Touch registered as LVGL pointer device\n");
 }
 
 void touch_cleanup(void) {

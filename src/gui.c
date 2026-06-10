@@ -1,8 +1,12 @@
 #include "gui.h"
+#include "i18n.h"
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <time.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "lvgl/lvgl.h"
 #include "lvgl/src/draw/lv_image_decoder_private.h"
 #include "lvgl/src/draw/lv_draw_buf_private.h"
@@ -14,11 +18,19 @@
 #define CARD_W (DISP_W - 2 * PAGE_PAD)
 #define BAR_HEIGHT 6
 #define SPARK_POINTS 36
-#define WP_PATH "A:/etc/ug-paneld/wallpaper.png"
+#define PANEL_H 470
+#define EDGE_STRIP_H 32
+#define SWIPE_TRIGGER 55
+
+#define WP_DIR "/usr/share/ug-paneld/wallpapers"
+#define WP_CUSTOM_PATH "/etc/ug-paneld/wallpaper.png"
+#define WP_MAX_OPTS 7
 
 /* ---- UGOS-inspired palette ---- */
 #define COL_BG      0x0a0a0c
 #define COL_CARD    0x1b1b1e
+#define COL_PANEL   0x141416
+#define COL_BTN     0x26262b
 #define COL_TEXT    0xf2f2f2
 #define COL_SUB     0x8e8e93
 #define COL_TRACK   0x2c2c2e
@@ -30,15 +42,23 @@
 
 /* ---- Pages ---- */
 #define MAX_PAGES 6
+static gui_setup_t setup;
+static ui_state_t fallback_state;
 static lv_obj_t *tileview = NULL;
 static lv_obj_t *tiles[MAX_PAGES];
 static lv_obj_t *dots[MAX_PAGES];
 static lv_obj_t *dots_box = NULL;
 static int page_count = 0;
 
+/* ---- i18n label registry (static labels that re-translate live) ---- */
+#define TR_REG_MAX 72
+static struct { lv_obj_t *obj; tr_key_t key; } tr_regs[TR_REG_MAX];
+static int tr_reg_count = 0;
+
 /* ---- Home ---- */
 static uint8_t *wp_buf = NULL;
 static lv_image_dsc_t wp_dsc;
+static lv_obj_t *wp_img = NULL;
 static lv_obj_t *time_label = NULL;
 static lv_obj_t *date_label = NULL;
 static lv_obj_t *home_cpu_arc = NULL;
@@ -77,6 +97,8 @@ static lv_obj_t *disk_status[DISK_MAX];
 static lv_obj_t *disk_size_val[DISK_MAX];
 static lv_obj_t *disk_temp_val[DISK_MAX];
 static lv_obj_t *disk_empty = NULL;
+static disk_stats_t last_disks;
+static int have_last_disks = 0;
 
 /* ---- Proxmox ---- */
 static lv_obj_t *pve_vm_val = NULL;
@@ -97,6 +119,28 @@ static lv_obj_t *update_val_label = NULL;
 static lv_obj_t *dhcp_val_label = NULL;
 static lv_obj_t *dns_val_label = NULL;
 static lv_obj_t *dns_bar = NULL;
+
+/* ---- Settings panel ---- */
+static lv_obj_t *edge_strip = NULL;
+static lv_obj_t *scrim = NULL;
+static lv_obj_t *panel = NULL;
+static int panel_is_open = 0;
+static lv_obj_t *bri_val_label = NULL;
+static lv_obj_t *bri_slider = NULL;
+static lv_obj_t *timeout_sub = NULL;
+static lv_obj_t *wp_sub = NULL;
+static lv_obj_t *lang_sub = NULL;
+static lv_obj_t *confirm_scrim = NULL;
+static lv_obj_t *confirm_text = NULL;
+static int confirm_is_shutdown = 0;
+static lv_point_t press_start;
+
+static char wp_opts[WP_MAX_OPTS][20];
+static int wp_opt_count = 0;
+static int wp_cur = 0;
+
+static const int timeout_presets[] = { 60, 300, 900, 1800, 0 };
+#define TIMEOUT_PRESET_COUNT 5
 
 /* ================= helpers ================= */
 
@@ -119,6 +163,19 @@ static lv_obj_t *label_new(lv_obj_t *parent, const char *text,
     return l;
 }
 
+/* translated label that updates on language change */
+static lv_obj_t *label_tr(lv_obj_t *parent, tr_key_t key,
+                          const lv_font_t *font, uint32_t color)
+{
+    lv_obj_t *l = label_new(parent, tr(key), font, color);
+    if (tr_reg_count < TR_REG_MAX) {
+        tr_regs[tr_reg_count].obj = l;
+        tr_regs[tr_reg_count].key = key;
+        tr_reg_count++;
+    }
+    return l;
+}
+
 static lv_obj_t *row_new(lv_obj_t *parent)
 {
     lv_obj_t *row = lv_obj_create(parent);
@@ -131,6 +188,19 @@ static lv_obj_t *row_new(lv_obj_t *parent)
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
     return row;
+}
+
+static lv_obj_t *vcol_new(lv_obj_t *parent, int pct)
+{
+    lv_obj_t *c = lv_obj_create(parent);
+    lv_obj_set_size(c, LV_PCT(pct), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 0, 0);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_CLICKABLE);
+    return c;
 }
 
 static lv_obj_t *card_new(lv_obj_t *parent)
@@ -196,18 +266,7 @@ static lv_obj_t *dot_new(lv_obj_t *parent, uint32_t color, int size)
     return d;
 }
 
-/* key (gray, left) / value (white, right) row */
-static lv_obj_t *kv_new(lv_obj_t *parent, const char *key, const lv_font_t *vfont,
-                        lv_obj_t **val_out)
-{
-    lv_obj_t *row = row_new(parent);
-    label_new(row, key, &lv_font_montserrat_14, COL_SUB);
-    *val_out = label_new(row, "--", vfont, COL_TEXT);
-    return row;
-}
-
-/* Adds a new tile and returns its padded flex-column content container. */
-static lv_obj_t *page_new(int col, const char *title)
+static lv_obj_t *page_new(int col, tr_key_t title_key)
 {
     lv_obj_t *tile = lv_tileview_add_tile(tileview, col, 0, LV_DIR_HOR);
     tiles[col] = tile;
@@ -225,12 +284,10 @@ static lv_obj_t *page_new(int col, const char *title)
     lv_obj_set_scroll_dir(cont, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(cont, LV_SCROLLBAR_MODE_OFF);
 
-    if (title) {
-        lv_obj_t *hdr = row_new(cont);
-        lv_obj_set_style_pad_top(hdr, 4, 0);
-        lv_obj_set_style_pad_bottom(hdr, 2, 0);
-        label_new(hdr, title, &lv_font_montserrat_20, COL_TEXT);
-    }
+    lv_obj_t *hdr = row_new(cont);
+    lv_obj_set_style_pad_top(hdr, 4, 0);
+    lv_obj_set_style_pad_bottom(hdr, 2, 0);
+    label_tr(hdr, title_key, &lv_font_montserrat_20, COL_TEXT);
     return cont;
 }
 
@@ -251,29 +308,42 @@ static void tile_changed_cb(lv_event_t *e)
     update_dots();
 }
 
-/* ================= pages ================= */
+/* ================= wallpaper ================= */
 
-static void load_wallpaper(lv_obj_t *parent)
+static int file_exists(const char *path)
 {
-    lv_image_decoder_dsc_t dsc;
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
+/* decode + cover-scale + center-crop into a fresh ARGB8888 buffer */
+static uint8_t *decode_wallpaper(const char *fs_path)
+{
+    char lv_path[256];
+    snprintf(lv_path, sizeof(lv_path), "A:%s", fs_path);
+
     lv_image_header_t header;
-    if (lv_image_decoder_get_info(WP_PATH, &header) != LV_RESULT_OK) {
-        fprintf(stderr, "Wallpaper: none at %s (optional)\n", WP_PATH);
-        return;
+    if (lv_image_decoder_get_info(lv_path, &header) != LV_RESULT_OK) {
+        fprintf(stderr, "Wallpaper: cannot read %s\n", fs_path);
+        return NULL;
     }
-    if (lv_image_decoder_open(&dsc, WP_PATH, NULL) != LV_RESULT_OK) {
-        fprintf(stderr, "Wallpaper: decoder_open failed\n");
-        return;
+    lv_image_decoder_dsc_t dsc;
+    if (lv_image_decoder_open(&dsc, lv_path, NULL) != LV_RESULT_OK) {
+        fprintf(stderr, "Wallpaper: decode failed for %s\n", fs_path);
+        return NULL;
     }
 
+    uint8_t *out = NULL;
     uint32_t src_w = header.w, src_h = header.h;
-    const uint8_t *src_data = dsc.decoded->data;
-    uint32_t src_stride = dsc.decoded->header.stride;
-    uint32_t bpp = LV_COLOR_FORMAT_GET_BPP(dsc.decoded->header.cf) / 8;
-
+    const uint8_t *src_data = dsc.decoded ? dsc.decoded->data : NULL;
+    uint32_t src_stride = dsc.decoded ? dsc.decoded->header.stride : 0;
+    uint32_t bpp = dsc.decoded ? LV_COLOR_FORMAT_GET_BPP(dsc.decoded->header.cf) / 8 : 0;
     uint32_t dst_stride = DISP_W * 4;
-    wp_buf = malloc(dst_stride * DISP_H);
-    if (wp_buf && src_data && (bpp == 3 || bpp == 4)) {
+
+    if (src_data && (bpp == 3 || bpp == 4) && src_w && src_h)
+        out = malloc(dst_stride * DISP_H);
+
+    if (out) {
         float scale_w = (float)DISP_W / src_w;
         float scale_h = (float)DISP_H / src_h;
         float scale = scale_w > scale_h ? scale_w : scale_h;
@@ -289,7 +359,7 @@ static void load_wallpaper(lv_obj_t *parent)
                 uint32_t sx = (uint32_t)((x + off_x) / scale);
                 if (sx >= src_w) sx = src_w - 1;
                 const uint8_t *sp = src_data + sy * src_stride + sx * bpp;
-                uint8_t *dp = wp_buf + y * dst_stride + x * 4;
+                uint8_t *dp = out + y * dst_stride + x * 4;
                 if (bpp == 4) {
                     dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2]; dp[3] = sp[3];
                 } else {
@@ -297,20 +367,93 @@ static void load_wallpaper(lv_obj_t *parent)
                 }
             }
         }
-
-        wp_dsc.header.w = DISP_W;
-        wp_dsc.header.h = DISP_H;
-        wp_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
-        wp_dsc.header.stride = dst_stride;
-        wp_dsc.data_size = dst_stride * DISP_H;
-        wp_dsc.data = wp_buf;
-
-        lv_obj_t *wp = lv_image_create(parent);
-        lv_image_set_src(wp, &wp_dsc);
-        lv_obj_set_pos(wp, 0, 0);
     }
     lv_image_decoder_close(&dsc);
+    return out;
 }
+
+static const char *wp_display_name(const char *opt)
+{
+    if (strcmp(opt, "none") == 0) return tr(TR_NONE);
+    if (strcmp(opt, "custom") == 0) return tr(TR_CUSTOM);
+    return opt;
+}
+
+static void apply_wallpaper(const char *name)
+{
+    if (!wp_img) return;
+
+    if (strcmp(name, "none") == 0) {
+        lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    char path[160];
+    if (strcmp(name, "custom") == 0)
+        snprintf(path, sizeof(path), "%s", WP_CUSTOM_PATH);
+    else
+        snprintf(path, sizeof(path), "%s/%.32s.png", WP_DIR, name);
+
+    uint8_t *nbuf = decode_wallpaper(path);
+    if (!nbuf) {
+        lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_image_set_src(wp_img, NULL);
+    lv_image_cache_drop(&wp_dsc);
+    if (wp_buf) free(wp_buf);
+    wp_buf = nbuf;
+
+    wp_dsc.header.w = DISP_W;
+    wp_dsc.header.h = DISP_H;
+    wp_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    wp_dsc.header.stride = DISP_W * 4;
+    wp_dsc.data_size = (uint32_t)(DISP_W * 4) * DISP_H;
+    wp_dsc.data = wp_buf;
+
+    lv_image_set_src(wp_img, &wp_dsc);
+    lv_obj_remove_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_invalidate(wp_img);
+}
+
+static void build_wp_options(void)
+{
+    wp_opt_count = 0;
+    snprintf(wp_opts[wp_opt_count++], sizeof(wp_opts[0]), "none");
+
+    struct dirent **list = NULL;
+    int n = scandir(WP_DIR, &list, NULL, alphasort);
+    for (int i = 0; i < n; i++) {
+        const char *d = list[i]->d_name;
+        size_t len = strlen(d);
+        if (len > 4 && strcasecmp(d + len - 4, ".png") == 0 &&
+            wp_opt_count < WP_MAX_OPTS - 1) {
+            size_t base = len - 4;
+            if (base > sizeof(wp_opts[0]) - 1) base = sizeof(wp_opts[0]) - 1;
+            memcpy(wp_opts[wp_opt_count], d, base);
+            wp_opts[wp_opt_count][base] = '\0';
+            wp_opt_count++;
+        }
+        free(list[i]);
+    }
+    if (n >= 0) free(list);
+
+    if (file_exists(WP_CUSTOM_PATH) && wp_opt_count < WP_MAX_OPTS)
+        snprintf(wp_opts[wp_opt_count++], sizeof(wp_opts[0]), "custom");
+
+    /* resolve startup choice; "" = legacy auto (custom file if present) */
+    const char *want = setup.state->wallpaper;
+    if (!want[0])
+        want = file_exists(WP_CUSTOM_PATH) ? "custom" : "none";
+    wp_cur = 0;
+    for (int i = 0; i < wp_opt_count; i++)
+        if (strcmp(wp_opts[i], want) == 0) { wp_cur = i; break; }
+    snprintf(setup.state->wallpaper, sizeof(setup.state->wallpaper), "%s",
+             wp_opts[wp_cur]);
+}
+
+/* ================= pages ================= */
 
 static void build_home(int col)
 {
@@ -319,7 +462,9 @@ static void build_home(int col)
     lv_obj_set_style_bg_color(tile, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
 
-    load_wallpaper(tile);
+    wp_img = lv_image_create(tile);
+    lv_obj_set_pos(wp_img, 0, 0);
+    lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *cont = lv_obj_create(tile);
     lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
@@ -336,22 +481,21 @@ static void build_home(int col)
 
     time_label = label_new(cont, "00:00", &lv_font_montserrat_48, 0xffffff);
 
-    /* translucent stats panel with CPU ring */
-    lv_obj_t *panel = lv_obj_create(cont);
-    lv_obj_set_size(panel, CARD_W, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(panel, 110, 0);
-    lv_obj_set_style_radius(panel, 16, 0);
-    lv_obj_set_style_border_width(panel, 0, 0);
-    lv_obj_set_style_pad_all(panel, 14, 0);
-    lv_obj_set_style_pad_row(panel, 10, 0);
-    lv_obj_set_style_margin_top(panel, 14, 0);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(panel, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *panel_box = lv_obj_create(cont);
+    lv_obj_set_size(panel_box, CARD_W, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(panel_box, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(panel_box, 110, 0);
+    lv_obj_set_style_radius(panel_box, 16, 0);
+    lv_obj_set_style_border_width(panel_box, 0, 0);
+    lv_obj_set_style_pad_all(panel_box, 14, 0);
+    lv_obj_set_style_pad_row(panel_box, 10, 0);
+    lv_obj_set_style_margin_top(panel_box, 14, 0);
+    lv_obj_set_flex_flow(panel_box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(panel_box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(panel_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(panel_box, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t *arc_wrap = lv_obj_create(panel);
+    lv_obj_t *arc_wrap = lv_obj_create(panel_box);
     lv_obj_set_size(arc_wrap, 132, 132);
     lv_obj_set_style_bg_opa(arc_wrap, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(arc_wrap, 0, 0);
@@ -379,7 +523,7 @@ static void build_home(int col)
     lv_obj_t *cpu_cap = label_new(arc_wrap, "CPU", &lv_font_montserrat_14, COL_SUB);
     lv_obj_align(cpu_cap, LV_ALIGN_CENTER, 0, 16);
 
-    lv_obj_t *row = row_new(panel);
+    lv_obj_t *row = row_new(panel_box);
     lv_obj_t *left = lv_obj_create(row);
     lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(left, LV_FLEX_FLOW_ROW);
@@ -407,47 +551,42 @@ static void build_home(int col)
 
 static void build_hardware(int col)
 {
-    lv_obj_t *cont = page_new(col, "Hardware");
+    lv_obj_t *cont = page_new(col, TR_HARDWARE);
 
-    /* CPU */
     lv_obj_t *card = card_new(cont);
     label_new(card, "CPU", &lv_font_montserrat_14, COL_SUB);
     hw_cpu_val = label_new(card, "0 %", &lv_font_montserrat_32, COL_TEXT);
-    label_new(card, "Auslastung", &lv_font_montserrat_14, COL_SUB);
+    label_tr(card, TR_LOAD, &lv_font_montserrat_14, COL_SUB);
     hw_cpu_chart = spark_new(card, COL_CYAN, &hw_cpu_ser);
 
-    /* Temperatur */
     card = card_new(cont);
-    label_new(card, "Temperatur", &lv_font_montserrat_14, COL_SUB);
+    label_tr(card, TR_TEMPERATURE, &lv_font_montserrat_14, COL_SUB);
     hw_temp_val = label_new(card, "--,- °C", &lv_font_montserrat_32, COL_TEXT);
     hw_temp_bar = bar_new(card, COL_YELLOW);
 
-    /* RAM */
     card = card_new(cont);
-    label_new(card, "Arbeitsspeicher", &lv_font_montserrat_14, COL_SUB);
+    label_tr(card, TR_MEMORY, &lv_font_montserrat_14, COL_SUB);
     hw_ram_val = label_new(card, "0,0 / 0,0 GB", &lv_font_montserrat_24, COL_TEXT);
     hw_ram_bar = bar_new(card, COL_YELLOW);
 
-    /* GPU */
     card = card_new(cont);
     label_new(card, "GPU", &lv_font_montserrat_14, COL_SUB);
     hw_gpu_val = label_new(card, "--", &lv_font_montserrat_32, COL_TEXT);
-    hw_gpu_sub = label_new(card, "Auslastung", &lv_font_montserrat_14, COL_SUB);
+    hw_gpu_sub = label_tr(card, TR_LOAD, &lv_font_montserrat_14, COL_SUB);
     hw_gpu_chart = spark_new(card, COL_CYAN, &hw_gpu_ser);
 
-    /* Uptime */
     card = card_new(cont);
     lv_obj_t *row = row_new(card);
-    label_new(row, "Uptime", &lv_font_montserrat_14, COL_SUB);
+    label_tr(row, TR_UPTIME, &lv_font_montserrat_14, COL_SUB);
     hw_up_val = label_new(row, "0d 0h 0m", &lv_font_montserrat_16, COL_TEXT);
 }
 
 static void build_network(int col)
 {
-    lv_obj_t *cont = page_new(col, "Netzwerk");
+    lv_obj_t *cont = page_new(col, TR_NETWORK);
 
     lv_obj_t *card = card_new(cont);
-    label_new(card, "Insgesamt", &lv_font_montserrat_14, COL_SUB);
+    label_tr(card, TR_TOTAL, &lv_font_montserrat_14, COL_SUB);
     lv_obj_t *row = row_new(card);
     label_new(row, LV_SYMBOL_DOWN, &lv_font_montserrat_16, COL_CYAN);
     net_dl_val = label_new(row, "0 B/s", &lv_font_montserrat_20, COL_TEXT);
@@ -461,7 +600,9 @@ static void build_network(int col)
         net_name[i] = label_new(row, "LAN", &lv_font_montserrat_16, COL_TEXT);
         net_status[i] = label_new(row, LV_SYMBOL_OK, &lv_font_montserrat_16, COL_GREEN);
 
-        kv_new(net_card[i], "IPv4", &lv_font_montserrat_14, &net_ip4[i]);
+        row = row_new(net_card[i]);
+        label_new(row, "IPv4", &lv_font_montserrat_14, COL_SUB);
+        net_ip4[i] = label_new(row, "--", &lv_font_montserrat_14, COL_TEXT);
 
         label_new(net_card[i], "IPv6", &lv_font_montserrat_14, COL_SUB);
         net_ip6[i] = label_new(net_card[i], "--", &lv_font_montserrat_14, COL_TEXT);
@@ -476,36 +617,24 @@ static void build_network(int col)
 
 static void build_disks(int col)
 {
-    lv_obj_t *cont = page_new(col, "Festplatten");
+    lv_obj_t *cont = page_new(col, TR_DISKS);
 
-    disk_empty = label_new(cont, "Keine Laufwerke gefunden", &lv_font_montserrat_14, COL_SUB);
+    disk_empty = label_tr(cont, TR_NO_DISKS, &lv_font_montserrat_14, COL_SUB);
 
     for (int i = 0; i < DISK_MAX; i++) {
         disk_card[i] = card_new(cont);
         lv_obj_t *row = row_new(disk_card[i]);
-        disk_name[i] = label_new(row, "Festplatte", &lv_font_montserrat_16, COL_TEXT);
+        disk_name[i] = label_new(row, "--", &lv_font_montserrat_16, COL_TEXT);
         disk_status[i] = label_new(row, LV_SYMBOL_OK, &lv_font_montserrat_16, COL_GREEN);
 
         row = row_new(disk_card[i]);
-        lv_obj_t *colbox = lv_obj_create(row);
-        lv_obj_set_size(colbox, LV_PCT(48), LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(colbox, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_bg_opa(colbox, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(colbox, 0, 0);
-        lv_obj_set_style_pad_all(colbox, 0, 0);
-        lv_obj_remove_flag(colbox, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *colbox = vcol_new(row, 48);
         disk_size_val[i] = label_new(colbox, "--", &lv_font_montserrat_20, COL_TEXT);
-        label_new(colbox, "Kap.", &lv_font_montserrat_14, COL_SUB);
+        label_tr(colbox, TR_CAP, &lv_font_montserrat_14, COL_SUB);
 
-        colbox = lv_obj_create(row);
-        lv_obj_set_size(colbox, LV_PCT(48), LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(colbox, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_bg_opa(colbox, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(colbox, 0, 0);
-        lv_obj_set_style_pad_all(colbox, 0, 0);
-        lv_obj_remove_flag(colbox, LV_OBJ_FLAG_SCROLLABLE);
+        colbox = vcol_new(row, 48);
         disk_temp_val[i] = label_new(colbox, "--", &lv_font_montserrat_20, COL_TEXT);
-        label_new(colbox, "Temp.", &lv_font_montserrat_14, COL_SUB);
+        label_tr(colbox, TR_TEMP_SHORT, &lv_font_montserrat_14, COL_SUB);
 
         lv_obj_add_flag(disk_card[i], LV_OBJ_FLAG_HIDDEN);
     }
@@ -513,31 +642,19 @@ static void build_disks(int col)
 
 static void build_pve(int col)
 {
-    lv_obj_t *cont = page_new(col, "Proxmox");
+    lv_obj_t *cont = page_new(col, TR_PROXMOX);
 
     lv_obj_t *card = card_new(cont);
     lv_obj_t *row = row_new(card);
-    lv_obj_t *colbox = lv_obj_create(row);
-    lv_obj_set_size(colbox, LV_PCT(48), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(colbox, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_bg_opa(colbox, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(colbox, 0, 0);
-    lv_obj_set_style_pad_all(colbox, 0, 0);
-    lv_obj_remove_flag(colbox, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *colbox = vcol_new(row, 48);
     pve_vm_val = label_new(colbox, "--", &lv_font_montserrat_24, COL_TEXT);
-    label_new(colbox, "VMs aktiv", &lv_font_montserrat_14, COL_SUB);
+    label_tr(colbox, TR_VMS_ACTIVE, &lv_font_montserrat_14, COL_SUB);
 
-    colbox = lv_obj_create(row);
-    lv_obj_set_size(colbox, LV_PCT(48), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(colbox, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_bg_opa(colbox, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(colbox, 0, 0);
-    lv_obj_set_style_pad_all(colbox, 0, 0);
-    lv_obj_remove_flag(colbox, LV_OBJ_FLAG_SCROLLABLE);
+    colbox = vcol_new(row, 48);
     pve_lxc_val = label_new(colbox, "--", &lv_font_montserrat_24, COL_TEXT);
-    label_new(colbox, "LXC aktiv", &lv_font_montserrat_14, COL_SUB);
+    label_tr(colbox, TR_LXC_ACTIVE, &lv_font_montserrat_14, COL_SUB);
 
-    pve_hint = label_new(cont, "Kein Proxmox erkannt", &lv_font_montserrat_14, COL_SUB);
+    pve_hint = label_tr(cont, TR_NO_PVE, &lv_font_montserrat_14, COL_SUB);
     lv_obj_add_flag(pve_hint, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *list_card = card_new(cont);
@@ -565,7 +682,7 @@ static void build_pve(int col)
 
 static void build_opnsense(int col, int wan_max_mbps)
 {
-    lv_obj_t *cont = page_new(col, "OPNsense");
+    lv_obj_t *cont = page_new(col, TR_OPNSENSE);
     int arc_max = wan_max_mbps > 0 ? wan_max_mbps : 1000;
 
     lv_obj_t *arc_box = lv_obj_create(cont);
@@ -614,20 +731,398 @@ static void build_opnsense(int col, int wan_max_mbps)
     lv_obj_align(wan_ul_label, LV_ALIGN_CENTER, 0, 8);
 
     lv_obj_t *card = card_new(cont);
-    kv_new(card, "Gateway", &lv_font_montserrat_14, &gw_val_label);
+    lv_obj_t *row = row_new(card);
+    label_new(row, "Gateway", &lv_font_montserrat_14, COL_SUB);
+    gw_val_label = label_new(row, "--", &lv_font_montserrat_14, COL_TEXT);
     card = card_new(cont);
-    kv_new(card, "Updates", &lv_font_montserrat_14, &update_val_label);
+    row = row_new(card);
+    label_new(row, "Updates", &lv_font_montserrat_14, COL_SUB);
+    update_val_label = label_new(row, "--", &lv_font_montserrat_14, COL_TEXT);
     card = card_new(cont);
-    kv_new(card, "DHCP", &lv_font_montserrat_14, &dhcp_val_label);
+    row = row_new(card);
+    label_new(row, "DHCP", &lv_font_montserrat_14, COL_SUB);
+    dhcp_val_label = label_new(row, "--", &lv_font_montserrat_14, COL_TEXT);
     card = card_new(cont);
-    kv_new(card, "DNS", &lv_font_montserrat_14, &dns_val_label);
+    row = row_new(card);
+    label_new(row, "DNS", &lv_font_montserrat_14, COL_SUB);
+    dns_val_label = label_new(row, "--", &lv_font_montserrat_14, COL_TEXT);
     dns_bar = bar_new(card, COL_RED);
+}
+
+/* ================= settings panel ================= */
+
+static void retranslate(void)
+{
+    for (int i = 0; i < tr_reg_count; i++)
+        lv_label_set_text(tr_regs[i].obj, tr(tr_regs[i].key));
+    if (have_last_disks)
+        gui_update_disks(&last_disks);
+    if (wp_sub)
+        lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
+    if (lang_sub)
+        lv_label_set_text(lang_sub,
+            strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
+    gui_update_clock();
+}
+
+static void timeout_sub_refresh(void)
+{
+    if (!timeout_sub) return;
+    int s = setup.state->backlight_timeout;
+    char buf[24];
+    if (s <= 0)
+        snprintf(buf, sizeof(buf), "%s", tr(TR_NEVER));
+    else
+        snprintf(buf, sizeof(buf), "%d min", s / 60);
+    lv_label_set_text(timeout_sub, buf);
+}
+
+static void anim_y_cb(void *obj, int32_t v)
+{
+    lv_obj_set_y((lv_obj_t *)obj, v);
+}
+
+static void panel_animate(int open)
+{
+    if (!panel) return;
+    panel_is_open = open;
+    if (scrim) {
+        if (open) lv_obj_remove_flag(scrim, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(scrim, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, panel);
+    lv_anim_set_values(&a, lv_obj_get_y(panel), open ? 0 : -PANEL_H);
+    lv_anim_set_duration(&a, 220);
+    lv_anim_set_exec_cb(&a, anim_y_cb);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
+void gui_settings_open(void) { if (!panel_is_open) panel_animate(1); }
+void gui_settings_close(void) { if (panel_is_open) panel_animate(0); }
+
+static void confirm_show(int shutdown)
+{
+    confirm_is_shutdown = shutdown;
+    if (!confirm_scrim) return;
+    lv_label_set_text(confirm_text,
+        tr(shutdown ? TR_CONFIRM_SHUTDOWN : TR_CONFIRM_RESTART));
+    lv_obj_remove_flag(confirm_scrim, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void confirm_yes_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    lv_obj_add_flag(confirm_scrim, LV_OBJ_FLAG_HIDDEN);
+    fprintf(stderr, "panel: %s confirmed\n",
+            confirm_is_shutdown ? "shutdown" : "reboot");
+    if (confirm_is_shutdown) {
+        if (setup.do_poweroff) setup.do_poweroff();
+    } else {
+        if (setup.do_reboot) setup.do_reboot();
+    }
+}
+
+static void confirm_cancel_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    lv_obj_add_flag(confirm_scrim, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void chevron_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    gui_settings_close();
+}
+
+static void scrim_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    gui_settings_close();
+}
+
+static void bri_slider_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    int v = (int)lv_slider_get_value(bri_slider);
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d %%", v);
+        lv_label_set_text(bri_val_label, buf);
+        if (setup.set_brightness) setup.set_brightness(v);
+    } else if (code == LV_EVENT_RELEASED) {
+        setup.state->brightness = v;
+        settings_save(setup.state);
+    }
+}
+
+static void timeout_btn_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    int cur = 0;
+    for (int i = 0; i < TIMEOUT_PRESET_COUNT; i++)
+        if (timeout_presets[i] == setup.state->backlight_timeout) { cur = i; break; }
+    cur = (cur + 1) % TIMEOUT_PRESET_COUNT;
+    setup.state->backlight_timeout = timeout_presets[cur];
+    timeout_sub_refresh();
+    if (setup.set_timeout) setup.set_timeout(setup.state->backlight_timeout);
+    settings_save(setup.state);
+}
+
+static void wp_btn_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    if (wp_opt_count == 0) return;
+    wp_cur = (wp_cur + 1) % wp_opt_count;
+    snprintf(setup.state->wallpaper, sizeof(setup.state->wallpaper), "%s",
+             wp_opts[wp_cur]);
+    apply_wallpaper(wp_opts[wp_cur]);
+    lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
+    settings_save(setup.state);
+}
+
+static void lang_btn_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    const char *next = strcmp(i18n_get_language(), "de") == 0 ? "en" : "de";
+    i18n_set_language(next);
+    snprintf(setup.state->language, sizeof(setup.state->language), "%s", next);
+    retranslate();
+    timeout_sub_refresh();
+    settings_save(setup.state);
+}
+
+static void restart_btn_cb(lv_event_t *e) { LV_UNUSED(e); confirm_show(0); }
+static void shutdown_btn_cb(lv_event_t *e) { LV_UNUSED(e); confirm_show(1); }
+
+static void edge_strip_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    if (code == LV_EVENT_PRESSED) {
+        press_start = p;
+    } else if (code == LV_EVENT_PRESSING) {
+        if (!panel_is_open && p.y - press_start.y > SWIPE_TRIGGER)
+            gui_settings_open();
+    }
+}
+
+static void panel_swipe_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+    if (code == LV_EVENT_PRESSED) {
+        press_start = p;
+    } else if (code == LV_EVENT_PRESSING) {
+        if (panel_is_open && press_start.y - p.y > SWIPE_TRIGGER)
+            gui_settings_close();
+    }
+}
+
+/* pill button: title left, optional sub-value right */
+static lv_obj_t *settings_btn(lv_obj_t *parent, tr_key_t key, uint32_t bg,
+                              uint32_t fg, const char *symbol,
+                              lv_obj_t **sub_out, lv_event_cb_t cb)
+{
+    lv_obj_t *btn = lv_button_create(parent);
+    lv_obj_set_size(btn, LV_PCT(100), 46);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(bg), 0);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(btn, 23, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_set_style_pad_hor(btn, 16, 0);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *left_box = lv_obj_create(btn);
+    lv_obj_set_size(left_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(left_box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_bg_opa(left_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(left_box, 0, 0);
+    lv_obj_set_style_pad_all(left_box, 0, 0);
+    lv_obj_set_style_pad_column(left_box, 8, 0);
+    lv_obj_align(left_box, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_remove_flag(left_box, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(left_box, LV_OBJ_FLAG_CLICKABLE);
+
+    if (symbol)
+        label_new(left_box, symbol, &lv_font_montserrat_16, fg);
+    label_tr(left_box, key, &lv_font_montserrat_16, fg);
+
+    if (sub_out) {
+        *sub_out = label_new(btn, "", &lv_font_montserrat_14, COL_SUB);
+        lv_obj_align(*sub_out, LV_ALIGN_RIGHT_MID, 0, 0);
+    }
+    return btn;
+}
+
+static void build_settings_panel(lv_obj_t *screen)
+{
+    /* invisible grab strip along the top edge — drag down to open */
+    edge_strip = lv_obj_create(screen);
+    lv_obj_set_size(edge_strip, DISP_W, EDGE_STRIP_H);
+    lv_obj_set_pos(edge_strip, 0, 0);
+    lv_obj_set_style_bg_opa(edge_strip, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(edge_strip, 0, 0);
+    lv_obj_add_flag(edge_strip, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(edge_strip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(edge_strip, edge_strip_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(edge_strip, edge_strip_cb, LV_EVENT_PRESSING, NULL);
+
+    /* dimmed background while the panel is open (tap to close) */
+    scrim = lv_obj_create(screen);
+    lv_obj_set_size(scrim, DISP_W, DISP_H);
+    lv_obj_set_pos(scrim, 0, 0);
+    lv_obj_set_style_bg_color(scrim, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(scrim, 140, 0);
+    lv_obj_set_style_border_width(scrim, 0, 0);
+    lv_obj_add_flag(scrim, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(scrim, scrim_cb, LV_EVENT_CLICKED, NULL);
+
+    panel = lv_obj_create(screen);
+    lv_obj_set_size(panel, DISP_W, PANEL_H);
+    lv_obj_set_pos(panel, 0, -PANEL_H);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(panel, 18, 0);
+    lv_obj_set_style_border_width(panel, 0, 0);
+    lv_obj_set_style_pad_all(panel, 12, 0);
+    lv_obj_set_style_pad_row(panel, 9, 0);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_add_flag(panel, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(panel, panel_swipe_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(panel, panel_swipe_cb, LV_EVENT_PRESSING, NULL);
+
+    /* close handle */
+    lv_obj_t *chev = lv_button_create(panel);
+    lv_obj_set_size(chev, LV_PCT(100), 26);
+    lv_obj_set_style_bg_opa(chev, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_shadow_width(chev, 0, 0);
+    lv_obj_add_event_cb(chev, chevron_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *chev_lbl = label_new(chev, LV_SYMBOL_UP, &lv_font_montserrat_16, COL_SUB);
+    lv_obj_center(chev_lbl);
+
+    /* brightness card with slider */
+    lv_obj_t *card = lv_obj_create(panel);
+    lv_obj_set_size(card, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(card, lv_color_hex(COL_BTN), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_pad_all(card, 14, 0);
+    lv_obj_set_style_pad_row(card, 12, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *row = row_new(card);
+    label_tr(row, TR_BRIGHTNESS, &lv_font_montserrat_16, COL_TEXT);
+    bri_val_label = label_new(row, "", &lv_font_montserrat_14, COL_SUB);
+
+    bri_slider = lv_slider_create(card);
+    lv_obj_set_size(bri_slider, LV_PCT(100), 14);
+    lv_slider_set_range(bri_slider, 5, 100);
+    lv_slider_set_value(bri_slider, setup.state->brightness, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(bri_slider, lv_color_hex(COL_TRACK), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(bri_slider, lv_color_hex(COL_CYAN), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(bri_slider, lv_color_hex(0xffffff), LV_PART_KNOB);
+    lv_obj_set_style_pad_all(bri_slider, -2, LV_PART_KNOB);
+    lv_obj_add_event_cb(bri_slider, bri_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(bri_slider, bri_slider_cb, LV_EVENT_RELEASED, NULL);
+    {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d %%", setup.state->brightness);
+        lv_label_set_text(bri_val_label, buf);
+    }
+
+    settings_btn(panel, TR_SCREEN_OFF, COL_BTN, COL_TEXT, NULL,
+                 &timeout_sub, timeout_btn_cb);
+    timeout_sub_refresh();
+
+    settings_btn(panel, TR_WALLPAPER, COL_BTN, COL_TEXT, NULL,
+                 &wp_sub, wp_btn_cb);
+    lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
+
+    settings_btn(panel, TR_LANGUAGE, COL_BTN, COL_TEXT, NULL,
+                 &lang_sub, lang_btn_cb);
+    lv_label_set_text(lang_sub,
+        strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
+
+    settings_btn(panel, TR_RESTART, 0x1e7a3c, 0xffffff, LV_SYMBOL_REFRESH,
+                 NULL, restart_btn_cb);
+    settings_btn(panel, TR_SHUTDOWN, 0x8a2020, 0xffffff, LV_SYMBOL_POWER,
+                 NULL, shutdown_btn_cb);
+
+    /* confirmation dialog (shared by restart/shutdown) */
+    confirm_scrim = lv_obj_create(screen);
+    lv_obj_set_size(confirm_scrim, DISP_W, DISP_H);
+    lv_obj_set_pos(confirm_scrim, 0, 0);
+    lv_obj_set_style_bg_color(confirm_scrim, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(confirm_scrim, 170, 0);
+    lv_obj_set_style_border_width(confirm_scrim, 0, 0);
+    lv_obj_add_flag(confirm_scrim, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(confirm_scrim, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *dlg = lv_obj_create(confirm_scrim);
+    lv_obj_set_size(dlg, CARD_W, LV_SIZE_CONTENT);
+    lv_obj_center(dlg);
+    lv_obj_set_style_bg_color(dlg, lv_color_hex(COL_PANEL), 0);
+    lv_obj_set_style_bg_opa(dlg, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(dlg, 16, 0);
+    lv_obj_set_style_border_width(dlg, 0, 0);
+    lv_obj_set_style_pad_all(dlg, 16, 0);
+    lv_obj_set_style_pad_row(dlg, 14, 0);
+    lv_obj_set_flex_flow(dlg, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(dlg, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(dlg, LV_OBJ_FLAG_SCROLLABLE);
+
+    confirm_text = label_new(dlg, "", &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_set_width(confirm_text, LV_PCT(100));
+    lv_label_set_long_mode(confirm_text, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(confirm_text, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_t *btn_row = row_new(dlg);
+    lv_obj_t *yes = lv_button_create(btn_row);
+    lv_obj_set_size(yes, LV_PCT(47), 42);
+    lv_obj_set_style_bg_color(yes, lv_color_hex(0x8a2020), 0);
+    lv_obj_set_style_radius(yes, 21, 0);
+    lv_obj_set_style_shadow_width(yes, 0, 0);
+    lv_obj_add_event_cb(yes, confirm_yes_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *yes_lbl = label_tr(yes, TR_YES, &lv_font_montserrat_16, 0xffffff);
+    lv_obj_center(yes_lbl);
+
+    lv_obj_t *no = lv_button_create(btn_row);
+    lv_obj_set_size(no, LV_PCT(47), 42);
+    lv_obj_set_style_bg_color(no, lv_color_hex(COL_BTN), 0);
+    lv_obj_set_style_radius(no, 21, 0);
+    lv_obj_set_style_shadow_width(no, 0, 0);
+    lv_obj_add_event_cb(no, confirm_cancel_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *no_lbl = label_tr(no, TR_CANCEL, &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_center(no_lbl);
 }
 
 /* ================= public API ================= */
 
-lv_obj_t *gui_create_dashboard(int show_opnsense, int show_pve, int wan_max_mbps)
+lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
 {
+    setup = *s;
+    if (!setup.state) {
+        memset(&fallback_state, 0, sizeof(fallback_state));
+        fallback_state.brightness = 100;
+        fallback_state.backlight_timeout = 30;
+        snprintf(fallback_state.language, sizeof(fallback_state.language), "de");
+        setup.state = &fallback_state;
+    }
+
     lv_obj_t *screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
@@ -643,13 +1138,15 @@ lv_obj_t *gui_create_dashboard(int show_opnsense, int show_pve, int wan_max_mbps
     build_hardware(col++);
     build_network(col++);
     build_disks(col++);
-    if (show_pve)
+    if (setup.show_pve)
         build_pve(col++);
-    if (show_opnsense)
-        build_opnsense(col++, wan_max_mbps);
+    if (setup.show_opnsense)
+        build_opnsense(col++, setup.wan_max_mbps);
     page_count = col;
 
-    /* page indicator dots */
+    build_wp_options();
+    apply_wallpaper(wp_opts[wp_cur]);
+
     dots_box = lv_obj_create(screen);
     lv_obj_set_size(dots_box, LV_PCT(100), 16);
     lv_obj_align(dots_box, LV_ALIGN_BOTTOM_MID, 0, -4);
@@ -666,12 +1163,21 @@ lv_obj_t *gui_create_dashboard(int show_opnsense, int show_pve, int wan_max_mbps
         dots[i] = dot_new(dots_box, COL_DOT_OFF, 6);
     update_dots();
 
+    build_settings_panel(screen);
+
     return screen;
 }
 
 void gui_update_clock(void)
 {
     if (!time_label || !date_label) return;
+
+    static const char *wd_de[7] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
+    static const char *wd_en[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    static const char *mon_de[12] = { "Jan", "Feb", "Mrz", "Apr", "Mai", "Jun",
+                                      "Jul", "Aug", "Sep", "Okt", "Nov", "Dez" };
+    static const char *mon_en[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
     time_t now = time(NULL);
     struct tm tm;
@@ -681,7 +1187,12 @@ void gui_update_clock(void)
     strftime(buf, sizeof(buf), "%H:%M", &tm);
     lv_label_set_text(time_label, buf);
 
-    strftime(buf, sizeof(buf), "%A, %B %-d", &tm);
+    if (strcmp(i18n_get_language(), "en") == 0)
+        snprintf(buf, sizeof(buf), "%s, %s %d",
+                 wd_en[tm.tm_wday], mon_en[tm.tm_mon], tm.tm_mday);
+    else
+        snprintf(buf, sizeof(buf), "%s., %d. %s",
+                 wd_de[tm.tm_wday], tm.tm_mday, mon_de[tm.tm_mon]);
     lv_label_set_text(date_label, buf);
 }
 
@@ -689,7 +1200,6 @@ void gui_update_dashboard(const system_stats_t *stats)
 {
     char text[64];
 
-    /* Home */
     if (home_cpu_arc)
         lv_arc_set_value(home_cpu_arc, (int32_t)stats->cpu_usage);
     if (home_cpu_val) {
@@ -708,7 +1218,6 @@ void gui_update_dashboard(const system_stats_t *stats)
         lv_label_set_text(home_temp_val, text);
     }
 
-    /* Hardware */
     if (hw_cpu_val) {
         snprintf(text, sizeof(text), "%.1f %%", stats->cpu_usage);
         lv_label_set_text(hw_cpu_val, text);
@@ -752,12 +1261,12 @@ void gui_update_gpu(float usage_pct)
 
     if (usage_pct < 0) {
         lv_label_set_text(hw_gpu_val, "--");
-        if (hw_gpu_sub) lv_label_set_text(hw_gpu_sub, "nicht verfuegbar");
+        if (hw_gpu_sub) lv_label_set_text(hw_gpu_sub, tr(TR_NOT_AVAILABLE));
         return;
     }
     snprintf(text, sizeof(text), "%.1f %%", usage_pct);
     lv_label_set_text(hw_gpu_val, text);
-    if (hw_gpu_sub) lv_label_set_text(hw_gpu_sub, "Auslastung");
+    if (hw_gpu_sub) lv_label_set_text(hw_gpu_sub, tr(TR_LOAD));
     if (hw_gpu_chart && hw_gpu_ser)
         lv_chart_set_next_value(hw_gpu_chart, hw_gpu_ser, (int32_t)usage_pct);
 }
@@ -800,6 +1309,11 @@ void gui_update_disks(const disk_stats_t *disks)
 {
     char text[32];
 
+    if (disks != &last_disks) {
+        last_disks = *disks;
+        have_last_disks = 1;
+    }
+
     if (disk_empty) {
         if (disks->count == 0)
             lv_obj_remove_flag(disk_empty, LV_OBJ_FLAG_HIDDEN);
@@ -815,7 +1329,7 @@ void gui_update_disks(const disk_stats_t *disks)
         }
         const disk_info_t *d = &disks->disks[i];
         lv_obj_remove_flag(disk_card[i], LV_OBJ_FLAG_HIDDEN);
-        snprintf(text, sizeof(text), d->is_nvme ? "NVMe %d" : "Festplatte %d", d->idx);
+        snprintf(text, sizeof(text), tr(d->is_nvme ? TR_NVME_N : TR_DISK_N), d->idx);
         lv_label_set_text(disk_name[i], text);
         lv_label_set_text(disk_status[i], d->online ? LV_SYMBOL_OK : LV_SYMBOL_CLOSE);
         lv_obj_set_style_text_color(disk_status[i],
@@ -937,8 +1451,11 @@ void gui_cleanup(void)
     tileview = NULL;
     dots_box = NULL;
     page_count = 0;
+    tr_reg_count = 0;
+    have_last_disks = 0;
     memset(tiles, 0, sizeof(tiles));
     memset(dots, 0, sizeof(dots));
+    wp_img = NULL;
     time_label = date_label = NULL;
     home_cpu_arc = home_cpu_val = home_ram_val = home_temp_val = NULL;
     hw_cpu_val = hw_cpu_chart = hw_temp_val = hw_temp_bar = NULL;
@@ -952,4 +1469,8 @@ void gui_cleanup(void)
     memset(pve_row, 0, sizeof(pve_row));
     wan_dl_arc = wan_ul_arc = wan_dl_label = wan_ul_label = NULL;
     gw_val_label = update_val_label = dhcp_val_label = dns_val_label = dns_bar = NULL;
+    edge_strip = scrim = panel = NULL;
+    panel_is_open = 0;
+    bri_val_label = bri_slider = timeout_sub = wp_sub = lang_sub = NULL;
+    confirm_scrim = confirm_text = NULL;
 }

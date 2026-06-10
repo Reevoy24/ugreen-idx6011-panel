@@ -19,9 +19,10 @@ case "$DEST" in
     *) echo "Install target must be on a pool under /mnt (TrueNAS rootfs is read-only)." >&2; exit 1 ;;
 esac
 
-mkdir -p "$DEST"
+mkdir -p "$DEST/wallpapers"
 cp -f ug-paneld "$DEST/ug-paneld"
 cp -f start.sh "$DEST/start.sh"
+cp -f wallpapers/*.png "$DEST/wallpapers/" 2>/dev/null || true
 chmod 755 "$DEST/ug-paneld" "$DEST/start.sh"
 [ -f "$DEST/config.json" ] || cp -f config.json.example "$DEST/config.json"
 

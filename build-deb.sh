@@ -23,6 +23,10 @@ build_deb() {
     cp ug-paneld.service "$stage/lib/systemd/system/"
     chmod 644 "$stage/lib/systemd/system/ug-paneld.service"
 
+    mkdir -p "$stage/usr/share/ug-paneld/wallpapers"
+    cp packaging/wallpapers/*.png "$stage/usr/share/ug-paneld/wallpapers/"
+    chmod 644 "$stage/usr/share/ug-paneld/wallpapers/"*.png
+
     local desc_extra=""
     if [ "$blacklist" = "yes" ]; then
         mkdir -p "$stage/etc/modprobe.d"

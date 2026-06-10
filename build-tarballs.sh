@@ -21,6 +21,8 @@ build_tarball() {
     cp "packaging/$platform/install.sh" "packaging/$platform/uninstall.sh" \
        "packaging/$platform/start.sh" "packaging/$platform/README.txt" "$stage/"
     chmod 755 "$stage/ug-paneld" "$stage"/*.sh
+    mkdir -p "$stage/wallpapers"
+    cp packaging/wallpapers/*.png "$stage/wallpapers/"
 
     tar -C "/tmp/ug-paneld-tarball-$platform" --owner=0 --group=0 \
         -czf "$REPO/ug-paneld_${VERSION}_${platform}_amd64.tar.gz" ug-paneld

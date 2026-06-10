@@ -26,6 +26,8 @@ CSRCS += ./src/disk_stats.c
 CSRCS += ./src/pve_stats.c
 CSRCS += ./src/gpu_stats.c
 CSRCS += ./src/gui.c
+CSRCS += ./src/i18n.c
+CSRCS += ./src/settings.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
 CSRCS += ./src/opnsense.c
@@ -61,8 +63,8 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 LVGL_OBJS = $(filter-out ./src/%,$(COBJS))
 MOCKOBJ = ./test/render_mock.o
 
-mock: $(LVGL_OBJS) ./src/gui.o $(MOCKOBJ)
-	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
+mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o $(MOCKOBJ)
+	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
 	@echo "Built render-mock"
 
 install: default

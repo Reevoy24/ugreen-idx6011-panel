@@ -40,7 +40,19 @@ int main(void)
     lv_display_set_buffers(disp, fb, NULL, sizeof(fb), LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(disp, flush_cb);
 
-    gui_create_dashboard(1, 1, 1000);
+    static ui_state_t state = {
+        .brightness = 80,
+        .backlight_timeout = 300,
+        .wallpaper = "aurora",
+        .language = "de",
+    };
+    gui_setup_t setup = {
+        .show_opnsense = 1,
+        .show_pve = 1,
+        .wan_max_mbps = 1000,
+        .state = &state,
+    };
+    gui_create_dashboard(&setup);
 
     /* --- mock data, roughly matching the UGOS marketing screens --- */
     system_stats_t st = {
@@ -119,6 +131,19 @@ int main(void)
         fclose(f);
         fprintf(stderr, "wrote %s\n", path);
     }
-    fprintf(stderr, "done: %d pages\n", gui_page_count());
+
+    /* settings panel, opened over the home page */
+    gui_show_page(0);
+    pump(4);
+    gui_settings_open();
+    pump(14); /* let the slide-in animation finish */
+    FILE *f = fopen("mockups/page_panel.raw", "wb");
+    if (f) {
+        fwrite(fb, 1, sizeof(fb), f);
+        fclose(f);
+        fprintf(stderr, "wrote mockups/page_panel.raw\n");
+    }
+
+    fprintf(stderr, "done: %d pages + settings panel\n", gui_page_count());
     return 0;
 }

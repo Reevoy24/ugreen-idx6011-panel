@@ -4,9 +4,10 @@
 # Lives next to the binary on a pool dataset.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-mkdir -p /etc/ug-paneld
+mkdir -p /etc/ug-paneld /usr/share/ug-paneld/wallpapers 2>/dev/null
 [ -f "$DIR/config.json" ] && cp -f "$DIR/config.json" /etc/ug-paneld/config.json
 [ -f "$DIR/wallpaper.png" ] && cp -f "$DIR/wallpaper.png" /etc/ug-paneld/wallpaper.png
+[ -d "$DIR/wallpapers" ] && cp -f "$DIR/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
 
 # the touchscreen needs the i2c-dev character devices
 modprobe i2c-dev 2>/dev/null
