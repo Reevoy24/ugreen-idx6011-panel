@@ -10,3 +10,5 @@ vbt.bin
 vbt-decoded.txt
 ec-dump-*.txt
 vbt-analyze.sh
+mockups/
+render-mock

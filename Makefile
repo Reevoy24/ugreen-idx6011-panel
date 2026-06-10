@@ -53,11 +53,19 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 	$(CC) -o $(BIN) $(MAINOBJ) $(AOBJS) $(COBJS) $(LDFLAGS)
 	@echo "Built $(BIN)"
 
+# Host-only mockup renderer: GUI + LVGL with fake data, no DRM/curl needed.
+LVGL_OBJS = $(filter-out ./src/%,$(COBJS))
+MOCKOBJ = ./test/render_mock.o
+
+mock: $(LVGL_OBJS) ./src/gui.o $(MOCKOBJ)
+	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
+	@echo "Built render-mock"
+
 install: default
 	sudo cp $(BIN) /usr/bin/$(BIN)
 
 clean:
-	rm -f $(BIN) $(AOBJS) $(COBJS) $(MAINOBJ)
+	rm -f $(BIN) render-mock $(AOBJS) $(COBJS) $(MAINOBJ) $(MOCKOBJ)
 
 run: default
 	./$(BIN)
