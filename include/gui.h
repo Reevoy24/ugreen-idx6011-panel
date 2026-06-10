@@ -40,6 +40,7 @@ int  gui_page_count(void);
 void gui_show_page(int idx);
 void gui_settings_open(void);
 void gui_settings_close(void);
+void gui_set_sleep(int on);   /* black overlay while the screen "sleeps" */
 
 void gui_cleanup(void);
 

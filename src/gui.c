@@ -134,6 +134,7 @@ static lv_obj_t *confirm_scrim = NULL;
 static lv_obj_t *confirm_text = NULL;
 static int confirm_is_shutdown = 0;
 static lv_point_t press_start;
+static lv_obj_t *sleep_overlay = NULL;
 
 static char wp_opts[WP_MAX_OPTS][20];
 static int wp_opt_count = 0;
@@ -1165,7 +1166,29 @@ lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
 
     build_settings_panel(screen);
 
+    /* topmost black layer shown while the screen sleeps: nothing is
+     * displayed (no burn-in), but the panel rail keeps the touch chip alive */
+    sleep_overlay = lv_obj_create(screen);
+    lv_obj_set_size(sleep_overlay, DISP_W, DISP_H);
+    lv_obj_set_pos(sleep_overlay, 0, 0);
+    lv_obj_set_style_bg_color(sleep_overlay, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(sleep_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(sleep_overlay, 0, 0);
+    lv_obj_set_style_radius(sleep_overlay, 0, 0);
+    lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(sleep_overlay, LV_OBJ_FLAG_CLICKABLE);
+
     return screen;
+}
+
+void gui_set_sleep(int on)
+{
+    if (!sleep_overlay) return;
+    if (on)
+        lv_obj_remove_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_HIDDEN);
 }
 
 void gui_update_clock(void)

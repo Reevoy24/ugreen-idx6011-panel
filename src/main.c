@@ -155,45 +155,46 @@ int main(int argc, char *argv[]) {
     opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
 
-    struct timespec sleep_long = { .tv_nsec = 100000000 }; /* 100ms poll while asleep */
+    struct timespec sleep_long = { .tv_nsec = 50000000 }; /* 50ms touch poll while asleep */
 
     while (running) {
         uint32_t now = custom_tick_get();
 
         /* While awake the LVGL input device polls the touchscreen; while
-         * asleep the loop below polls it directly. Either way the last
-         * activity timestamp drives wake + idle timeout. */
-        if (has_touch) {
-            if (screen_asleep)
-                touch_poll();
-            uint32_t activity = touch_last_activity();
-            if (activity > last_touch_time)
-                last_touch_time = activity;
-            if (screen_asleep && activity && now - activity < 500) {
+         * asleep the loop polls it directly and wakes on the poll result. */
+        if (screen_asleep) {
+            int touched = has_touch ? touch_poll() : 0;
+            if (touched || api_get_state()) {
+                gui_set_sleep(0);
                 backlight_set(api_get_brightness());
                 screen_asleep = 0;
                 api_set_state(1);
+                last_touch_time = custom_tick_get();
+            } else {
+                nanosleep(&sleep_long, NULL);
+                continue;
             }
         }
 
-        if (api_get_state() && screen_asleep) {
-            last_touch_time = now;
-            screen_asleep = 0;
-        } else if (!api_get_state() && !screen_asleep) {
-            screen_asleep = 1;
+        if (has_touch) {
+            uint32_t activity = touch_last_activity();
+            if (activity > last_touch_time)
+                last_touch_time = activity;
         }
 
-        /* Arm the idle timeout only after touch has proven to work (at least
-         * one real contact seen) — otherwise the screen could go dark with no
-         * way to wake it on revisions where the touch protocol differs. */
-        if (has_touch && touch_last_activity() != 0 && !screen_asleep &&
-            bl_timeout_ms > 0 && (now - last_touch_time >= bl_timeout_ms)) {
-            backlight_dim(); /* not off: EC-off would cut touch power → no wake */
+        /* Sleep on idle timeout (armed only once touch has proven to work,
+         * so a non-working touch can never strand a dark screen) or when
+         * switched off via the HTTP API. The screen shows pure black at a
+         * minimal backlight level: looks off, no burn-in, and the panel
+         * rail keeps the touch controller powered so a tap can wake it. */
+        int idle_hit = has_touch && touch_last_activity() != 0 &&
+                       bl_timeout_ms > 0 && (now - last_touch_time >= bl_timeout_ms);
+        if (idle_hit || !api_get_state()) {
+            gui_set_sleep(1);
+            lv_refr_now(NULL); /* paint the black frame before pausing renders */
+            backlight_dim();   /* not EC-off: that would cut touch power */
             screen_asleep = 1;
             api_set_state(0);
-        }
-
-        if (screen_asleep) {
             nanosleep(&sleep_long, NULL);
             continue;
         }
