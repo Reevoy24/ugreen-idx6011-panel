@@ -6,6 +6,8 @@ Ugreen's iDX6011 Pro NAS has a 258x960 portrait display on the front panel. Unde
 
 When running Proxmox, Debian, or other Linux distributions, the display, backlight, and touchscreen don't work out of the box. Ugreen Panel Daemon (ug-paneld) is a replacement dashboard that drives all three directly from userspace, without the proprietary UGOS backend.
 
+Also without UGOS: the 9 front status LEDs are stuck in a rolling demo animation. This repo ships a setup script for those too — see [Front panel LEDs](#front-panel-leds).
+
 ## What it does
 
 A swipeable multi-page dashboard in the style of the UGOS mini-screen, with a
@@ -39,6 +41,69 @@ The iDX6011 Pro has three hardware interfaces on the front panel. This project c
 | Display | eDP panel (258x960, 32bpp ARGB) | DRM | Standard Linux DRM, device + connector auto-detected |
 | Backlight | ITE IT55xx Embedded Controller | x86 port I/O (`0x62`/`0x66`) | `iopl(3)` + `outb`/`inb` |
 | Touchscreen | AXS15231B-compatible, ACPI id `CUST0000:00` | I2C, address `0x3b` | bus auto-detected from the ACPI device link |
+
+## Front panel LEDs
+
+The iDX6011 Pro also has **9 RGB status LEDs** (power, 2x LAN, 6x disk) driven by
+a separate MCU (Holtek HT32F52231, I2C address `0x3a` on the SMBus). Without
+UGOS they cycle a left-to-right rolling animation forever.
+
+The iDX series uses a different LED protocol than the older DX/DXP models, so
+the well-known [ugreen_leds_controller](https://github.com/miskcoo/ugreen_leds_controller)
+did not work on this device. The protocol was reverse-engineered in
+[miskcoo/ugreen_leds_controller#93](https://github.com/miskcoo/ugreen_leds_controller/issues/93)
+and implemented in [klein0r's fork](https://github.com/klein0r/ugreen_leds_controller) —
+all credit to them. This repo ships a turnkey setup script on top of that fork
+([tools/setup-ugreen-leds.sh](tools/setup-ugreen-leds.sh)). Run it as root on
+the Proxmox/Debian **host** itself (not inside a VM/LXC):
+
+```bash
+wget https://raw.githubusercontent.com/Reevoy24/ugreen-idx6011-pro-nas-display/master/tools/setup-ugreen-leds.sh
+bash setup-ugreen-leds.sh
+```
+
+The script:
+
+- builds the `ugreen_leds_cli` tool from klein0r's fork and takes over the LED
+  MCU — **the rolling animation stops immediately**,
+- installs the `led-ugreen` kernel module via DKMS (survives kernel updates),
+  exposing the LEDs as `/sys/class/leds/{power,network_stat,network_stat2,disk1..6}`,
+- enables services: disk LEDs show activity and SMART health
+  (`ugreen-diskiomon`), the two LAN LEDs blink on traffic (`ugreen-idx-netled`),
+  power LED solid white — all persistent across reboots,
+- falls back to a static LED state (animation stopped, everything lit white) if
+  kernel headers are missing.
+
+Notes:
+
+- **Bay order:** the default ata-based disk→LED mapping is not yet verified on
+  the iDX6011 Pro. Generate I/O on one disk and check that the right bay
+  blinks; if the order is wrong, run `ugreen-detect-disks` and switch
+  `/etc/ugreen-leds.conf` to `MAPPING_METHOD=serial`.
+- **LAN port order:** if LAN1/LAN2 are swapped, set
+  `NETLED_IFACES="<nic1> <nic2>"` in `/etc/default/ugreen-idx-netled`.
+- **Manual control:** the CLI tool and the kernel module conflict. To use
+  `ugreen_leds_cli` by hand, stop the services and `rmmod led_ugreen` first.
+
+### Front LEDs on TrueNAS / Unraid
+
+The script needs `apt` + DKMS, so it only runs on Proxmox/Debian. On TrueNAS
+SCALE and Unraid the situation is:
+
+- `ugreen_leds_cli` is **statically linked** — build it once on any Debian
+  machine (or grab it from `/usr/local/bin/` after running the script on
+  Proxmox) and copy it over; it runs fine on both platforms. Calling it from a
+  TrueNAS Post-Init script or the Unraid `go` file is enough to stop the
+  rolling animation and set a static LED state at every boot.
+- Live disk/network activity LEDs need the `led-ugreen` kernel module compiled
+  for the exact platform kernel. The existing community packages
+  ([ich777's Unraid plugin](https://forums.unraid.net/topic/168423-ugreen-nas-led-control/),
+  the TrueNAS prebuilt modules) are based on upstream and do **not** include
+  iDX6011 Pro support yet.
+
+Open an issue if you want ready-made TrueNAS/Unraid packages for the
+static-LED variant — the packaging exists for ug-paneld already and could be
+extended.
 
 ## Install from release
 
