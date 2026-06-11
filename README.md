@@ -13,7 +13,7 @@ Also without UGOS: the 9 front status LEDs are stuck in a rolling demo animation
 A swipeable multi-page dashboard in the style of the UGOS mini-screen, with a
 working touchscreen:
 
-1. **Home** — date, clock, CPU ring, RAM/temperature, wallpaper
+1. **Home** — date, clock, big CPU ring, glass tiles for RAM, temperature, live network rates and system storage, uptime strip, wallpaper
 2. **Hardware** — CPU load with history chart, temperature, memory, Intel GPU load (i915 PMU), uptime
 3. **Network** — total ↓/↑ throughput plus per-interface cards with IPv4/IPv6 and link status
 4. **Disks** — every SATA/NVMe drive with capacity and temperature

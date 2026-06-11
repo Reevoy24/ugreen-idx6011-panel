@@ -65,7 +65,17 @@ static lv_obj_t *date_label = NULL;
 static lv_obj_t *home_cpu_arc = NULL;
 static lv_obj_t *home_cpu_val = NULL;
 static lv_obj_t *home_ram_val = NULL;
+static lv_obj_t *home_ram_bar = NULL;
+static lv_obj_t *home_ram_sub = NULL;
 static lv_obj_t *home_temp_val = NULL;
+static lv_obj_t *home_temp_bar = NULL;
+static lv_obj_t *home_temp_sub = NULL;
+static lv_obj_t *home_sys_val = NULL;
+static lv_obj_t *home_sys_bar = NULL;
+static lv_obj_t *home_sys_sub = NULL;
+static lv_obj_t *home_net_rx = NULL;
+static lv_obj_t *home_net_tx = NULL;
+static lv_obj_t *home_up_val = NULL;
 
 /* ---- Hardware ---- */
 static lv_obj_t *hw_cpu_val = NULL;
@@ -460,6 +470,48 @@ static void build_wp_options(void)
 
 /* ================= pages ================= */
 
+/* translucent "glass" tile for the home page (sits on the wallpaper) */
+static lv_obj_t *glass_new(lv_obj_t *parent, int w)
+{
+    lv_obj_t *c = lv_obj_create(parent);
+    lv_obj_set_size(c, w, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(c, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(c, 120, 0);
+    lv_obj_set_style_radius(c, 16, 0);
+    lv_obj_set_style_border_width(c, 0, 0);
+    lv_obj_set_style_pad_all(c, 14, 0);
+    lv_obj_set_style_pad_row(c, 8, 0);
+    lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_CLICKABLE);
+    return c;
+}
+
+/* small "● Caption" header row inside a glass tile */
+static void glass_head(lv_obj_t *tile, uint32_t dot_color, const char *text,
+                       tr_key_t tr_key, int use_tr)
+{
+    lv_obj_t *row = lv_obj_create(tile);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    dot_new(row, dot_color, 7);
+    if (use_tr)
+        label_tr(row, tr_key, &lv_font_montserrat_14, COL_SUB);
+    else
+        label_new(row, text, &lv_font_montserrat_14, COL_SUB);
+}
+
+#define HOME_TILE_W ((CARD_W - 12) / 2)
+#define HOME_TILE_H 156
+#define HOME_RING   212
+
 static void build_home(int col)
 {
     lv_obj_t *tile = lv_tileview_add_tile(tileview, col, 0, LV_DIR_HOR);
@@ -476,32 +528,23 @@ static void build_home(int col)
     lv_obj_set_style_bg_opa(cont, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont, 0, 0);
     lv_obj_set_style_pad_all(cont, PAGE_PAD, 0);
-    lv_obj_set_style_pad_row(cont, 8, 0);
+    lv_obj_set_style_pad_row(cont, 16, 0);
     lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
     lv_obj_remove_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
 
     date_label = label_new(cont, "", &lv_font_montserrat_16, 0xd8d8d8);
-    lv_obj_set_style_pad_top(date_label, 16, 0);
+    lv_obj_set_style_pad_top(date_label, 22, 0);
 
     time_label = label_new(cont, "00:00", &lv_font_montserrat_48, 0xffffff);
 
-    lv_obj_t *panel_box = lv_obj_create(cont);
-    lv_obj_set_size(panel_box, CARD_W, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(panel_box, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(panel_box, 110, 0);
-    lv_obj_set_style_radius(panel_box, 16, 0);
-    lv_obj_set_style_border_width(panel_box, 0, 0);
-    lv_obj_set_style_pad_all(panel_box, 14, 0);
-    lv_obj_set_style_pad_row(panel_box, 10, 0);
-    lv_obj_set_style_margin_top(panel_box, 14, 0);
-    lv_obj_set_flex_flow(panel_box, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(panel_box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_remove_flag(panel_box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(panel_box, LV_OBJ_FLAG_CLICKABLE);
+    /* big CPU ring */
+    lv_obj_t *cpu_card = glass_new(cont, CARD_W);
+    lv_obj_set_flex_align(cpu_card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_margin_top(cpu_card, 4, 0);
 
-    lv_obj_t *arc_wrap = lv_obj_create(panel_box);
-    lv_obj_set_size(arc_wrap, 132, 132);
+    lv_obj_t *arc_wrap = lv_obj_create(cpu_card);
+    lv_obj_set_size(arc_wrap, HOME_RING, HOME_RING);
     lv_obj_set_style_bg_opa(arc_wrap, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(arc_wrap, 0, 0);
     lv_obj_set_style_pad_all(arc_wrap, 0, 0);
@@ -509,7 +552,7 @@ static void build_home(int col)
     lv_obj_remove_flag(arc_wrap, LV_OBJ_FLAG_CLICKABLE);
 
     home_cpu_arc = lv_arc_create(arc_wrap);
-    lv_obj_set_size(home_cpu_arc, 132, 132);
+    lv_obj_set_size(home_cpu_arc, HOME_RING, HOME_RING);
     lv_obj_center(home_cpu_arc);
     lv_arc_set_rotation(home_cpu_arc, 270);
     lv_arc_set_bg_angles(home_cpu_arc, 0, 360);
@@ -518,40 +561,57 @@ static void build_home(int col)
     lv_obj_remove_flag(home_cpu_arc, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_arc_color(home_cpu_arc, lv_color_hex(COL_TRACK), LV_PART_MAIN);
     lv_obj_set_style_arc_color(home_cpu_arc, lv_color_hex(COL_CYAN), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(home_cpu_arc, 10, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(home_cpu_arc, 10, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(home_cpu_arc, 12, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(home_cpu_arc, 12, LV_PART_INDICATOR);
     lv_obj_set_style_arc_rounded(home_cpu_arc, true, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(home_cpu_arc, LV_OPA_TRANSP, LV_PART_KNOB);
 
-    home_cpu_val = label_new(arc_wrap, "0 %", &lv_font_montserrat_24, COL_TEXT);
-    lv_obj_align(home_cpu_val, LV_ALIGN_CENTER, 0, -8);
+    home_cpu_val = label_new(arc_wrap, "0 %", &lv_font_montserrat_32, COL_TEXT);
+    lv_obj_align(home_cpu_val, LV_ALIGN_CENTER, 0, -12);
     lv_obj_t *cpu_cap = label_new(arc_wrap, "CPU", &lv_font_montserrat_14, COL_SUB);
-    lv_obj_align(cpu_cap, LV_ALIGN_CENTER, 0, 16);
+    lv_obj_align(cpu_cap, LV_ALIGN_CENTER, 0, 22);
 
-    lv_obj_t *row = row_new(panel_box);
-    lv_obj_t *left = lv_obj_create(row);
-    lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(left, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_opa(left, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(left, 0, 0);
-    lv_obj_set_style_pad_all(left, 0, 0);
-    lv_obj_set_style_pad_column(left, 6, 0);
-    lv_obj_remove_flag(left, LV_OBJ_FLAG_SCROLLABLE);
-    dot_new(left, COL_YELLOW, 8);
-    home_ram_val = label_new(left, "RAM --", &lv_font_montserrat_14, COL_TEXT);
+    /* RAM | temperature tiles */
+    lv_obj_t *row = row_new(cont);
+    lv_obj_set_width(row, CARD_W);
 
-    lv_obj_t *right = lv_obj_create(row);
-    lv_obj_set_size(right, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(right, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(right, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_opa(right, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(right, 0, 0);
-    lv_obj_set_style_pad_all(right, 0, 0);
-    lv_obj_set_style_pad_column(right, 6, 0);
-    lv_obj_remove_flag(right, LV_OBJ_FLAG_SCROLLABLE);
-    dot_new(right, COL_RED, 8);
-    home_temp_val = label_new(right, "--,- °C", &lv_font_montserrat_14, COL_TEXT);
+    lv_obj_t *t = glass_new(row, HOME_TILE_W);
+    lv_obj_set_height(t, HOME_TILE_H);
+    glass_head(t, COL_YELLOW, "RAM", 0, 0);
+    home_ram_val = label_new(t, "-- %", &lv_font_montserrat_32, COL_TEXT);
+    home_ram_bar = bar_new(t, COL_YELLOW);
+    home_ram_sub = label_new(t, "--", &lv_font_montserrat_14, COL_SUB);
+
+    t = glass_new(row, HOME_TILE_W);
+    lv_obj_set_height(t, HOME_TILE_H);
+    glass_head(t, COL_RED, NULL, TR_TEMP_SHORT, 1);
+    home_temp_val = label_new(t, "-- °C", &lv_font_montserrat_32, COL_TEXT);
+    home_temp_bar = bar_new(t, COL_RED);
+    home_temp_sub = label_new(t, "CPU", &lv_font_montserrat_14, COL_SUB);
+
+    /* network | system tiles */
+    row = row_new(cont);
+    lv_obj_set_width(row, CARD_W);
+
+    t = glass_new(row, HOME_TILE_W);
+    lv_obj_set_height(t, HOME_TILE_H);
+    glass_head(t, COL_CYAN, NULL, TR_NETWORK, 1);
+    home_net_rx = label_new(t, LV_SYMBOL_DOWN " --", &lv_font_montserrat_16, COL_TEXT);
+    lv_obj_set_style_pad_top(home_net_rx, 6, 0);
+    home_net_tx = label_new(t, LV_SYMBOL_UP " --", &lv_font_montserrat_16, COL_TEXT);
+
+    t = glass_new(row, HOME_TILE_W);
+    lv_obj_set_height(t, HOME_TILE_H);
+    glass_head(t, COL_GREEN, "System", 0, 0);
+    home_sys_val = label_new(t, "-- %", &lv_font_montserrat_32, COL_TEXT);
+    home_sys_bar = bar_new(t, COL_GREEN);
+    home_sys_sub = label_new(t, "--", &lv_font_montserrat_14, COL_SUB);
+
+    /* uptime strip */
+    lv_obj_t *up_card = glass_new(cont, CARD_W);
+    lv_obj_t *up_row = row_new(up_card);
+    label_tr(up_row, TR_UPTIME, &lv_font_montserrat_14, COL_SUB);
+    home_up_val = label_new(up_row, "--", &lv_font_montserrat_16, COL_TEXT);
 }
 
 static void build_hardware(int col)
@@ -1273,15 +1333,44 @@ void gui_update_dashboard(const system_stats_t *stats)
         lv_label_set_text(home_cpu_val, text);
     }
     if (home_ram_val) {
-        snprintf(text, sizeof(text), "RAM %.0f %%", stats->ram_usage);
+        snprintf(text, sizeof(text), "%.0f %%", stats->ram_usage);
         lv_label_set_text(home_ram_val, text);
+    }
+    if (home_ram_bar)
+        lv_bar_set_value(home_ram_bar, (int32_t)stats->ram_usage, LV_ANIM_OFF);
+    if (home_ram_sub) {
+        snprintf(text, sizeof(text), "%.1f / %.0f GB",
+                 stats->ram_used_mb / 1024.0f, stats->ram_total_mb / 1024.0f);
+        lv_label_set_text(home_ram_sub, text);
     }
     if (home_temp_val) {
         if (stats->temp_c > 0)
-            snprintf(text, sizeof(text), "%.1f °C", stats->temp_c);
+            snprintf(text, sizeof(text), "%.0f °C", stats->temp_c);
         else
-            snprintf(text, sizeof(text), "--,- °C");
+            snprintf(text, sizeof(text), "-- °C");
         lv_label_set_text(home_temp_val, text);
+    }
+    if (home_temp_bar)
+        lv_bar_set_value(home_temp_bar, (int32_t)stats->temp_c, LV_ANIM_OFF);
+    if (home_sys_val) {
+        snprintf(text, sizeof(text), "%.0f %%", stats->disk_usage);
+        lv_label_set_text(home_sys_val, text);
+    }
+    if (home_sys_bar)
+        lv_bar_set_value(home_sys_bar, (int32_t)stats->disk_usage, LV_ANIM_OFF);
+    if (home_sys_sub) {
+        snprintf(text, sizeof(text), "%.0f / %.0f GB",
+                 stats->disk_used_gb, stats->disk_total_gb);
+        lv_label_set_text(home_sys_sub, text);
+    }
+    if (home_up_val) {
+        uint64_t d = stats->uptime_seconds / 86400;
+        uint64_t h = (stats->uptime_seconds % 86400) / 3600;
+        uint64_t m = (stats->uptime_seconds % 3600) / 60;
+        snprintf(text, sizeof(text), "%llud %lluh %llum",
+                 (unsigned long long)d, (unsigned long long)h,
+                 (unsigned long long)m);
+        lv_label_set_text(home_up_val, text);
     }
 
     if (hw_cpu_val) {
@@ -1348,6 +1437,16 @@ void gui_update_net(const net_stats_t *net)
     if (net_ul_val) {
         fmt_bps(net->total_tx_bps, tx, sizeof(tx));
         lv_label_set_text(net_ul_val, tx);
+    }
+    if (home_net_rx) {
+        fmt_bps(net->total_rx_bps, rx, sizeof(rx));
+        snprintf(text, sizeof(text), LV_SYMBOL_DOWN " %s", rx);
+        lv_label_set_text(home_net_rx, text);
+    }
+    if (home_net_tx) {
+        fmt_bps(net->total_tx_bps, tx, sizeof(tx));
+        snprintf(text, sizeof(text), LV_SYMBOL_UP " %s", tx);
+        lv_label_set_text(home_net_tx, text);
     }
 
     for (int i = 0; i < NET_MAX_IFACES; i++) {
@@ -1524,6 +1623,9 @@ void gui_cleanup(void)
     wp_img = NULL;
     time_label = date_label = NULL;
     home_cpu_arc = home_cpu_val = home_ram_val = home_temp_val = NULL;
+    home_ram_bar = home_ram_sub = home_temp_bar = home_temp_sub = NULL;
+    home_sys_val = home_sys_bar = home_sys_sub = NULL;
+    home_net_rx = home_net_tx = home_up_val = NULL;
     hw_cpu_val = hw_cpu_chart = hw_temp_val = hw_temp_bar = NULL;
     hw_ram_val = hw_ram_bar = hw_gpu_val = hw_gpu_sub = hw_gpu_chart = hw_up_val = NULL;
     hw_cpu_ser = hw_gpu_ser = NULL;
