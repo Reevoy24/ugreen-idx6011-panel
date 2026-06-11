@@ -21,9 +21,11 @@ working touchscreen:
 6. **OPNsense** — WAN throughput gauges, gateway status, updates, DHCP leases, DNS stats (only when configured)
 
 Swipe down from the top edge for the **settings panel** (like UGOS): brightness
-slider, screen-off timeout, wallpaper switcher, language (Deutsch/English), and
-restart/shutdown buttons with confirmation dialogs. Panel settings persist in
-`/etc/ug-paneld/state.json` — your `config.json` is never rewritten.
+slider, screen-off timeout, wallpaper switcher, language (Deutsch/English),
+front **status LED toggle + LED night mode** (rows appear when the
+[LED setup](#front-panel-leds) is installed), and restart/shutdown buttons with
+confirmation dialogs. Panel settings persist in `/etc/ug-paneld/state.json` —
+your `config.json` is never rewritten.
 
 Four built-in wallpapers ship with the package; your own 258x960 PNG at
 `/etc/ug-paneld/wallpaper.png` appears as "Custom" in the switcher.
@@ -84,6 +86,20 @@ Notes:
   `NETLED_IFACES="<nic1> <nic2>"` in `/etc/default/ugreen-idx-netled`.
 - **Manual control:** the CLI tool and the kernel module conflict. To use
   `ugreen_leds_cli` by hand, stop the services and `rmmod led_ugreen` first.
+
+### LED toggle and night mode on the display
+
+When ug-paneld (v1.2.0+) detects the LED setup, the pull-down settings panel
+gains two rows:
+
+- **Status LEDs** — turns all front LEDs on/off (off stops `ugreen-diskiomon`
+  and zeroes every LED; on restarts the monitors, which restore activity
+  blinking and health colors). The choice survives reboots via `state.json`.
+- **LED night mode** — turns the LEDs off automatically during a configurable
+  night window (default **21:00–08:00**, see `led_night_start` /
+  `led_night_end` in `config.json`). Tapping the LEDs back on during the
+  window keeps them on until the window ends; the next night they go off
+  again. The schedule also runs while the display itself is asleep.
 
 ### Front LEDs on TrueNAS / Unraid
 
@@ -243,6 +259,8 @@ All settings are optional. Create `/etc/ug-paneld/config.json`:
     "brightness": 100,
     "backlight_timeout": 30,
     "sleep_brightness": 0,
+    "led_night_start": "21:00",
+    "led_night_end": "08:00",
     "opnsense_url": "https://192.168.1.1:8443",
     "opnsense_key": "your-api-key",
     "opnsense_secret": "your-api-secret",
@@ -267,6 +285,8 @@ override the config defaults.
 | `brightness` | `100` | Backlight brightness (1-100) |
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 to disable) |
 | `sleep_brightness` | `0` | Backlight % while asleep. `0` = fully off (a black frame is shown and the touch chip stays poll-awake, so a tap still wakes the screen) |
+| `led_night_start` | `21:00` | Start of the front-LED night window (`HH:MM`); used when LED night mode is enabled in the settings panel |
+| `led_night_end` | `08:00` | End of the front-LED night window (`HH:MM`) |
 | `opnsense_url` | | OPNsense base URL (leave empty to disable) |
 | `opnsense_key` | | OPNsense API key |
 | `opnsense_secret` | | OPNsense API secret |

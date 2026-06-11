@@ -14,6 +14,7 @@
 typedef struct {
     int show_opnsense;
     int show_pve;
+    int show_leds;                  /* front LED rows in the settings panel */
     int wan_max_mbps;
     ui_state_t *state;              /* shared; GUI mutates + persists it */
     void (*set_brightness)(int pct);
@@ -41,6 +42,7 @@ void gui_show_page(int idx);
 void gui_settings_open(void);
 void gui_settings_close(void);
 void gui_set_sleep(int on);   /* black overlay while the screen "sleeps" */
+void gui_leds_refresh(void);  /* re-read LED state into the panel rows */
 
 void gui_cleanup(void);
 

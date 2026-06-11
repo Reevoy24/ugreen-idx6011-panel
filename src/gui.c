@@ -1,5 +1,6 @@
 #include "gui.h"
 #include "i18n.h"
+#include "leds.h"
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -130,6 +131,9 @@ static lv_obj_t *bri_slider = NULL;
 static lv_obj_t *timeout_sub = NULL;
 static lv_obj_t *wp_sub = NULL;
 static lv_obj_t *lang_sub = NULL;
+static lv_obj_t *led_sub = NULL;
+static lv_obj_t *led_night_sub = NULL;
+static int panel_h = PANEL_H; /* grows when the LED rows are shown */
 static lv_obj_t *confirm_scrim = NULL;
 static lv_obj_t *confirm_text = NULL;
 static int confirm_is_shutdown = 0;
@@ -763,6 +767,7 @@ static void retranslate(void)
     if (lang_sub)
         lv_label_set_text(lang_sub,
             strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
+    gui_leds_refresh();
     gui_update_clock();
 }
 
@@ -794,7 +799,7 @@ static void panel_animate(int open)
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, panel);
-    lv_anim_set_values(&a, lv_obj_get_y(panel), open ? 0 : -PANEL_H);
+    lv_anim_set_values(&a, lv_obj_get_y(panel), open ? 0 : -panel_h);
     lv_anim_set_duration(&a, 220);
     lv_anim_set_exec_cb(&a, anim_y_cb);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
@@ -898,6 +903,33 @@ static void lang_btn_cb(lv_event_t *e)
 static void restart_btn_cb(lv_event_t *e) { LV_UNUSED(e); confirm_show(0); }
 static void shutdown_btn_cb(lv_event_t *e) { LV_UNUSED(e); confirm_show(1); }
 
+void gui_leds_refresh(void)
+{
+    if (led_sub)
+        lv_label_set_text(led_sub, tr(leds_effective_on() ? TR_ON : TR_OFF));
+    if (led_night_sub)
+        lv_label_set_text(led_night_sub,
+            leds_night_enabled() ? leds_night_window() : tr(TR_OFF));
+}
+
+static void leds_btn_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    leds_toggle();
+    setup.state->leds_on = leds_user_on();
+    gui_leds_refresh();
+    settings_save(setup.state);
+}
+
+static void led_night_btn_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    leds_set_night(!leds_night_enabled());
+    setup.state->led_night = leds_night_enabled();
+    gui_leds_refresh();
+    settings_save(setup.state);
+}
+
 static void edge_strip_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -988,9 +1020,12 @@ static void build_settings_panel(lv_obj_t *screen)
     lv_obj_remove_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(scrim, scrim_cb, LV_EVENT_CLICKED, NULL);
 
+    /* two extra rows (46px + 9px row gap each) when LED control exists */
+    panel_h = setup.show_leds ? PANEL_H + 110 : PANEL_H;
+
     panel = lv_obj_create(screen);
-    lv_obj_set_size(panel, DISP_W, PANEL_H);
-    lv_obj_set_pos(panel, 0, -PANEL_H);
+    lv_obj_set_size(panel, DISP_W, panel_h);
+    lv_obj_set_pos(panel, 0, -panel_h);
     lv_obj_set_style_bg_color(panel, lv_color_hex(COL_PANEL), 0);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(panel, 18, 0);
@@ -1057,6 +1092,14 @@ static void build_settings_panel(lv_obj_t *screen)
                  &lang_sub, lang_btn_cb);
     lv_label_set_text(lang_sub,
         strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
+
+    if (setup.show_leds) {
+        settings_btn(panel, TR_LEDS, COL_BTN, COL_TEXT, NULL,
+                     &led_sub, leds_btn_cb);
+        settings_btn(panel, TR_LED_NIGHT, COL_BTN, COL_TEXT, NULL,
+                     &led_night_sub, led_night_btn_cb);
+        gui_leds_refresh();
+    }
 
     settings_btn(panel, TR_RESTART, 0x1e7a3c, 0xffffff, LV_SYMBOL_REFRESH,
                  NULL, restart_btn_cb);
@@ -1495,5 +1538,7 @@ void gui_cleanup(void)
     edge_strip = scrim = panel = NULL;
     panel_is_open = 0;
     bri_val_label = bri_slider = timeout_sub = wp_sub = lang_sub = NULL;
+    led_sub = led_night_sub = NULL;
+    panel_h = PANEL_H;
     confirm_scrim = confirm_text = NULL;
 }

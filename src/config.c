@@ -83,6 +83,8 @@ int config_load(config_t *config) {
     config->backlight_timeout = 30;
     config->sleep_brightness = 0; /* full off — touch stays awake as long as we poll it */
     config->api_port = 0;
+    snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
+    snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -120,6 +122,8 @@ int config_load(config_t *config) {
     json_get_int(json, "backlight_timeout", &config->backlight_timeout);
     json_get_int(json, "sleep_brightness", &config->sleep_brightness);
     json_get_int(json, "api_port", &config->api_port);
+    json_get_str(json, "led_night_start", config->led_night_start, sizeof(config->led_night_start));
+    json_get_str(json, "led_night_end", config->led_night_end, sizeof(config->led_night_end));
 
     free(json);
     return 0;

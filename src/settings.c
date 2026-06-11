@@ -44,6 +44,8 @@ void settings_load(ui_state_t *st, int default_brightness, int default_timeout)
     st->backlight_timeout = default_timeout;
     st->wallpaper[0] = '\0'; /* "" = legacy auto: custom file if present, else none */
     snprintf(st->language, sizeof(st->language), "de");
+    st->leds_on = 1;
+    st->led_night = 0;
 
     FILE *fp = fopen(STATE_FILE_PATH, "r");
     if (!fp) return;
@@ -57,10 +59,14 @@ void settings_load(ui_state_t *st, int default_brightness, int default_timeout)
     json_get_int(json, "backlight_timeout", &st->backlight_timeout);
     json_get_str(json, "wallpaper", st->wallpaper, sizeof(st->wallpaper));
     json_get_str(json, "language", st->language, sizeof(st->language));
+    json_get_int(json, "leds_on", &st->leds_on);
+    json_get_int(json, "led_night", &st->led_night);
 
     if (st->brightness < 1) st->brightness = 1;
     if (st->brightness > 100) st->brightness = 100;
     if (st->backlight_timeout < 0) st->backlight_timeout = 0;
+    st->leds_on = !!st->leds_on;
+    st->led_night = !!st->led_night;
 }
 
 int settings_save(const ui_state_t *st)
@@ -76,9 +82,12 @@ int settings_save(const ui_state_t *st)
             "    \"brightness\": %d,\n"
             "    \"backlight_timeout\": %d,\n"
             "    \"wallpaper\": \"%s\",\n"
-            "    \"language\": \"%s\"\n"
+            "    \"language\": \"%s\",\n"
+            "    \"leds_on\": %d,\n"
+            "    \"led_night\": %d\n"
             "}\n",
-            st->brightness, st->backlight_timeout, st->wallpaper, st->language);
+            st->brightness, st->backlight_timeout, st->wallpaper, st->language,
+            st->leds_on, st->led_night);
     fclose(fp);
 
     if (rename(tmp, STATE_FILE_PATH) != 0) {

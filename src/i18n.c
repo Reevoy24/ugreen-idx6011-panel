@@ -37,6 +37,10 @@ static const char *strings[TR_COUNT][2] = {
     [TR_CONFIRM_SHUTDOWN] = { "Wirklich herunterfahren?", "Really shut down?" },
     [TR_NONE]             = { "Kein",                     "None" },
     [TR_CUSTOM]           = { "Eigenes",                  "Custom" },
+    [TR_LEDS]             = { "Status-LEDs",              "Status LEDs" },
+    [TR_LED_NIGHT]        = { "LED-Nachtmodus",           "LED night mode" },
+    [TR_ON]               = { "An",                       "On" },
+    [TR_OFF]              = { "Aus",                      "Off" },
 };
 
 const char *tr(tr_key_t key)

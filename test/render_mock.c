@@ -49,6 +49,7 @@ int main(void)
     gui_setup_t setup = {
         .show_opnsense = 1,
         .show_pve = 1,
+        .show_leds = 1, /* render the LED rows even without hardware */
         .wan_max_mbps = 1000,
         .state = &state,
     };

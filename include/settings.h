@@ -10,6 +10,8 @@ typedef struct {
     int backlight_timeout; /* seconds, 0 = never */
     char wallpaper[32];    /* "none", a built-in name, or "custom" */
     char language[4];      /* "de" / "en" */
+    int leds_on;           /* front status LEDs master switch (default 1) */
+    int led_night;         /* LEDs off during the configured night window */
 } ui_state_t;
 
 void settings_load(ui_state_t *st, int default_brightness, int default_timeout);

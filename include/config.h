@@ -24,6 +24,8 @@ typedef struct {
                               polled, so wake-by-tap works even at full off */
     int api_port;
     int debug;             /* verbose display probe logging */
+    char led_night_start[8]; /* front LED night window start, "HH:MM" */
+    char led_night_end[8];   /* front LED night window end, "HH:MM" */
 } config_t;
 
 int config_load(config_t *config);

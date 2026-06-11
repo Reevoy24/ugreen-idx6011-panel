@@ -30,6 +30,7 @@ CSRCS += ./src/i18n.c
 CSRCS += ./src/settings.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
+CSRCS += ./src/leds.c
 CSRCS += ./src/opnsense.c
 CSRCS += ./src/touch.c
 CSRCS += ./src/api.c
@@ -63,8 +64,8 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 LVGL_OBJS = $(filter-out ./src/%,$(COBJS))
 MOCKOBJ = ./test/render_mock.o
 
-mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o $(MOCKOBJ)
-	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
+mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(MOCKOBJ)
+	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
 	@echo "Built render-mock"
 
 install: default

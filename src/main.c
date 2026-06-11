@@ -22,6 +22,7 @@
 #include "opnsense.h"
 #include "touch.h"
 #include "api.h"
+#include "leds.h"
 
 static volatile int running = 1;
 static volatile int signal_count = 0;
@@ -130,9 +131,21 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, has_pve ? "Proxmox host detected — Proxmox page enabled\n"
                             : "No Proxmox host detected — Proxmox page disabled\n");
 
+    /* Front LED rows appear only when the LED setup exists on this host
+     * (led-ugreen kernel module or ugreen_leds_cli; tools/setup-ugreen-leds.sh). */
+    int has_leds = leds_init(config.led_night_start, config.led_night_end);
+    if (has_leds) {
+        leds_startup(ui_state.leds_on, ui_state.led_night);
+        fprintf(stderr, "Front LED control enabled (night window %s)\n",
+                leds_night_window());
+    } else {
+        fprintf(stderr, "No front LED control found — LED settings hidden\n");
+    }
+
     gui_setup_t setup = {
         .show_opnsense = has_opnsense,
         .show_pve = has_pve,
+        .show_leds = has_leds,
         .wan_max_mbps = config.wan_max_mbps,
         .state = &ui_state,
         .set_brightness = act_set_brightness,
@@ -157,7 +170,20 @@ int main(int argc, char *argv[]) {
 
     struct timespec sleep_long = { .tv_nsec = 50000000 }; /* 50ms touch poll while asleep */
 
+    time_t last_led_check = 0;
+
     while (running) {
+        /* LED night window — checked even while the screen sleeps (that is
+         * exactly when the 21:00 transition usually happens). */
+        if (has_leds) {
+            time_t tnow = time(NULL);
+            if (tnow != last_led_check) {
+                last_led_check = tnow;
+                if (leds_tick(tnow))
+                    gui_leds_refresh();
+            }
+        }
+
         /* While awake the LVGL input device polls the touchscreen; while
          * asleep the loop polls it directly and wakes on the poll result. */
         if (screen_asleep) {
