@@ -3,6 +3,7 @@
  * Convert the .raw files to PNG with tools/raw2png.py. */
 #include "lvgl/lvgl.h"
 #include "gui.h"
+#include "i18n.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +45,7 @@ int main(void)
         .brightness = 80,
         .backlight_timeout = 300,
         .wallpaper = "aurora",
-        .language = "de",
+        .language = "en", /* the README montage is rendered from this */
     };
     gui_setup_t setup = {
         .show_opnsense = 1,
@@ -53,6 +54,7 @@ int main(void)
         .wan_max_mbps = 1000,
         .state = &state,
     };
+    i18n_set_language(state.language); /* main.c does this for the daemon */
     gui_create_dashboard(&setup);
 
     /* --- mock data, roughly matching the UGOS marketing screens --- */
@@ -112,7 +114,7 @@ int main(void)
     gui_update_pve(&pv);
 
     opnsense_stats_t op = {
-        .gw_rtt_ms = 12, .gw_status = "online", .update_status = "aktuell",
+        .gw_rtt_ms = 12, .gw_status = "online", .update_status = "up to date",
         .dhcp_leases = 23, .dns_blocked_pct = 18,
     };
     gui_update_opnsense(&op);
