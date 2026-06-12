@@ -20,9 +20,10 @@ working touchscreen:
 5. **Proxmox** — running VMs/LXCs with status dots (page only appears on PVE hosts)
 6. **OPNsense** — WAN throughput gauges, gateway status, updates, DHCP leases, DNS stats (only when configured)
 
-Swipe down from the top edge for the **settings panel** (like UGOS): brightness
-slider, screen-off timeout, wallpaper switcher, language (Deutsch/English),
-front **status LED toggle + LED night mode** (rows appear when the
+Swipe down from the top edge for the **settings panel** (like UGOS), organized
+into grouped list cards: brightness slider, a Display section (screen-off
+timeout, wallpaper switcher, language Deutsch/English), an LEDs section with
+the front **status LED toggle + night mode** (appears when the
 [LED setup](#front-panel-leds) is installed), and restart/shutdown buttons with
 confirmation dialogs. Panel settings persist in `/etc/ug-paneld/state.json` —
 your `config.json` is never rewritten.

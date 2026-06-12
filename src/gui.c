@@ -19,7 +19,7 @@
 #define CARD_W (DISP_W - 2 * PAGE_PAD)
 #define BAR_HEIGHT 6
 #define SPARK_POINTS 36
-#define PANEL_H 470
+#define PANEL_H 484
 #define EDGE_STRIP_H 32
 #define SWIPE_TRIGGER 55
 
@@ -1020,18 +1020,18 @@ static void panel_swipe_cb(lv_event_t *e)
     }
 }
 
-/* pill button: title left, optional sub-value right */
+/* pill button: title left, optional sub-value right (restart/shutdown) */
 static lv_obj_t *settings_btn(lv_obj_t *parent, tr_key_t key, uint32_t bg,
                               uint32_t fg, const char *symbol,
                               lv_obj_t **sub_out, lv_event_cb_t cb)
 {
     lv_obj_t *btn = lv_button_create(parent);
-    lv_obj_set_size(btn, LV_PCT(100), 46);
+    lv_obj_set_size(btn, LV_PCT(100), 56);
     lv_obj_set_style_bg_color(btn, lv_color_hex(bg), 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(btn, 23, 0);
+    lv_obj_set_style_radius(btn, 28, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_set_style_pad_hor(btn, 16, 0);
+    lv_obj_set_style_pad_hor(btn, 18, 0);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *left_box = lv_obj_create(btn);
@@ -1040,14 +1040,70 @@ static lv_obj_t *settings_btn(lv_obj_t *parent, tr_key_t key, uint32_t bg,
     lv_obj_set_style_bg_opa(left_box, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(left_box, 0, 0);
     lv_obj_set_style_pad_all(left_box, 0, 0);
-    lv_obj_set_style_pad_column(left_box, 8, 0);
+    lv_obj_set_style_pad_column(left_box, 10, 0);
     lv_obj_align(left_box, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_remove_flag(left_box, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(left_box, LV_OBJ_FLAG_CLICKABLE);
 
     if (symbol)
-        label_new(left_box, symbol, &lv_font_montserrat_16, fg);
-    label_tr(left_box, key, &lv_font_montserrat_16, fg);
+        label_new(left_box, symbol, &lv_font_montserrat_18, fg);
+    label_tr(left_box, key, &lv_font_montserrat_18, fg);
+
+    if (sub_out) {
+        *sub_out = label_new(btn, "", &lv_font_montserrat_14, COL_SUB);
+        lv_obj_align(*sub_out, LV_ALIGN_RIGHT_MID, 0, 0);
+    }
+    return btn;
+}
+
+/* small grey section caption above a settings group */
+static void section_label(lv_obj_t *parent, tr_key_t key)
+{
+    lv_obj_t *l = label_tr(parent, key, &lv_font_montserrat_14, COL_SUB);
+    lv_obj_set_width(l, LV_PCT(100)); /* full width so the text sits left */
+    lv_obj_set_style_pad_left(l, 8, 0);
+    lv_obj_set_style_pad_top(l, 4, 0);
+}
+
+/* grouped list card; rows are added with list_row() */
+static lv_obj_t *list_card_new(lv_obj_t *parent)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_set_size(card, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(card, lv_color_hex(COL_BTN), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_set_style_clip_corner(card, true, 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    lv_obj_set_style_pad_row(card, 0, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    return card;
+}
+
+/* one tappable row in a list card: title left, value right, hairline below */
+static lv_obj_t *list_row(lv_obj_t *card, tr_key_t key, lv_obj_t **sub_out,
+                          lv_event_cb_t cb, int last)
+{
+    lv_obj_t *btn = lv_button_create(card);
+    lv_obj_set_size(btn, LV_PCT(100), 56);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xffffff), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(btn, 25, LV_STATE_PRESSED);
+    lv_obj_set_style_radius(btn, 0, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_set_style_pad_hor(btn, 16, 0);
+    if (!last) {
+        lv_obj_set_style_border_color(btn, lv_color_hex(0x3a3a40), 0);
+        lv_obj_set_style_border_opa(btn, 160, 0);
+        lv_obj_set_style_border_width(btn, 1, 0);
+        lv_obj_set_style_border_side(btn, LV_BORDER_SIDE_BOTTOM, 0);
+    }
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *title = label_tr(btn, key, &lv_font_montserrat_18, COL_TEXT);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 0, 0);
 
     if (sub_out) {
         *sub_out = label_new(btn, "", &lv_font_montserrat_14, COL_SUB);
@@ -1080,8 +1136,8 @@ static void build_settings_panel(lv_obj_t *screen)
     lv_obj_remove_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(scrim, scrim_cb, LV_EVENT_CLICKED, NULL);
 
-    /* two extra rows (46px + 9px row gap each) when LED control exists */
-    panel_h = setup.show_leds ? PANEL_H + 110 : PANEL_H;
+    /* the LED group adds a section caption + a two-row list card */
+    panel_h = setup.show_leds ? PANEL_H + 150 : PANEL_H;
 
     panel = lv_obj_create(screen);
     lv_obj_set_size(panel, DISP_W, panel_h);
@@ -1121,11 +1177,11 @@ static void build_settings_panel(lv_obj_t *screen)
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *row = row_new(card);
-    label_tr(row, TR_BRIGHTNESS, &lv_font_montserrat_16, COL_TEXT);
-    bri_val_label = label_new(row, "", &lv_font_montserrat_14, COL_SUB);
+    label_tr(row, TR_BRIGHTNESS, &lv_font_montserrat_18, COL_TEXT);
+    bri_val_label = label_new(row, "", &lv_font_montserrat_16, COL_SUB);
 
     bri_slider = lv_slider_create(card);
-    lv_obj_set_size(bri_slider, LV_PCT(100), 14);
+    lv_obj_set_size(bri_slider, LV_PCT(100), 18);
     lv_slider_set_range(bri_slider, 5, 100);
     lv_slider_set_value(bri_slider, setup.state->brightness, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bri_slider, lv_color_hex(COL_TRACK), LV_PART_MAIN);
@@ -1140,24 +1196,21 @@ static void build_settings_panel(lv_obj_t *screen)
         lv_label_set_text(bri_val_label, buf);
     }
 
-    settings_btn(panel, TR_SCREEN_OFF, COL_BTN, COL_TEXT, NULL,
-                 &timeout_sub, timeout_btn_cb);
+    section_label(panel, TR_SEC_DISPLAY);
+    lv_obj_t *lc = list_card_new(panel);
+    list_row(lc, TR_SCREEN_OFF, &timeout_sub, timeout_btn_cb, 0);
+    list_row(lc, TR_WALLPAPER, &wp_sub, wp_btn_cb, 0);
+    list_row(lc, TR_LANGUAGE, &lang_sub, lang_btn_cb, 1);
     timeout_sub_refresh();
-
-    settings_btn(panel, TR_WALLPAPER, COL_BTN, COL_TEXT, NULL,
-                 &wp_sub, wp_btn_cb);
     lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
-
-    settings_btn(panel, TR_LANGUAGE, COL_BTN, COL_TEXT, NULL,
-                 &lang_sub, lang_btn_cb);
     lv_label_set_text(lang_sub,
         strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
 
     if (setup.show_leds) {
-        settings_btn(panel, TR_LEDS, COL_BTN, COL_TEXT, NULL,
-                     &led_sub, leds_btn_cb);
-        settings_btn(panel, TR_LED_NIGHT, COL_BTN, COL_TEXT, NULL,
-                     &led_night_sub, led_night_btn_cb);
+        section_label(panel, TR_SEC_LEDS);
+        lc = list_card_new(panel);
+        list_row(lc, TR_LEDS, &led_sub, leds_btn_cb, 0);
+        list_row(lc, TR_LED_NIGHT, &led_night_sub, led_night_btn_cb, 1);
         gui_leds_refresh();
     }
 

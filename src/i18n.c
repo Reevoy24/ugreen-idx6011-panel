@@ -38,9 +38,11 @@ static const char *strings[TR_COUNT][2] = {
     [TR_NONE]             = { "Kein",                     "None" },
     [TR_CUSTOM]           = { "Eigenes",                  "Custom" },
     [TR_LEDS]             = { "Status-LEDs",              "Status LEDs" },
-    [TR_LED_NIGHT]        = { "LED-Nachtmodus",           "LED night mode" },
+    [TR_LED_NIGHT]        = { "Nachtmodus",               "Night mode" },
     [TR_ON]               = { "An",                       "On" },
     [TR_OFF]              = { "Aus",                      "Off" },
+    [TR_SEC_DISPLAY]      = { "Anzeige",                  "Display" },
+    [TR_SEC_LEDS]         = { "LEDs",                     "LEDs" },
 };
 
 const char *tr(tr_key_t key)
