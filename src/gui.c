@@ -66,10 +66,20 @@ static int page_count = 0;
 static struct { lv_obj_t *obj; tr_key_t key; } tr_regs[TR_REG_MAX];
 static int tr_reg_count = 0;
 
-/* ---- Home ---- */
-static uint8_t *wp_buf = NULL;
+/* ---- Wallpaper ----
+ * Two copies of the decoded image: a clean one as a static layer behind
+ * ALL pages (the tiles are transparent and slide over it), and a copy with
+ * the home glass tiles baked in that travels with the home tile. The
+ * built-ins are vertical gradients, so the moving and the static copy are
+ * indistinguishable during a swipe. */
+static uint8_t *wp_buf = NULL;        /* baked copy (home tile) */
 static lv_image_dsc_t wp_dsc;
 static lv_obj_t *wp_img = NULL;
+static uint8_t *wp_clean_buf = NULL;  /* clean copy (screen background) */
+static lv_image_dsc_t wp_clean_dsc;
+static lv_obj_t *wp_bg_img = NULL;
+
+/* ---- Home ---- */
 static lv_obj_t *time_label = NULL;
 static lv_obj_t *date_label = NULL;
 static lv_obj_t *home_cpu_canvas = NULL; /* pre-rendered CPU ring */
@@ -299,8 +309,9 @@ static lv_obj_t *page_new(int col, tr_key_t title_key)
 {
     lv_obj_t *tile = lv_tileview_add_tile(tileview, col, 0, LV_DIR_HOR);
     tiles[col] = tile;
-    lv_obj_set_style_bg_color(tile, lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+    /* transparent: the screen-level wallpaper (or the solid screen color
+     * when none is set) shows through behind the cards */
+    lv_obj_set_style_bg_opa(tile, LV_OPA_TRANSP, 0);
 
     lv_obj_t *cont = lv_obj_create(tile);
     lv_obj_set_size(cont, LV_PCT(100), LV_PCT(100));
@@ -410,12 +421,23 @@ static const char *wp_display_name(const char *opt)
     return opt;
 }
 
+static void wp_dsc_fill(lv_image_dsc_t *dsc, uint8_t *buf)
+{
+    dsc->header.w = DISP_W;
+    dsc->header.h = DISP_H;
+    dsc->header.cf = LV_COLOR_FORMAT_XRGB8888; /* opaque: fast copy blit */
+    dsc->header.stride = DISP_W * 4;
+    dsc->data_size = (uint32_t)(DISP_W * 4) * DISP_H;
+    dsc->data = buf;
+}
+
 static void apply_wallpaper(const char *name)
 {
     if (!wp_img) return;
 
     if (strcmp(name, "none") == 0) {
         lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+        if (wp_bg_img) lv_obj_add_flag(wp_bg_img, LV_OBJ_FLAG_HIDDEN);
         glass_set_baked(0); /* opaque tiles over the solid background */
         return;
     }
@@ -429,9 +451,15 @@ static void apply_wallpaper(const char *name)
     uint8_t *nbuf = decode_wallpaper(path);
     if (!nbuf) {
         lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+        if (wp_bg_img) lv_obj_add_flag(wp_bg_img, LV_OBJ_FLAG_HIDDEN);
         glass_set_baked(0);
         return;
     }
+
+    /* clean copy for the screen-level background behind all pages */
+    uint8_t *ncopy = malloc((size_t)DISP_W * 4 * DISP_H);
+    if (ncopy)
+        memcpy(ncopy, nbuf, (size_t)DISP_W * 4 * DISP_H);
 
     lv_image_set_src(wp_img, NULL);
     lv_image_cache_drop(&wp_dsc);
@@ -441,16 +469,23 @@ static void apply_wallpaper(const char *name)
     bake_glass_into_wallpaper();
     glass_set_baked(1);
 
-    wp_dsc.header.w = DISP_W;
-    wp_dsc.header.h = DISP_H;
-    wp_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888; /* opaque: fast copy blit */
-    wp_dsc.header.stride = DISP_W * 4;
-    wp_dsc.data_size = (uint32_t)(DISP_W * 4) * DISP_H;
-    wp_dsc.data = wp_buf;
-
+    wp_dsc_fill(&wp_dsc, wp_buf);
     lv_image_set_src(wp_img, &wp_dsc);
     lv_obj_remove_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
     lv_obj_invalidate(wp_img);
+
+    if (wp_bg_img && ncopy) {
+        lv_image_set_src(wp_bg_img, NULL);
+        lv_image_cache_drop(&wp_clean_dsc);
+        if (wp_clean_buf) free(wp_clean_buf);
+        wp_clean_buf = ncopy;
+        wp_dsc_fill(&wp_clean_dsc, wp_clean_buf);
+        lv_image_set_src(wp_bg_img, &wp_clean_dsc);
+        lv_obj_remove_flag(wp_bg_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_invalidate(wp_bg_img);
+    } else if (ncopy) {
+        free(ncopy);
+    }
 }
 
 static void build_wp_options(void)
@@ -641,8 +676,7 @@ static void build_home(int col)
 {
     lv_obj_t *tile = lv_tileview_add_tile(tileview, col, 0, LV_DIR_HOR);
     tiles[col] = tile;
-    lv_obj_set_style_bg_color(tile, lv_color_hex(COL_BG), 0);
-    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(tile, LV_OPA_TRANSP, 0);
 
     wp_img = lv_image_create(tile);
     lv_obj_set_pos(wp_img, 0, 0);
@@ -1402,6 +1436,12 @@ lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
     lv_obj_set_style_bg_color(screen, lv_color_hex(COL_BG), 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
+    /* static wallpaper layer behind every page (created before the
+     * tileview so it stays underneath; pages slide over it) */
+    wp_bg_img = lv_image_create(screen);
+    lv_obj_set_pos(wp_bg_img, 0, 0);
+    lv_obj_add_flag(wp_bg_img, LV_OBJ_FLAG_HIDDEN);
+
     tileview = lv_tileview_create(screen);
     lv_obj_set_size(tileview, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(tileview, LV_OPA_TRANSP, 0);
@@ -1795,6 +1835,8 @@ void gui_show_page(int idx)
 void gui_cleanup(void)
 {
     if (wp_buf) { free(wp_buf); wp_buf = NULL; }
+    if (wp_clean_buf) { free(wp_clean_buf); wp_clean_buf = NULL; }
+    wp_bg_img = NULL;
     tileview = NULL;
     dots_box = NULL;
     page_count = 0;

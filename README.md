@@ -28,8 +28,10 @@ the front **status LED toggle + night mode** (appears when the
 confirmation dialogs. Panel settings persist in `/etc/ug-paneld/state.json` —
 your `config.json` is never rewritten.
 
-Four built-in wallpapers ship with the package; your own 258x960 PNG at
-`/etc/ug-paneld/wallpaper.png` appears as "Custom" in the switcher.
+Three built-in wallpapers (aurora, dusk, ocean) ship with the package; your
+own 258x960 PNG at `/etc/ug-paneld/wallpaper.png` appears as "Custom" in the
+switcher. The wallpaper is drawn behind every page, not just Home — the pages
+slide over it.
 
 After the idle timeout the screen turns off (pure black frame, backlight off)
 and a tap wakes it — the touch controller stays responsive because the daemon
