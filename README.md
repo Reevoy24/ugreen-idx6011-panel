@@ -1,7 +1,6 @@
 # ug-paneld — touch dashboard for the UGREEN iDX6011 Pro front display
 
 [![Release](https://img.shields.io/github/v/release/Reevoy24/ugreen-idx6011-pro-nas-display?filter=v*&label=release&color=2ea44f)](../../releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Reevoy24/ugreen-idx6011-pro-nas-display/total?color=4c8eda)](../../releases)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
 
@@ -16,8 +15,6 @@ complete [front-LED setup](#front-panel-leds).
 ![All dashboard pages](images/pages-overview.png)
 
 ## Highlights
-
-<img align="right" width="150" src="images/ug-paneld-image.JPG" alt="ug-paneld on the device">
 
 - 🖥️ **Six swipeable pages** — Home (clock, CPU ring, glass tiles), Hardware,
   Network, Disks, Proxmox guests (PVE hosts only), OPNsense (optional)
