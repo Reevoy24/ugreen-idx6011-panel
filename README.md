@@ -7,6 +7,7 @@ on Proxmox, Debian, TrueNAS SCALE and Unraid.
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows
 system stats; under Proxmox, Debian, TrueNAS or Unraid it stays black — and
@@ -373,6 +374,8 @@ did (the .deb blacklists it instead). For boot-start, install
 
 ## Credits
 
+- [Adam Conway's original ug-paneld](https://github.com/Incipiens/ugreen-idx6011-pro-nas-display) —
+  the project this repo was forked from
 - [klein0r/ugreen_leds_controller](https://github.com/klein0r/ugreen_leds_controller) —
   iDX6011 Pro LED protocol + driver fork, building on
   [miskcoo/ugreen_leds_controller](https://github.com/miskcoo/ugreen_leds_controller)

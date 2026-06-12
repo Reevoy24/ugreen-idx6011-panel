@@ -39,7 +39,7 @@ build_deb() {
 Package: ug-paneld
 Version: ${VERSION}
 Architecture: amd64
-Maintainer: Adam Conway
+Maintainer: Sebastian Kowski
 Depends: libdrm2, libcurl4
 Description: Front panel display controller for Ugreen iDX6011 Pro NAS
  Drives the 258x960 display, backlight, and touchscreen from userspace.${desc_extra}
