@@ -5,6 +5,9 @@ ug-paneld
 *.tar.gz
 build/
 
+# Third-party binary staged for the LED tarballs (see build-leds-tarballs.sh)
+packaging/leds/ugreen_leds_cli
+
 # Local hardware analysis artifacts
 vbt.bin
 vbt-decoded.txt

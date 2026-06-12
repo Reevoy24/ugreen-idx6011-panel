@@ -106,23 +106,34 @@ gains two rows:
 
 ### Front LEDs on TrueNAS / Unraid
 
-The script needs `apt` + DKMS, so it only runs on Proxmox/Debian. On TrueNAS
-SCALE and Unraid the situation is:
+The setup script needs `apt` + DKMS, so it only runs on Proxmox/Debian. For
+TrueNAS SCALE and Unraid there are **ready-made tarballs** (static variant:
+stops the rolling animation at every boot and sets a calm static LED state):
+download `ugreen-leds_*_truenas_amd64.tar.gz` or
+`ugreen-leds_*_unraid_amd64.tar.gz` from the
+[releases page](../../releases), then:
 
-- `ugreen_leds_cli` is **statically linked** — build it once on any Debian
-  machine (or grab it from `/usr/local/bin/` after running the script on
-  Proxmox) and copy it over; it runs fine on both platforms. Calling it from a
-  TrueNAS Post-Init script or the Unraid `go` file is enough to stop the
-  rolling animation and set a static LED state at every boot.
-- Live disk/network activity LEDs need the `led-ugreen` kernel module compiled
-  for the exact platform kernel. The existing community packages
-  ([ich777's Unraid plugin](https://forums.unraid.net/topic/168423-ugreen-nas-led-control/),
-  the TrueNAS prebuilt modules) are based on upstream and do **not** include
-  iDX6011 Pro support yet.
+```bash
+# TrueNAS SCALE (as root)
+tar xzf ugreen-leds_*_truenas_amd64.tar.gz && cd ugreen-leds
+sh install.sh /mnt/<your-pool>/ugreen-leds
 
-Open an issue if you want ready-made TrueNAS/Unraid packages for the
-static-LED variant — the packaging exists for ug-paneld already and could be
-extended.
+# Unraid (as root)
+tar xzf ugreen-leds_*_unraid_amd64.tar.gz && cd ugreen-leds
+sh install.sh
+```
+
+Colors and brightness are plain `ugreen_leds_cli` calls in the installed
+`start.sh` — edit and re-run it. See the `README.txt` inside the tarball.
+
+Live disk/network activity blinking is **not** included: it needs the
+`led-ugreen` kernel module compiled for the exact platform kernel, and the
+existing community packages
+([ich777's Unraid plugin](https://forums.unraid.net/topic/168423-ugreen-nas-led-control/),
+the TrueNAS prebuilt modules) are based on upstream and do **not** include
+iDX6011 Pro support yet. The tarballs are built with
+`./build-leds-tarballs.sh` from the statically linked CLI of
+[klein0r's fork](https://github.com/klein0r/ugreen_leds_controller).
 
 ## Install from release
 
