@@ -1,3 +1,4 @@
 # These files are consumed on Linux — never check them out with CRLF
 *.sh text eol=lf
 *.service text eol=lf
+*.txt text eol=lf
