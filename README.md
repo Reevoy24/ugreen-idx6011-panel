@@ -134,9 +134,12 @@ configurable; see the `README.txt` inside the tarball.
 Compared to the Proxmox/Debian kernel-module setup you get "busy vs idle"
 blinking rather than per-I/O flicker and no SMART health colors. Proper
 `/sys/class/leds` triggers would need the `led-ugreen` module compiled for
-the exact platform kernel — the existing community packages
-([ich777's Unraid plugin](https://forums.unraid.net/topic/168423-ugreen-nas-led-control/),
-the TrueNAS prebuilt modules) don't include iDX6011 Pro support yet. The
+the exact platform kernel — the existing community packages don't include
+iDX6011 Pro support yet. Upstream support is tracked in
+[ich777/unraid-ugreenleds-driver#8](https://github.com/ich777/unraid-ugreenleds-driver/issues/8)
+(Unraid) and
+[0x556c79/install_ugreen_leds_controller#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23)
+(TrueNAS) — a thumbs-up there helps the maintainers gauge demand. The
 tarballs are built with `./build-leds-tarballs.sh` from the statically
 linked CLI of
 [klein0r's fork](https://github.com/klein0r/ugreen_leds_controller).
