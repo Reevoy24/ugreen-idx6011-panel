@@ -48,7 +48,7 @@ Monitor log: /var/log/ugreen-leds-mon.log
 
 Details and the full Proxmox/Debian setup (kernel module, per-I/O
 triggers, SMART health colors):
-https://github.com/Reevoy24/ugreen-idx6011-pro-nas-display#front-panel-leds
+https://github.com/Reevoy24/ugreen-idx6011-panel#front-panel-leds
 
 Uninstall
 ---------

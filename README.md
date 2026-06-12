@@ -1,6 +1,6 @@
 # ug-paneld — touch dashboard for the UGREEN iDX6011 Pro front display
 
-[![Release](https://img.shields.io/github/v/release/Reevoy24/ugreen-idx6011-pro-nas-display?filter=v*&label=release&color=2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/github/v/release/Reevoy24/ugreen-idx6011-panel?filter=v*&label=release&color=2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
@@ -88,7 +88,7 @@ credit to them).
 SMART health colors). Run as root on the **host**:
 
 ```bash
-wget https://raw.githubusercontent.com/Reevoy24/ugreen-idx6011-pro-nas-display/master/tools/setup-ugreen-leds.sh
+wget https://raw.githubusercontent.com/Reevoy24/ugreen-idx6011-panel/master/tools/setup-ugreen-leds.sh
 bash setup-ugreen-leds.sh
 ```
 
@@ -355,8 +355,8 @@ mode decision is logged.
 
 ```bash
 apt install build-essential libdrm-dev libcurl4-openssl-dev pkg-config
-git clone --recursive https://github.com/Reevoy24/ugreen-idx6011-pro-nas-display
-cd ugreen-idx6011-pro-nas-display
+git clone --recursive https://github.com/Reevoy24/ugreen-idx6011-panel
+cd ugreen-idx6011-panel
 make                 # binary: ./ug-paneld   (requires root to run)
 ./build-deb.sh 1.4.0           # .deb packages
 ./build-tarballs.sh 1.4.0      # TrueNAS/Unraid tarballs
