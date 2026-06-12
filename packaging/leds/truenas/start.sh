@@ -12,4 +12,13 @@ export UGREEN_MODEL=idx6011
 "$CLI" power -on -color 255 255 255 -brightness 144
 "$CLI" netdev netdev2 -on -color 255 255 255 -brightness 96
 "$CLI" disk1 disk2 disk3 disk4 disk5 disk6 -on -color 255 255 255 -brightness 64
-echo "Front LEDs set."
+
+# live activity monitor: disk/network LEDs blink on activity via the MCU's
+# hardware blink mode — pure userspace, no kernel module, survives updates.
+# (it replaces a previously running instance via its pid file)
+if [ -f "$DIR/ugreen-leds-mon.sh" ]; then
+    nohup sh "$DIR/ugreen-leds-mon.sh" >/var/log/ugreen-leds-mon.log 2>&1 &
+    echo "Front LEDs set, activity monitor running (log: /var/log/ugreen-leds-mon.log)."
+else
+    echo "Front LEDs set."
+fi

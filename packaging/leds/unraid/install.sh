@@ -17,6 +17,7 @@ MARK_END="# <<< ugreen-leds <<<"
 mkdir -p "$PERSIST"
 cp -f ugreen_leds_cli "$PERSIST/ugreen_leds_cli"
 cp -f start.sh "$PERSIST/start.sh"
+cp -f ugreen-leds-mon.sh "$PERSIST/ugreen-leds-mon.sh"
 cp -f README.txt "$PERSIST/README.txt" 2>/dev/null || true
 
 if ! grep -q "$MARK_BEGIN" "$GO" 2>/dev/null; then

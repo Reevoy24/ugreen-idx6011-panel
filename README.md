@@ -123,16 +123,22 @@ tar xzf ugreen-leds_*_unraid_amd64.tar.gz && cd ugreen-leds
 sh install.sh
 ```
 
-Colors and brightness are plain `ugreen_leds_cli` calls in the installed
-`start.sh` — edit and re-run it. See the `README.txt` inside the tarball.
+The tarballs also include a small **userspace activity monitor**
+(`ugreen-leds-mon.sh`): disk and network LEDs switch to the LED controller's
+hardware blink mode while there is I/O or traffic and back to solid when
+idle. It polls `/proc` counters (default every 2 s) and only touches the
+i2c bus on state changes — no kernel module involved, so it survives every
+platform update. Colors, poll interval and the disk/NIC order are
+configurable; see the `README.txt` inside the tarball.
 
-Live disk/network activity blinking is **not** included: it needs the
-`led-ugreen` kernel module compiled for the exact platform kernel, and the
-existing community packages
+Compared to the Proxmox/Debian kernel-module setup you get "busy vs idle"
+blinking rather than per-I/O flicker and no SMART health colors. Proper
+`/sys/class/leds` triggers would need the `led-ugreen` module compiled for
+the exact platform kernel — the existing community packages
 ([ich777's Unraid plugin](https://forums.unraid.net/topic/168423-ugreen-nas-led-control/),
-the TrueNAS prebuilt modules) are based on upstream and do **not** include
-iDX6011 Pro support yet. The tarballs are built with
-`./build-leds-tarballs.sh` from the statically linked CLI of
+the TrueNAS prebuilt modules) don't include iDX6011 Pro support yet. The
+tarballs are built with `./build-leds-tarballs.sh` from the statically
+linked CLI of
 [klein0r's fork](https://github.com/klein0r/ugreen_leds_controller).
 
 ## Install from release

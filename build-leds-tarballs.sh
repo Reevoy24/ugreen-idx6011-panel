@@ -25,6 +25,7 @@ build_tarball() {
     mkdir -p "$stage"
 
     cp "$CLI" "$stage/ugreen_leds_cli"
+    cp packaging/leds/ugreen-leds-mon.sh "$stage/"
     cp "packaging/leds/$platform/install.sh" "packaging/leds/$platform/uninstall.sh" \
        "packaging/leds/$platform/start.sh" "packaging/leds/$platform/README.txt" "$stage/"
     chmod 755 "$stage/ugreen_leds_cli" "$stage"/*.sh

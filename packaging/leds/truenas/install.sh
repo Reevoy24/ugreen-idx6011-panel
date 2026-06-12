@@ -22,8 +22,9 @@ esac
 mkdir -p "$DEST"
 cp -f ugreen_leds_cli "$DEST/ugreen_leds_cli"
 cp -f start.sh "$DEST/start.sh"
+cp -f ugreen-leds-mon.sh "$DEST/ugreen-leds-mon.sh"
 cp -f README.txt "$DEST/README.txt" 2>/dev/null || true
-chmod 755 "$DEST/ugreen_leds_cli" "$DEST/start.sh"
+chmod 755 "$DEST/ugreen_leds_cli" "$DEST/start.sh" "$DEST/ugreen-leds-mon.sh"
 
 # Register a Post-Init script so the LEDs are set on every boot.
 if command -v midclt >/dev/null 2>&1; then
