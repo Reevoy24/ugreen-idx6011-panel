@@ -53,3 +53,13 @@ https://github.com/Reevoy24/ugreen-idx6011-panel#front-panel-leds
 Uninstall
 ---------
     sh uninstall.sh
+
+License
+-------
+The bundled ugreen_leds_cli binary is built from klein0r's fork of
+ugreen_leds_controller — MIT License, Copyright (c) 2024
+miskcoo@gmail.com and contributors. Source code (pinned commit
+4df6616a): https://github.com/klein0r/ugreen_leds_controller
+The install scripts and the activity monitor are MIT-licensed, part of
+https://github.com/Reevoy24/ugreen-idx6011-panel
+This is a community project, not affiliated with or endorsed by UGREEN.

@@ -1,6 +1,7 @@
 # ugreen-idx6011-panel
 
 Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
+*Community project — not affiliated with or endorsed by UGREEN.*
 
 [![Release](https://img.shields.io/github/v/release/Reevoy24/ugreen-idx6011-panel?filter=v*&label=release&color=2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
@@ -381,4 +382,7 @@ did (the .deb blacklists it instead). For boot-start, install
   and the findings in [issue #93](https://github.com/miskcoo/ugreen_leds_controller/issues/93)
 - [ESPHome AXS15231B driver](https://api-docs.esphome.io/axs15231__touchscreen_8cpp_source) —
   touchscreen protocol reference
-- [LVGL](https://lvgl.io) — the UI toolkit rendering the dashboard
+- [LVGL](https://lvgl.io) — the UI toolkit rendering the dashboard (MIT)
+- Fonts: [Montserrat](https://fonts.google.com/specimen/Montserrat)
+  (SIL OFL 1.1) and [Font Awesome Free](https://fontawesome.com/license/free)
+  symbols — embedded as bitmap fonts exactly like LVGL's built-ins
