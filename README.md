@@ -2,6 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Reevoy24/ugreen-idx6011-pro-nas-display?filter=v*&label=release&color=2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
+![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
 
 The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows
@@ -58,6 +59,13 @@ sh install.sh /mnt/<your-pool>/ug-paneld
 tar xzf ug-paneld_*_unraid_amd64.tar.gz && cd ug-paneld
 sh install.sh
 ```
+
+> [!NOTE]
+> Everything here is **field-tested on Proxmox VE on real hardware** (a
+> newer-revision iDX6011 Pro). The TrueNAS SCALE and Unraid packages —
+> display and LEDs alike — ship the identical binaries and mirror that
+> proven setup, but have not been run on those platforms yet. If you try
+> them, feedback (good or bad) via the issues is very welcome.
 
 > [!IMPORTANT]
 > **Display stays black?** On newer iDX6011 Pro revisions the panel power is
