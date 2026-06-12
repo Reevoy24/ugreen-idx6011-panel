@@ -30,7 +30,9 @@
    HAL SETTINGS
  *====================*/
 
-#define LV_DEF_REFR_PERIOD 30
+/* 15 ms cap = up to ~60 fps during swipe animations; the main loop only
+ * spins this fast while something is animating (see main.c pacing). */
+#define LV_DEF_REFR_PERIOD 15
 #define LV_DPI_DEF 130
 
 /*=======================

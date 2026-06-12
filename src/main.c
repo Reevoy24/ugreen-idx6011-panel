@@ -168,6 +168,12 @@ int main(int argc, char *argv[]) {
     opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
 
+    /* While a swipe/panel animation runs (or a finger is on the glass) the
+     * loop spins much faster so LVGL can hit its refresh period — with the
+     * fixed 33 ms sleep, transitions involving the render-heavy home page
+     * dropped to ~10 fps and visibly lagged. */
+    struct timespec sleep_anim = { .tv_nsec = 4000000 }; /* 4ms while animating */
+
     struct timespec sleep_long = { .tv_nsec = 50000000 }; /* 50ms touch poll while asleep */
 
     time_t last_led_check = 0;
@@ -236,7 +242,13 @@ int main(int argc, char *argv[]) {
 
         gui_update_clock();
 
-        if (now - last_stats_update >= stats_interval) {
+        int animating = lv_anim_count_running() > 0 ||
+                        (has_touch && now - touch_last_activity() < 150);
+
+        /* Defer stats refreshes while a transition is on screen: chart and
+         * label invalidations mid-swipe enlarge the redraw area and cause
+         * visible hitches. The data catches up a few frames later. */
+        if (now - last_stats_update >= stats_interval && !animating) {
             if (system_stats_collect(&stats) == 0)
                 gui_update_dashboard(&stats);
 
@@ -267,7 +279,7 @@ int main(int argc, char *argv[]) {
         }
 
         display_render();
-        nanosleep(&sleep_ts, NULL);
+        nanosleep(animating ? &sleep_anim : &sleep_ts, NULL);
     }
 
     api_stop();

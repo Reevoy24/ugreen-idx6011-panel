@@ -375,11 +375,9 @@ static uint8_t *decode_wallpaper(const char *fs_path)
                 if (sx >= src_w) sx = src_w - 1;
                 const uint8_t *sp = src_data + sy * src_stride + sx * bpp;
                 uint8_t *dp = out + y * dst_stride + x * 4;
-                if (bpp == 4) {
-                    dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2]; dp[3] = sp[3];
-                } else {
-                    dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2]; dp[3] = 0xFF;
-                }
+                /* alpha is forced opaque — the buffer is presented as
+                 * XRGB8888 so the blit is a copy, not a per-pixel blend */
+                dp[0] = sp[0]; dp[1] = sp[1]; dp[2] = sp[2]; dp[3] = 0xFF;
             }
         }
     }
@@ -422,7 +420,7 @@ static void apply_wallpaper(const char *name)
 
     wp_dsc.header.w = DISP_W;
     wp_dsc.header.h = DISP_H;
-    wp_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    wp_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888; /* opaque: fast copy blit */
     wp_dsc.header.stride = DISP_W * 4;
     wp_dsc.data_size = (uint32_t)(DISP_W * 4) * DISP_H;
     wp_dsc.data = wp_buf;
@@ -1358,13 +1356,22 @@ void gui_update_clock(void)
     static const char *mon_en[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
+    /* This runs every loop iteration; lv_label_set_text() invalidates the
+     * label even for identical text, which would repaint a slice of the
+     * (expensive) home tile every frame — so only set on actual change. */
+    static char prev_time[64];
+    static char prev_date[64];
+
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
     char buf[64];
 
     strftime(buf, sizeof(buf), "%H:%M", &tm);
-    lv_label_set_text(time_label, buf);
+    if (strcmp(buf, prev_time) != 0) {
+        snprintf(prev_time, sizeof(prev_time), "%s", buf);
+        lv_label_set_text(time_label, buf);
+    }
 
     if (strcmp(i18n_get_language(), "en") == 0)
         snprintf(buf, sizeof(buf), "%s, %s %d",
@@ -1372,7 +1379,10 @@ void gui_update_clock(void)
     else
         snprintf(buf, sizeof(buf), "%s., %d. %s",
                  wd_de[tm.tm_wday], tm.tm_mday, mon_de[tm.tm_mon]);
-    lv_label_set_text(date_label, buf);
+    if (strcmp(buf, prev_date) != 0) {
+        snprintf(prev_date, sizeof(prev_date), "%s", buf);
+        lv_label_set_text(date_label, buf);
+    }
 }
 
 void gui_update_dashboard(const system_stats_t *stats)
