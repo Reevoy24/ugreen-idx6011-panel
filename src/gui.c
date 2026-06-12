@@ -1511,7 +1511,7 @@ void gui_update_clock(void)
 
     static const char *wd_de[7] = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
     static const char *wd_en[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
-    static const char *mon_de[12] = { "Jan", "Feb", "Mrz", "Apr", "Mai", "Jun",
+    static const char *mon_de[12] = { "Jan", "Feb", "März", "Apr", "Mai", "Jun",
                                       "Jul", "Aug", "Sep", "Okt", "Nov", "Dez" };
     static const char *mon_en[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };

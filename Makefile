@@ -31,6 +31,10 @@ CSRCS += ./src/settings.c
 CSRCS += ./src/config.c
 CSRCS += ./src/backlight.c
 CSRCS += ./src/leds.c
+CSRCS += ./src/fonts/lv_font_montserrat_14.c
+CSRCS += ./src/fonts/lv_font_montserrat_16.c
+CSRCS += ./src/fonts/lv_font_montserrat_18.c
+CSRCS += ./src/fonts/lv_font_montserrat_20.c
 CSRCS += ./src/opnsense.c
 CSRCS += ./src/touch.c
 CSRCS += ./src/api.c
@@ -64,8 +68,11 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 LVGL_OBJS = $(filter-out ./src/%,$(COBJS))
 MOCKOBJ = ./test/render_mock.o
 
-mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(MOCKOBJ)
-	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
+FONTOBJS = ./src/fonts/lv_font_montserrat_14.o ./src/fonts/lv_font_montserrat_16.o \
+           ./src/fonts/lv_font_montserrat_18.o ./src/fonts/lv_font_montserrat_20.o
+
+mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(FONTOBJS) $(MOCKOBJ)
+	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(FONTOBJS) $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
 	@echo "Built render-mock"
 
 install: default

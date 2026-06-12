@@ -59,13 +59,16 @@
  *   FONT USAGE
  *===================*/
 
+/* Sizes 14-20 are NOT the LVGL built-ins: src/fonts/ ships regenerated
+ * versions with German umlauts (ÄÖÜäöüß) added — same Montserrat + symbol
+ * set otherwise. The big numeric sizes (24/32/48) stay built-in/ASCII. */
 #define LV_FONT_MONTSERRAT_8  0
 #define LV_FONT_MONTSERRAT_10 0
 #define LV_FONT_MONTSERRAT_12 0
-#define LV_FONT_MONTSERRAT_14 1
-#define LV_FONT_MONTSERRAT_16 1
-#define LV_FONT_MONTSERRAT_18 1
-#define LV_FONT_MONTSERRAT_20 1
+#define LV_FONT_MONTSERRAT_14 0
+#define LV_FONT_MONTSERRAT_16 0
+#define LV_FONT_MONTSERRAT_18 0
+#define LV_FONT_MONTSERRAT_20 0
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 1
 #define LV_FONT_MONTSERRAT_26 0
@@ -80,6 +83,12 @@
 #define LV_FONT_MONTSERRAT_44 0
 #define LV_FONT_MONTSERRAT_46 0
 #define LV_FONT_MONTSERRAT_48 1
+
+#define LV_FONT_CUSTOM_DECLARE \
+    LV_FONT_DECLARE(lv_font_montserrat_14) \
+    LV_FONT_DECLARE(lv_font_montserrat_16) \
+    LV_FONT_DECLARE(lv_font_montserrat_18) \
+    LV_FONT_DECLARE(lv_font_montserrat_20)
 
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
