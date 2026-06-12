@@ -6,6 +6,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include "lvgl/lvgl.h"
@@ -40,6 +41,15 @@
 #define COL_GREEN   0x34c759
 #define COL_RED     0xff453a
 #define COL_DOT_OFF 0x48484c
+/* black @ opa 120 blended over COL_BG — used when no wallpaper is set, so
+ * the glass tiles can be drawn as cheap opaque fills with the same look */
+#define COL_GLASS_SOLID 0x050506
+
+#define HOME_TILE_W ((CARD_W - 12) / 2)
+#define HOME_TILE_H 156
+#define HOME_RING   212
+#define GLASS_OPA   120
+#define GLASS_RADIUS 16
 
 /* ---- Pages ---- */
 #define MAX_PAGES 6
@@ -62,7 +72,11 @@ static lv_image_dsc_t wp_dsc;
 static lv_obj_t *wp_img = NULL;
 static lv_obj_t *time_label = NULL;
 static lv_obj_t *date_label = NULL;
-static lv_obj_t *home_cpu_arc = NULL;
+static lv_obj_t *home_cpu_canvas = NULL; /* pre-rendered CPU ring */
+static int home_ring_pct = -1;
+static uint8_t cpu_ring_buf[HOME_RING * HOME_RING * 4];
+static lv_obj_t *glass_tiles[8];         /* tiles baked into the wallpaper */
+static int glass_tile_count = 0;
 static lv_obj_t *home_cpu_val = NULL;
 static lv_obj_t *home_ram_val = NULL;
 static lv_obj_t *home_ram_bar = NULL;
@@ -325,6 +339,10 @@ static void tile_changed_cb(lv_event_t *e)
 
 /* ================= wallpaper ================= */
 
+/* defined with the home page below */
+static void bake_glass_into_wallpaper(void);
+static void glass_set_baked(int baked);
+
 static int file_exists(const char *path)
 {
     struct stat st;
@@ -398,6 +416,7 @@ static void apply_wallpaper(const char *name)
 
     if (strcmp(name, "none") == 0) {
         lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+        glass_set_baked(0); /* opaque tiles over the solid background */
         return;
     }
 
@@ -410,6 +429,7 @@ static void apply_wallpaper(const char *name)
     uint8_t *nbuf = decode_wallpaper(path);
     if (!nbuf) {
         lv_obj_add_flag(wp_img, LV_OBJ_FLAG_HIDDEN);
+        glass_set_baked(0);
         return;
     }
 
@@ -417,6 +437,9 @@ static void apply_wallpaper(const char *name)
     lv_image_cache_drop(&wp_dsc);
     if (wp_buf) free(wp_buf);
     wp_buf = nbuf;
+
+    bake_glass_into_wallpaper();
+    glass_set_baked(1);
 
     wp_dsc.header.w = DISP_W;
     wp_dsc.header.h = DISP_H;
@@ -468,21 +491,129 @@ static void build_wp_options(void)
 
 /* ================= pages ================= */
 
-/* translucent "glass" tile for the home page (sits on the wallpaper) */
+/* translucent "glass" tile for the home page (sits on the wallpaper).
+ * The translucent look is NOT rendered live: with a wallpaper the darkening
+ * is baked into the wallpaper bitmap (bake_glass_into_wallpaper) and the
+ * tile background stays transparent; without one the tile is an opaque fill
+ * of the equivalent blended color. Both avoid per-frame alpha blending,
+ * which made swipes over the home page expensive. */
 static lv_obj_t *glass_new(lv_obj_t *parent, int w)
 {
     lv_obj_t *c = lv_obj_create(parent);
     lv_obj_set_size(c, w, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(c, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(c, 120, 0);
-    lv_obj_set_style_radius(c, 16, 0);
+    lv_obj_set_style_bg_color(c, lv_color_hex(COL_GLASS_SOLID), 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(c, GLASS_RADIUS, 0);
     lv_obj_set_style_border_width(c, 0, 0);
     lv_obj_set_style_pad_all(c, 14, 0);
     lv_obj_set_style_pad_row(c, 8, 0);
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
     lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(c, LV_OBJ_FLAG_CLICKABLE);
+    if (glass_tile_count < (int)(sizeof(glass_tiles) / sizeof(glass_tiles[0])))
+        glass_tiles[glass_tile_count++] = c;
     return c;
+}
+
+/* glass tiles: transparent over a baked wallpaper / opaque solid without */
+static void glass_set_baked(int baked)
+{
+    for (int i = 0; i < glass_tile_count; i++)
+        lv_obj_set_style_bg_opa(glass_tiles[i],
+                                baked ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+}
+
+/* Burn the tiles' darkening into the wallpaper bitmap. Identical math to
+ * LVGL's blend (dst * (255-opa) / 255 with black src), incl. a 1px soft
+ * edge on the rounded corners — but it runs once per wallpaper switch
+ * instead of on every frame. */
+static void bake_glass_into_wallpaper(void)
+{
+    if (!wp_buf || glass_tile_count == 0 || !tiles[0]) return;
+
+    lv_obj_update_layout(tiles[0]);
+
+    lv_area_t base;
+    lv_obj_get_coords(tiles[0], &base);
+
+    for (int t = 0; t < glass_tile_count; t++) {
+        lv_area_t a;
+        lv_obj_get_coords(glass_tiles[t], &a);
+        int x0 = a.x1 - base.x1;
+        int y0 = a.y1 - base.y1;
+        int w = lv_area_get_width(&a);
+        int h = lv_area_get_height(&a);
+        const float r = (float)GLASS_RADIUS;
+
+        for (int y = 0; y < h; y++) {
+            int py = y0 + y;
+            if (py < 0 || py >= DISP_H) continue;
+            uint8_t *line = wp_buf + (size_t)py * DISP_W * 4;
+            for (int x = 0; x < w; x++) {
+                int px = x0 + x;
+                if (px < 0 || px >= DISP_W) continue;
+
+                float dx = 0.0f, dy = 0.0f;
+                if (x + 0.5f < r)          dx = r - (x + 0.5f);
+                else if (x + 0.5f > w - r) dx = (x + 0.5f) - (w - r);
+                if (y + 0.5f < r)          dy = r - (y + 0.5f);
+                else if (y + 0.5f > h - r) dy = (y + 0.5f) - (h - r);
+
+                float cov = 1.0f;
+                if (dx > 0.0f && dy > 0.0f) {
+                    float d = sqrtf(dx * dx + dy * dy);
+                    cov = r - d + 0.5f;
+                    if (cov <= 0.0f) continue;   /* outside the corner */
+                    if (cov > 1.0f) cov = 1.0f;
+                }
+
+                int keep = 255 - (int)(GLASS_OPA * cov + 0.5f);
+                uint8_t *p = line + (size_t)px * 4;
+                p[0] = (uint8_t)((p[0] * keep) / 255);
+                p[1] = (uint8_t)((p[1] * keep) / 255);
+                p[2] = (uint8_t)((p[2] * keep) / 255);
+            }
+        }
+    }
+}
+
+/* Pre-render the CPU ring into a canvas. Rasterizing a 212px anti-aliased
+ * arc on every frame was the single most expensive widget during swipes;
+ * the cached image blits cheaply. Redrawn only when the percentage moves. */
+static void home_ring_draw(int pct)
+{
+    if (!home_cpu_canvas) return;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    if (pct == home_ring_pct) return;
+    home_ring_pct = pct;
+
+    lv_canvas_fill_bg(home_cpu_canvas, lv_color_black(), LV_OPA_TRANSP);
+
+    lv_layer_t layer;
+    lv_canvas_init_layer(home_cpu_canvas, &layer);
+
+    lv_draw_arc_dsc_t a;
+    lv_draw_arc_dsc_init(&a);
+    a.center.x = HOME_RING / 2;
+    a.center.y = HOME_RING / 2;
+    a.radius = HOME_RING / 2;
+    a.width = 12;
+    a.opa = LV_OPA_COVER;
+    a.color = lv_color_hex(COL_TRACK);
+    a.start_angle = 0;
+    a.end_angle = 360;
+    lv_draw_arc(&layer, &a);
+
+    if (pct > 0) {
+        a.color = lv_color_hex(COL_CYAN);
+        a.rounded = 1;
+        a.start_angle = 270;
+        a.end_angle = 270 + (pct * 360) / 100;
+        lv_draw_arc(&layer, &a);
+    }
+
+    lv_canvas_finish_layer(home_cpu_canvas, &layer);
 }
 
 /* small "● Caption" header row inside a glass tile */
@@ -505,10 +636,6 @@ static void glass_head(lv_obj_t *tile, uint32_t dot_color, const char *text,
     else
         label_new(row, text, &lv_font_montserrat_14, COL_SUB);
 }
-
-#define HOME_TILE_W ((CARD_W - 12) / 2)
-#define HOME_TILE_H 156
-#define HOME_RING   212
 
 static void build_home(int col)
 {
@@ -549,20 +676,13 @@ static void build_home(int col)
     lv_obj_remove_flag(arc_wrap, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(arc_wrap, LV_OBJ_FLAG_CLICKABLE);
 
-    home_cpu_arc = lv_arc_create(arc_wrap);
-    lv_obj_set_size(home_cpu_arc, HOME_RING, HOME_RING);
-    lv_obj_center(home_cpu_arc);
-    lv_arc_set_rotation(home_cpu_arc, 270);
-    lv_arc_set_bg_angles(home_cpu_arc, 0, 360);
-    lv_arc_set_range(home_cpu_arc, 0, 100);
-    lv_arc_set_value(home_cpu_arc, 0);
-    lv_obj_remove_flag(home_cpu_arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_color(home_cpu_arc, lv_color_hex(COL_TRACK), LV_PART_MAIN);
-    lv_obj_set_style_arc_color(home_cpu_arc, lv_color_hex(COL_CYAN), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(home_cpu_arc, 12, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(home_cpu_arc, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_rounded(home_cpu_arc, true, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(home_cpu_arc, LV_OPA_TRANSP, LV_PART_KNOB);
+    home_cpu_canvas = lv_canvas_create(arc_wrap);
+    lv_canvas_set_buffer(home_cpu_canvas, cpu_ring_buf, HOME_RING, HOME_RING,
+                         LV_COLOR_FORMAT_ARGB8888);
+    lv_obj_center(home_cpu_canvas);
+    lv_obj_remove_flag(home_cpu_canvas, LV_OBJ_FLAG_CLICKABLE);
+    home_ring_pct = -1;
+    home_ring_draw(0);
 
     home_cpu_val = label_new(arc_wrap, "0 %", &lv_font_montserrat_32, COL_TEXT);
     lv_obj_align(home_cpu_val, LV_ALIGN_CENTER, 0, -12);
@@ -1389,8 +1509,7 @@ void gui_update_dashboard(const system_stats_t *stats)
 {
     char text[64];
 
-    if (home_cpu_arc)
-        lv_arc_set_value(home_cpu_arc, (int32_t)stats->cpu_usage);
+    home_ring_draw((int)stats->cpu_usage);
     if (home_cpu_val) {
         snprintf(text, sizeof(text), "%.0f %%", stats->cpu_usage);
         lv_label_set_text(home_cpu_val, text);
@@ -1685,7 +1804,10 @@ void gui_cleanup(void)
     memset(dots, 0, sizeof(dots));
     wp_img = NULL;
     time_label = date_label = NULL;
-    home_cpu_arc = home_cpu_val = home_ram_val = home_temp_val = NULL;
+    home_cpu_canvas = home_cpu_val = home_ram_val = home_temp_val = NULL;
+    home_ring_pct = -1;
+    glass_tile_count = 0;
+    memset(glass_tiles, 0, sizeof(glass_tiles));
     home_ram_bar = home_ram_sub = home_temp_bar = home_temp_sub = NULL;
     home_sys_val = home_sys_bar = home_sys_sub = NULL;
     home_net_rx = home_net_tx = home_up_val = NULL;
