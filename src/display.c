@@ -23,7 +23,23 @@ typedef struct {
     uint32_t connector_id;
     char connector_name[40];
     uint32_t width, height, refresh;
+    int prio;               /* 0 = internal panel type, 1 = external */
 } probe_result_t;
+
+/* In auto mode prefer internal panel connectors: an external monitor on a
+ * DP/HDMI port can also be "connected", and enumeration order must not
+ * decide whether the dashboard lands on the NAS panel or the big screen. */
+static int connector_prio(uint32_t type)
+{
+    switch (type) {
+        case DRM_MODE_CONNECTOR_eDP:
+        case DRM_MODE_CONNECTOR_DSI:
+        case DRM_MODE_CONNECTOR_LVDS:
+            return 0;
+        default:
+            return 1;
+    }
+}
 
 /* Builds the kernel-style connector name, e.g. "eDP-1", "DP-3", "DSI-1" —
  * matches what /sys/class/drm/card0-eDP-1 etc. are named after. */
@@ -104,15 +120,18 @@ static int probe_card(const char *path, const char *want, probe_result_t *out, i
                      path, want, name, connection_str(conn->connection), conn->count_modes);
         }
 
-        if (found != 0 && matches && usable) {
+        int prio = connector_prio(conn->connector_type);
+        if (matches && usable && (found != 0 || prio < out->prio)) {
             snprintf(out->device, sizeof(out->device), "%s", path);
             out->connector_id = conn->connector_id;
             snprintf(out->connector_name, sizeof(out->connector_name), "%s", name);
             out->width = conn->modes[0].hdisplay;
             out->height = conn->modes[0].vdisplay;
             out->refresh = conn->modes[0].vrefresh;
+            out->prio = prio;
             found = 0;
-            /* keep iterating so the full inventory still gets logged */
+            /* keep iterating so the full inventory still gets logged and an
+             * internal panel later in the list can still win */
         }
 
         drmModeFreeConnector(conn);
@@ -153,7 +172,8 @@ static int probe_devices(const char *forced, const char *want, probe_result_t *o
         char path[272];
         snprintf(path, sizeof(path), "/dev/dri/%s", list[i]->d_name);
         probe_result_t tmp;
-        if (probe_card(path, want, &tmp, log_inventory) == 0 && found != 0) {
+        if (probe_card(path, want, &tmp, log_inventory) == 0 &&
+            (found != 0 || tmp.prio < out->prio)) {
             *out = tmp;
             found = 0;
         }
