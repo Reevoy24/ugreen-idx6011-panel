@@ -1,7 +1,6 @@
 # ugreen-idx6011-panel
 
-Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro —
-on Proxmox, Debian, TrueNAS SCALE and Unraid.
+Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
 
 [![Release](https://img.shields.io/github/v/release/Reevoy24/ugreen-idx6011-panel?filter=v*&label=release&color=2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
