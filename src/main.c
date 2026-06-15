@@ -188,6 +188,7 @@ int main(int argc, char *argv[]) {
     double boot_uptime = system_uptime(); /* for the cold-boot backlight settle */
     uint32_t loop_start = custom_tick_get();
     uint32_t last_settle = 0;
+    int ec_ready = 0;              /* set once the EC accepts a backlight write */
     system_stats_t stats;
     opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
@@ -262,24 +263,24 @@ int main(int argc, char *argv[]) {
         uint32_t now = custom_tick_get();
 
         /* Cold-boot backlight settle: on a cold boot the panel/ITE EC may not
-         * accept the backlight command for the first minute(s) — display init
-         * succeeds but the panel stays dark. While settling we re-assert the
-         * backlight (and force a redraw) every 3 s and hold off sleeping, so the
-         * screen lights up the moment the EC is ready — no fixed wait, no manual
-         * restart. A warm manual restart starts past the window, so it's off. */
+         * accept the backlight command immediately — display init succeeds but
+         * the panel can stay dark. While settling we re-assert the backlight
+         * every 3 s and hold off sleeping, so the screen lights up the moment
+         * the EC is ready. Settling ENDS as soon as the EC accepts a write
+         * (so the normal idle timeout takes over right away — not after a fixed
+         * window), or at boot_settle_secs as a hard cap. A warm manual restart
+         * starts past the cap, so this is inactive then. */
         double cur_uptime = boot_uptime + (double)(now - loop_start) / 1000.0;
-        int warming = config.boot_settle_secs > 0 &&
+        int warming = !ec_ready && config.boot_settle_secs > 0 &&
                       cur_uptime < (double)config.boot_settle_secs;
         if (warming && !screen_asleep && (int32_t)(now - last_settle) >= 3000) {
             last_settle = now;
-            int rc = backlight_set_checked(api_get_brightness());
+            if (backlight_set_checked(api_get_brightness()) == 0) {
+                ec_ready = 1; /* panel lit → stop settling, normal timeout resumes */
+                last_touch_time = now; /* count the idle timeout from "screen up" */
+                SLEEPLOG("backlight up at uptime=%.0fs — idle timeout active", cur_uptime);
+            }
             lv_obj_invalidate(lv_screen_active());
-            /* DIAGNOSTIC (beta): rc=0 means the EC accepted the backlight write,
-             * rc=-1 means it refused (busy/not ready). Correlate the uptime at
-             * which the panel actually lights with these to see whether the EC
-             * write timing is the gate, or the write succeeds but the panel
-             * still stays dark (a different cause). */
-            SLEEPLOG("warming: uptime=%.0fs backlight_write rc=%d", cur_uptime, rc);
         }
 
         /* Idle timeout counts from boot: the screen turns itself off after the

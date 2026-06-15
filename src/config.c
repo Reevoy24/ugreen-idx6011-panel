@@ -85,7 +85,7 @@ int config_load(config_t *config) {
     config->api_port = 0;
     snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
     snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
-    config->boot_settle_secs = 240;
+    config->boot_settle_secs = 120;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
