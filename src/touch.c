@@ -239,6 +239,21 @@ int touch_poll(void) {
      * a tap will be decoded — which is what makes a full-off sleep safe to arm. */
     sense_ok = (num <= 5);
 
+    /* DIAGNOSTIC (beta only): show what the chip actually returns while the
+     * daemon is running, throttled to once every 5 s, so we can see its idle
+     * vs touched behaviour without stopping the daemon (stopping it lets the
+     * chip sleep and answer 0x23, which would mislead). */
+    {
+        static uint32_t diag_last = 0;
+        uint32_t diag_now = custom_tick_get();
+        if (diag_now - diag_last >= 5000) {
+            diag_last = diag_now;
+            fprintf(stderr, "ug-paneld[touch-diag]: raw %02x %02x %02x %02x %02x %02x  "
+                            "num=%u event=%u sense_ok=%d\n",
+                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], num, event, sense_ok);
+        }
+    }
+
     /* Only accept event 0 (down) or 2 (contact) with valid touch count
     Extracted from i2c bus using
 
