@@ -200,14 +200,17 @@ int main(int argc, char *argv[]) {
          * asleep the loop polls it directly and wakes on the poll result. */
         if (screen_asleep) {
             int touched = has_touch ? touch_poll() : 0;
-            /* Safety net: a dark screen must never be permanent. If nothing
-             * woke it within a generous cap, force it back on and stop
-             * auto-sleeping until a real tap proves wake works again. With the
-             * sense_ok arming gate this should never fire — it is pure insurance. */
+            /* Safety net for the COLD case only: until a real touch has ever
+             * woken the screen we cannot be sure a cold sleep is wakeable, so
+             * if nothing wakes it within a few minutes, force it back on and
+             * stop auto-sleeping until a tap proves wake works. Once any touch
+             * has woken it, this is disabled (no spurious wakes on an idle but
+             * working unit). With working touch this never fires. */
             uint32_t wnow = custom_tick_get();
-            uint32_t wd_ms = bl_timeout_ms * 4u;
-            if (wd_ms < 600000u) wd_ms = 600000u; /* never below 10 min */
-            int watchdog = (int32_t)(wnow - sleep_entered_at) >= (int32_t)wd_ms;
+            uint32_t wd_ms = bl_timeout_ms * 3u;
+            if (wd_ms < 180000u) wd_ms = 180000u; /* never below 3 min */
+            int watchdog = (touch_last_activity() == 0) &&
+                           (int32_t)(wnow - sleep_entered_at) >= (int32_t)wd_ms;
 
             if (touched || api_get_state() || watchdog) {
                 if (watchdog && !touched && !api_get_state()) {
@@ -240,16 +243,16 @@ int main(int argc, char *argv[]) {
          * in the idle check and a wake/sleep oscillation). */
         uint32_t now = custom_tick_get();
 
-        /* Idle timeout counts from boot, so the screen turns itself off after
-         * the configured time even if it was never touched. It arms only once
-         * the touch chip is producing VALID frames (touch_sense_ok()) — proof
-         * the chip is awake and sensing, so a tap will wake it. Arming on a
-         * bare I2C read instead (which the chip's 0x23 auto-sleep garbage also
-         * satisfies) is what powered off an unwakeable chip and bricked v1.4.2. */
+        /* Idle timeout counts from boot: the screen turns itself off after the
+         * configured time even if never touched. The touch chip emits constant
+         * garbage (0x22) whenever it is NOT physically touched and only returns
+         * a valid frame DURING a touch — so wake capability cannot be verified
+         * from idle reads. We sleep on timeout and let a physical touch wake it
+         * (the chip does produce a valid frame on contact); the cold watchdog
+         * above guarantees recovery if a pre-first-touch cold wake ever fails. */
         int idle_hit = has_touch && bl_timeout_ms > 0 && !sleep_disabled &&
-                       touch_sense_ok() &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
-        if (idle_hit || (!api_get_state() && touch_sense_ok())) {
+        if (idle_hit || !api_get_state()) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
             if (config.sleep_brightness <= 0)
