@@ -17,6 +17,13 @@ uint16_t touch_get_x(void);
 uint16_t touch_get_y(void);
 uint32_t touch_last_activity(void); /* custom_tick_get() ms of last contact */
 
+/* 1 once the touch chip has answered an I2C read (i.e. it is present and
+ * responding). Used to arm the idle sleep timeout: a responding chip means a
+ * future tap will be detected, so it is safe to sleep — without waiting for
+ * the user to tap first. Stays 0 if the chip never answers (broken touch),
+ * which keeps the screen on so it can never be stranded dark. */
+int touch_comms_ok(void);
+
 /* Register the touchscreen as an LVGL pointer device (after display init). */
 void touch_lvgl_register(void);
 

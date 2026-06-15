@@ -195,6 +195,7 @@ static void touch_try_reconnect(void) {
 static uint16_t cur_x = 0, cur_y = 0;
 static int cur_pressed = 0;
 static uint32_t last_activity = 0;
+static int comms_ok = 0; /* chip has answered at least one I2C read */
 
 int touch_poll(void) {
     cur_pressed = 0;
@@ -212,6 +213,7 @@ int touch_poll(void) {
             close(i2c_fd);
             i2c_fd = -1;
             disabled_at = custom_tick_get();
+            comms_ok = 0; /* chip stopped responding — keep the screen awake */
         }
         return 0;
     }
@@ -223,11 +225,13 @@ int touch_poll(void) {
             close(i2c_fd);
             i2c_fd = -1;
             disabled_at = custom_tick_get();
+            comms_ok = 0; /* chip stopped responding — keep the screen awake */
         }
         return 0;
     }
 
     fail_count = 0;
+    comms_ok = 1; /* the chip answered — safe to arm the sleep timeout */
 
     uint8_t num = buf[1];
     uint8_t event = (buf[2] >> 6) & 0x03;
@@ -275,6 +279,7 @@ int touch_poll(void) {
 uint16_t touch_get_x(void) { return cur_x; }
 uint16_t touch_get_y(void) { return cur_y; }
 uint32_t touch_last_activity(void) { return last_activity; }
+int touch_comms_ok(void) { return comms_ok; }
 
 static void touch_indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     (void)indev;
