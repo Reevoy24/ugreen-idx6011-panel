@@ -195,6 +195,7 @@ static void touch_try_reconnect(void) {
 static uint16_t cur_x = 0, cur_y = 0;
 static int cur_pressed = 0;
 static uint32_t last_activity = 0;
+static int sense_ok = 0; /* last read was a valid frame (chip awake & sensing) */
 
 int touch_poll(void) {
     cur_pressed = 0;
@@ -231,6 +232,12 @@ int touch_poll(void) {
 
     uint8_t num = buf[1];
     uint8_t event = (buf[2] >> 6) & 0x03;
+
+    /* Content check: a real frame carries a small touch count. The chip's
+     * auto-sleep state answers every read with constant 0x23 bytes (num would
+     * be 0x23 = 35). A plausible count proves the chip is awake and sensing —
+     * a tap will be decoded — which is what makes a full-off sleep safe to arm. */
+    sense_ok = (num <= 5);
 
     /* Only accept event 0 (down) or 2 (contact) with valid touch count
     Extracted from i2c bus using
@@ -275,6 +282,7 @@ int touch_poll(void) {
 uint16_t touch_get_x(void) { return cur_x; }
 uint16_t touch_get_y(void) { return cur_y; }
 uint32_t touch_last_activity(void) { return last_activity; }
+int touch_sense_ok(void) { return sense_ok; }
 
 static void touch_indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     (void)indev;

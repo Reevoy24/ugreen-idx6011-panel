@@ -30,14 +30,6 @@ static volatile int signal_count = 0;
 static ui_state_t ui_state;
 static uint32_t bl_timeout_ms = 30000;
 
-/* Cold idle: until a real tap has ever been decoded on this unit we have NOT
- * proven the screen can be woken, so we must never fully black it out (a cold
- * full-off sleep on a chip stuck in 0x23 auto-sleep is what bricked v1.4.2 —
- * it could never wake). Instead we dim the live dashboard to this level: still
- * clearly on, panel rail kept powered, recoverable by a tap. After the first
- * decoded tap, the proven backlight_off() sleep (v1.4.1 behaviour) takes over. */
-#define COLD_IDLE_PCT 25
-
 /* Transition logging, always on (transitions are infrequent — no journal spam).
  * This is the data we lacked when v1.4.2 bricked the display. */
 #define SLEEPLOG(...) do { fprintf(stderr, "ug-paneld[disp]: " __VA_ARGS__); fputc('\n', stderr); } while (0)
@@ -176,9 +168,8 @@ int main(int argc, char *argv[]) {
     uint32_t stats_interval = config.poll_rate * 1000;
     uint32_t last_touch_time = custom_tick_get();
     int screen_asleep = 0;
-    uint32_t sleep_entered_at = 0; /* for the max-dark watchdog */
-    int cold_dim = 0;              /* dashboard dimmed because wake unproven */
-    int chip_wake_failed = 0;      /* watchdog had to rescue a dark screen → stop full-sleeping */
+    uint32_t sleep_entered_at = 0; /* for the safety watchdog */
+    int sleep_disabled = 0;        /* set if the watchdog had to rescue a dark screen */
     system_stats_t stats;
     opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
@@ -209,27 +200,24 @@ int main(int argc, char *argv[]) {
          * asleep the loop polls it directly and wakes on the poll result. */
         if (screen_asleep) {
             int touched = has_touch ? touch_poll() : 0;
-            /* Max-dark watchdog: the screen may NEVER stay dark indefinitely.
-             * If nothing woke it within a generous cap, force a complete wake
-             * regardless of touch — this is the hard guarantee against a brick. */
+            /* Safety net: a dark screen must never be permanent. If nothing
+             * woke it within a generous cap, force it back on and stop
+             * auto-sleeping until a real tap proves wake works again. With the
+             * sense_ok arming gate this should never fire — it is pure insurance. */
             uint32_t wnow = custom_tick_get();
             uint32_t wd_ms = bl_timeout_ms * 4u;
-            if (wd_ms < 300000u) wd_ms = 300000u; /* never below 5 min */
+            if (wd_ms < 600000u) wd_ms = 600000u; /* never below 10 min */
             int watchdog = (int32_t)(wnow - sleep_entered_at) >= (int32_t)wd_ms;
 
             if (touched || api_get_state() || watchdog) {
-                if (touched) {
-                    SLEEPLOG("wake: touch");
-                    chip_wake_failed = 0; /* a real tap re-proves the chip */
-                } else if (watchdog && !api_get_state()) {
-                    SLEEPLOG("wake: WATCHDOG force-wake after %u ms (touch never woke it)",
+                if (watchdog && !touched && !api_get_state()) {
+                    SLEEPLOG("watchdog force-wake after %u ms — auto-sleep off until next tap",
                              (unsigned)(wnow - sleep_entered_at));
-                    chip_wake_failed = 1; /* don't full-sleep again → dim instead, no strobe */
+                    sleep_disabled = 1;
                 } else {
-                    SLEEPLOG("wake: api");
+                    SLEEPLOG("wake (%s)", touched ? "touch" : "api");
+                    if (touched) sleep_disabled = 0;
                 }
-                /* complete wake transition (all of it — api_set_state(1) is
-                 * mandatory, else the !api_get_state() sleep gate re-sleeps next tick) */
                 gui_set_sleep(0);
                 backlight_set(api_get_brightness());
                 screen_asleep = 0;
@@ -252,50 +240,28 @@ int main(int argc, char *argv[]) {
          * in the idle check and a wake/sleep oscillation). */
         uint32_t now = custom_tick_get();
 
-        /* The idle timeout counts from boot, so the screen idles on its own
-         * even if never touched. But HOW it idles depends on whether we have
-         * ever decoded a real tap on this unit ("wake proven"):
-         *   - proven  → true sleep: black frame + backlight off/dim (v1.4.1).
-         *   - unproven→ cold-dim: dim the live dashboard, never black, so a
-         *               chip stuck in 0x23 auto-sleep can't strand a dark
-         *               screen (the v1.4.2 brick). chip_wake_failed forces
-         *               this path after a watchdog rescue to avoid strobing. */
-        int idle_hit = has_touch && bl_timeout_ms > 0 &&
+        /* Idle timeout counts from boot, so the screen turns itself off after
+         * the configured time even if it was never touched. It arms only once
+         * the touch chip is producing VALID frames (touch_sense_ok()) — proof
+         * the chip is awake and sensing, so a tap will wake it. Arming on a
+         * bare I2C read instead (which the chip's 0x23 auto-sleep garbage also
+         * satisfies) is what powered off an unwakeable chip and bricked v1.4.2. */
+        int idle_hit = has_touch && bl_timeout_ms > 0 && !sleep_disabled &&
+                       touch_sense_ok() &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
-        int recently_active = has_touch &&
-                       (int32_t)(now - last_touch_time) < (int32_t)bl_timeout_ms;
-        int wake_proven = has_touch && touch_last_activity() != 0 && !chip_wake_failed;
-
-        /* leave cold-dim as soon as the user interacts */
-        if (cold_dim && recently_active) {
-            backlight_set(api_get_brightness());
-            cold_dim = 0;
-            chip_wake_failed = 0; /* a real interaction re-proves the chip */
-            SLEEPLOG("cold-dim end (user interaction)");
-        }
-
-        if (wake_proven) {
-            if (idle_hit || !api_get_state()) {
-                gui_set_sleep(1);
-                lv_refr_now(NULL); /* paint the black frame before pausing renders */
-                if (config.sleep_brightness <= 0)
-                    backlight_off();
-                else
-                    backlight_set(config.sleep_brightness);
-                screen_asleep = 1;
-                sleep_entered_at = now;
-                cold_dim = 0;
-                api_set_state(0);
-                SLEEPLOG("sleep (proven, backlight %s)",
-                         config.sleep_brightness <= 0 ? "off" : "dim");
-                nanosleep(&sleep_long, NULL);
-                continue;
-            }
-        } else if (idle_hit && !cold_dim) {
-            /* unproven wake → never black out; dim the live dashboard instead */
-            backlight_set(COLD_IDLE_PCT);
-            cold_dim = 1;
-            SLEEPLOG("cold-dim begin (wake unproven; dashboard stays visible)");
+        if (idle_hit || (!api_get_state() && touch_sense_ok())) {
+            gui_set_sleep(1);
+            lv_refr_now(NULL); /* paint the black frame before pausing renders */
+            if (config.sleep_brightness <= 0)
+                backlight_off();
+            else
+                backlight_set(config.sleep_brightness);
+            screen_asleep = 1;
+            sleep_entered_at = now;
+            api_set_state(0);
+            SLEEPLOG("sleep (backlight %s)", config.sleep_brightness <= 0 ? "off" : "dim");
+            nanosleep(&sleep_long, NULL);
+            continue;
         }
 
         gui_update_clock();
