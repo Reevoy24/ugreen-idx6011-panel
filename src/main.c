@@ -170,6 +170,8 @@ int main(int argc, char *argv[]) {
     int screen_asleep = 0;
     uint32_t sleep_entered_at = 0; /* for the safety watchdog */
     int sleep_disabled = 0;        /* set if the watchdog had to rescue a dark screen */
+    uint32_t boot_ms = custom_tick_get(); /* for the cold-boot backlight settle */
+    uint32_t last_settle = 0;
     system_stats_t stats;
     opnsense_stats_t opn_stats;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
@@ -242,6 +244,18 @@ int main(int argc, char *argv[]) {
          * touch timestamps (an earlier sample caused an unsigned underflow
          * in the idle check and a wake/sleep oscillation). */
         uint32_t now = custom_tick_get();
+
+        /* Cold-boot backlight settle: at early boot the ITE EC may not accept
+         * the backlight command yet — the panel powers up but stays dark until
+         * a later restart, even though DRM/render are fine. Re-assert the
+         * backlight and force a redraw every 2 s for the first ~20 s so the
+         * screen lights up the moment the EC is ready, no manual restart. */
+        if (!screen_asleep && (int32_t)(now - boot_ms) < 20000 &&
+            (int32_t)(now - last_settle) >= 2000) {
+            last_settle = now;
+            backlight_set(api_get_brightness());
+            lv_obj_invalidate(lv_screen_active());
+        }
 
         /* Idle timeout counts from boot: the screen turns itself off after the
          * configured time even if never touched. The touch chip emits constant
