@@ -1,6 +1,11 @@
 [Unit]
 Description=Ugreen NAS Front Panel Display
-After=multi-user.target
+# Start early (right after basic system init), NOT after multi-user.target —
+# the latter waits for every other service (ZFS import, VM autostart, slow
+# disks, ...), which on a NAS can be minutes, leaving the panel dark until
+# then. The daemon waits for the DRM connector itself (drm_probe_timeout), so
+# an early start is safe.
+After=basic.target
 
 [Service]
 Type=simple

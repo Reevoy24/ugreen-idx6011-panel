@@ -3,7 +3,9 @@
 
 #define CONFIG_FILE_PATH "/etc/ug-paneld/config.json"
 #define DEFAULT_POLL_RATE 2
-#define DEFAULT_DRM_PROBE_TIMEOUT 10
+/* generous so an early boot start (before the panel connector is ready) waits
+ * for it instead of giving up with exit code 2 */
+#define DEFAULT_DRM_PROBE_TIMEOUT 60
 
 typedef struct {
     int poll_rate;
