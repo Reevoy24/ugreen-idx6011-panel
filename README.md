@@ -171,9 +171,10 @@ your `config.json` is never rewritten.
 | `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`) |
 | `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`) |
 | `api_port` | `0` | HTTP API port for backlight control (0 = disabled) |
+| `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `drm_device` | auto | DRM device path, e.g. `/dev/dri/card0`; empty = scan all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: name (`eDP-1`), numeric id, or `auto` |
-| `drm_probe_timeout` | `10` | Seconds to wait at startup for a connected connector |
+| `drm_probe_timeout` | `60` | Seconds to wait at startup for a connected connector (high so the early-boot start waits for the panel instead of giving up) |
 | `i2c_device` | `auto` | ACPI id to unbind from `i2c_hid_acpi`: `auto` (knows `CUST0000:00` + `MSFT8000:00`), `none`, or a specific id |
 | `touch_device` | `auto` | Touch I2C bus: `auto` resolves it from the ACPI link; explicit `/dev/i2c-2` works |
 | `debug` | `false` | Verbose DRM probe logging |
