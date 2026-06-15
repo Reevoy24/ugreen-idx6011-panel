@@ -76,6 +76,21 @@ static void unbind_vt_console(void) {
     }
 }
 
+/* System uptime in seconds (0 on error). Used to detect a cold boot: when the
+ * daemon starts at low uptime the panel/ITE EC may not be ready to accept the
+ * backlight command for a while, so the display init succeeds but the panel
+ * stays dark. On a manual `systemctl restart` the uptime is already high, so
+ * the cold-boot settle below is skipped. */
+static double system_uptime(void) {
+    double up = 0.0;
+    FILE *f = fopen("/proc/uptime", "r");
+    if (f) {
+        if (fscanf(f, "%lf", &up) != 1) up = 0.0;
+        fclose(f);
+    }
+    return up;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
@@ -170,7 +185,8 @@ int main(int argc, char *argv[]) {
     int screen_asleep = 0;
     uint32_t sleep_entered_at = 0; /* for the safety watchdog */
     int sleep_disabled = 0;        /* set if the watchdog had to rescue a dark screen */
-    uint32_t boot_ms = custom_tick_get(); /* for the cold-boot backlight settle */
+    double boot_uptime = system_uptime(); /* for the cold-boot backlight settle */
+    uint32_t loop_start = custom_tick_get();
     uint32_t last_settle = 0;
     system_stats_t stats;
     opnsense_stats_t opn_stats;
@@ -245,13 +261,16 @@ int main(int argc, char *argv[]) {
          * in the idle check and a wake/sleep oscillation). */
         uint32_t now = custom_tick_get();
 
-        /* Cold-boot backlight settle: at early boot the ITE EC may not accept
-         * the backlight command yet — the panel powers up but stays dark until
-         * a later restart, even though DRM/render are fine. Re-assert the
-         * backlight and force a redraw every 2 s for the first ~20 s so the
-         * screen lights up the moment the EC is ready, no manual restart. */
-        if (!screen_asleep && (int32_t)(now - boot_ms) < 20000 &&
-            (int32_t)(now - last_settle) >= 2000) {
+        /* Cold-boot backlight settle: on a cold boot the panel/ITE EC may not
+         * accept the backlight command for the first minute(s) — display init
+         * succeeds but the panel stays dark. While settling we re-assert the
+         * backlight (and force a redraw) every 3 s and hold off sleeping, so the
+         * screen lights up the moment the EC is ready — no fixed wait, no manual
+         * restart. A warm manual restart starts past the window, so it's off. */
+        double cur_uptime = boot_uptime + (double)(now - loop_start) / 1000.0;
+        int warming = config.boot_settle_secs > 0 &&
+                      cur_uptime < (double)config.boot_settle_secs;
+        if (warming && !screen_asleep && (int32_t)(now - last_settle) >= 3000) {
             last_settle = now;
             backlight_set(api_get_brightness());
             lv_obj_invalidate(lv_screen_active());
@@ -266,7 +285,7 @@ int main(int argc, char *argv[]) {
          * above guarantees recovery if a pre-first-touch cold wake ever fails. */
         int idle_hit = has_touch && bl_timeout_ms > 0 && !sleep_disabled &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
-        if (idle_hit || !api_get_state()) {
+        if (!warming && (idle_hit || !api_get_state())) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
             if (config.sleep_brightness <= 0)

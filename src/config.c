@@ -85,6 +85,7 @@ int config_load(config_t *config) {
     config->api_port = 0;
     snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
     snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
+    config->boot_settle_secs = 240;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -124,6 +125,7 @@ int config_load(config_t *config) {
     json_get_int(json, "api_port", &config->api_port);
     json_get_str(json, "led_night_start", config->led_night_start, sizeof(config->led_night_start));
     json_get_str(json, "led_night_end", config->led_night_end, sizeof(config->led_night_end));
+    json_get_int(json, "boot_settle_secs", &config->boot_settle_secs);
 
     free(json);
     return 0;

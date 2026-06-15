@@ -26,6 +26,10 @@ typedef struct {
     int debug;             /* verbose display probe logging */
     char led_night_start[8]; /* front LED night window start, "HH:MM" */
     char led_night_end[8];   /* front LED night window end, "HH:MM" */
+    int boot_settle_secs;    /* on a cold boot, for this many seconds of uptime,
+                                re-assert the backlight and hold off sleeping so
+                                the panel lights as soon as the EC is ready
+                                (cold-boot settle); 0 = off */
 } config_t;
 
 int config_load(config_t *config);
