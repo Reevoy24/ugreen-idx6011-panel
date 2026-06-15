@@ -183,8 +183,6 @@ int main(int argc, char *argv[]) {
     uint32_t stats_interval = config.poll_rate * 1000;
     uint32_t last_touch_time = custom_tick_get();
     int screen_asleep = 0;
-    uint32_t sleep_entered_at = 0; /* for the safety watchdog */
-    int sleep_disabled = 0;        /* set if the watchdog had to rescue a dark screen */
     double boot_uptime = system_uptime(); /* for the cold-boot backlight settle */
     uint32_t loop_start = custom_tick_get();
     uint32_t last_settle = 0;
@@ -219,27 +217,8 @@ int main(int argc, char *argv[]) {
          * asleep the loop polls it directly and wakes on the poll result. */
         if (screen_asleep) {
             int touched = has_touch ? touch_poll() : 0;
-            /* Safety net for the COLD case only: until a real touch has ever
-             * woken the screen we cannot be sure a cold sleep is wakeable, so
-             * if nothing wakes it within a few minutes, force it back on and
-             * stop auto-sleeping until a tap proves wake works. Once any touch
-             * has woken it, this is disabled (no spurious wakes on an idle but
-             * working unit). With working touch this never fires. */
-            uint32_t wnow = custom_tick_get();
-            uint32_t wd_ms = bl_timeout_ms * 3u;
-            if (wd_ms < 180000u) wd_ms = 180000u; /* never below 3 min */
-            int watchdog = (touch_last_activity() == 0) &&
-                           (int32_t)(wnow - sleep_entered_at) >= (int32_t)wd_ms;
-
-            if (touched || api_get_state() || watchdog) {
-                if (watchdog && !touched && !api_get_state()) {
-                    SLEEPLOG("watchdog force-wake after %u ms — auto-sleep off until next tap",
-                             (unsigned)(wnow - sleep_entered_at));
-                    sleep_disabled = 1;
-                } else {
-                    SLEEPLOG("wake (%s)", touched ? "touch" : "api");
-                    if (touched) sleep_disabled = 0;
-                }
+            if (touched || api_get_state()) {
+                SLEEPLOG("wake (%s)", touched ? "touch" : "api");
                 gui_set_sleep(0);
                 backlight_set(api_get_brightness());
                 screen_asleep = 0;
@@ -283,14 +262,12 @@ int main(int argc, char *argv[]) {
             lv_obj_invalidate(lv_screen_active());
         }
 
-        /* Idle timeout counts from boot: the screen turns itself off after the
-         * configured time even if never touched. The touch chip emits constant
-         * garbage (0x22) whenever it is NOT physically touched and only returns
-         * a valid frame DURING a touch — so wake capability cannot be verified
-         * from idle reads. We sleep on timeout and let a physical touch wake it
-         * (the chip does produce a valid frame on contact); the cold watchdog
-         * above guarantees recovery if a pre-first-touch cold wake ever fails. */
-        int idle_hit = has_touch && bl_timeout_ms > 0 && !sleep_disabled &&
+        /* Idle timeout: the screen turns off after the configured idle time,
+         * counted from the last touch (or from when the panel first lit at
+         * boot). A physical touch — or the HTTP API — wakes it; until then it
+         * stays asleep, which is the whole point of a timeout. The touch chip
+         * reliably produces a valid frame on contact, so wake works. */
+        int idle_hit = has_touch && bl_timeout_ms > 0 &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
         if (!warming && (idle_hit || !api_get_state())) {
             gui_set_sleep(1);
@@ -300,7 +277,6 @@ int main(int argc, char *argv[]) {
             else
                 backlight_set(config.sleep_brightness);
             screen_asleep = 1;
-            sleep_entered_at = now;
             api_set_state(0);
             SLEEPLOG("sleep (backlight %s)", config.sleep_brightness <= 0 ? "off" : "dim");
             nanosleep(&sleep_long, NULL);
