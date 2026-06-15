@@ -43,12 +43,14 @@ int backlight_init(void) {
     return 0;
 }
 
-static void backlight_write(int value) {
-    if (!ec_ready) return;
+static int backlight_write(int value) {
+    if (!ec_ready) return -1;
     if (value < BL_MIN) value = BL_MIN;
     if (value > BL_MAX) value = BL_MAX;
-    if (ec_write(EC_ADDR_BACKLIGHT, (unsigned char)value) != 0)
+    int rc = ec_write(EC_ADDR_BACKLIGHT, (unsigned char)value);
+    if (rc != 0)
         fprintf(stderr, "Warning: EC backlight write failed\n");
+    return rc;
 }
 
 void backlight_on(void) {
@@ -59,10 +61,14 @@ void backlight_off(void) {
     backlight_write(BL_MAX);
 }
 
+int backlight_set_checked(int percent) {
+    int value;
+    if (percent <= 0)        value = BL_MAX;
+    else if (percent >= 100) value = BL_MIN;
+    else                     value = BL_MAX - (percent * (BL_MAX - BL_MIN) / 100);
+    return backlight_write(value);
+}
 
 void backlight_set(int percent) {
-    if (percent <= 0) { backlight_off(); return; }
-    if (percent >= 100) { backlight_on(); return; }
-    int value = BL_MAX - (percent * (BL_MAX - BL_MIN) / 100);
-    backlight_write(value);
+    backlight_set_checked(percent);
 }

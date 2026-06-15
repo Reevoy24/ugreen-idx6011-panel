@@ -272,8 +272,14 @@ int main(int argc, char *argv[]) {
                       cur_uptime < (double)config.boot_settle_secs;
         if (warming && !screen_asleep && (int32_t)(now - last_settle) >= 3000) {
             last_settle = now;
-            backlight_set(api_get_brightness());
+            int rc = backlight_set_checked(api_get_brightness());
             lv_obj_invalidate(lv_screen_active());
+            /* DIAGNOSTIC (beta): rc=0 means the EC accepted the backlight write,
+             * rc=-1 means it refused (busy/not ready). Correlate the uptime at
+             * which the panel actually lights with these to see whether the EC
+             * write timing is the gate, or the write succeeds but the panel
+             * still stays dark (a different cause). */
+            SLEEPLOG("warming: uptime=%.0fs backlight_write rc=%d", cur_uptime, rc);
         }
 
         /* Idle timeout counts from boot: the screen turns itself off after the
