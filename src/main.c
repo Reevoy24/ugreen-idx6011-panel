@@ -217,14 +217,12 @@ int main(int argc, char *argv[]) {
          * in the idle check and a wake/sleep oscillation). */
         uint32_t now = custom_tick_get();
 
-        /* Sleep on idle timeout (armed as soon as the touch chip answers I2C,
-         * so a tap can wake it — but never on a non-responding chip, which
-         * would strand a dark screen) or when switched off via the HTTP API.
-         * The timeout counts from boot, so the screen sleeps on its own even
-         * if it is never touched. The screen shows pure black at a minimal
-         * backlight level: looks off, no burn-in, and the panel rail keeps
-         * the touch controller powered so a tap can wake it. */
-        int idle_hit = has_touch && touch_comms_ok() &&
+        /* Sleep on idle timeout (armed only once touch has proven to work,
+         * so a non-working touch can never strand a dark screen) or when
+         * switched off via the HTTP API. The screen shows pure black at a
+         * minimal backlight level: looks off, no burn-in, and the panel
+         * rail keeps the touch controller powered so a tap can wake it. */
+        int idle_hit = has_touch && touch_last_activity() != 0 &&
                        bl_timeout_ms > 0 &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
         if (idle_hit || !api_get_state()) {
