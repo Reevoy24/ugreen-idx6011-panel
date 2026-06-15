@@ -17,12 +17,6 @@ uint16_t touch_get_x(void);
 uint16_t touch_get_y(void);
 uint32_t touch_last_activity(void); /* custom_tick_get() ms of last contact */
 
-/* 1 when the last read was a structurally VALID frame (sane touch count) — the
- * chip is awake and sensing, not emitting its 0x23 auto-sleep garbage. Gates
- * the idle sleep so the screen only powers off when a tap can actually wake it
- * (arming on a bare I2C read, which garbage also satisfies, bricked v1.4.2). */
-int touch_sense_ok(void);
-
 /* Register the touchscreen as an LVGL pointer device (after display init). */
 void touch_lvgl_register(void);
 

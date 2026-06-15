@@ -195,7 +195,6 @@ static void touch_try_reconnect(void) {
 static uint16_t cur_x = 0, cur_y = 0;
 static int cur_pressed = 0;
 static uint32_t last_activity = 0;
-static int sense_ok = 0; /* last read was a valid frame (chip awake & sensing) */
 
 int touch_poll(void) {
     cur_pressed = 0;
@@ -233,26 +232,9 @@ int touch_poll(void) {
     uint8_t num = buf[1];
     uint8_t event = (buf[2] >> 6) & 0x03;
 
-    /* Content check: a real frame carries a small touch count. The chip's
-     * auto-sleep state answers every read with constant 0x23 bytes (num would
-     * be 0x23 = 35). A plausible count proves the chip is awake and sensing —
-     * a tap will be decoded — which is what makes a full-off sleep safe to arm. */
-    sense_ok = (num <= 5);
-
-    /* DIAGNOSTIC (beta only): show what the chip actually returns while the
-     * daemon is running, throttled to once every 5 s, so we can see its idle
-     * vs touched behaviour without stopping the daemon (stopping it lets the
-     * chip sleep and answer 0x23, which would mislead). */
-    {
-        static uint32_t diag_last = 0;
-        uint32_t diag_now = custom_tick_get();
-        if (diag_now - diag_last >= 5000) {
-            diag_last = diag_now;
-            fprintf(stderr, "ug-paneld[touch-diag]: raw %02x %02x %02x %02x %02x %02x  "
-                            "num=%u event=%u sense_ok=%d\n",
-                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], num, event, sense_ok);
-        }
-    }
+    /* The chip returns constant 0x22/0x23 garbage whenever it is not physically
+     * touched (num would be ~34) and a valid frame only during a real contact;
+     * the checks below reject the garbage. */
 
     /* Only accept event 0 (down) or 2 (contact) with valid touch count
     Extracted from i2c bus using
@@ -297,7 +279,6 @@ int touch_poll(void) {
 uint16_t touch_get_x(void) { return cur_x; }
 uint16_t touch_get_y(void) { return cur_y; }
 uint32_t touch_last_activity(void) { return last_activity; }
-int touch_sense_ok(void) { return sense_ok; }
 
 static void touch_indev_read_cb(lv_indev_t *indev, lv_indev_data_t *data) {
     (void)indev;
