@@ -8,5 +8,6 @@ GO=/boot/config/go
 pkill -x ug-paneld 2>/dev/null
 sed -i '/# >>> ug-paneld >>>/,/# <<< ug-paneld <<</d' "$GO" 2>/dev/null
 rm -f /usr/local/bin/ug-paneld
+rm -f /etc/modprobe.d/ug-paneld-no-i2c-hid.conf
 rm -rf /etc/ug-paneld "$PERSIST"
 echo "ug-paneld removed."

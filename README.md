@@ -175,7 +175,7 @@ your `config.json` is never rewritten.
 | `drm_device` | auto | DRM device path, e.g. `/dev/dri/card0`; empty = scan all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: name (`eDP-1`), numeric id, or `auto` |
 | `drm_probe_timeout` | `60` | Seconds to wait at startup for a connected connector (high so the early-boot start waits for the panel instead of giving up) |
-| `i2c_device` | `auto` | ACPI id to unbind from `i2c_hid_acpi`: `auto` (knows `CUST0000:00` + `MSFT8000:00`), `none`, or a specific id |
+| `i2c_device` | `auto` | Touch ACPI id to unbind from its HID-over-I2C driver (whatever owns it — `i2c_hid_acpi`, `i2c_hid`, …): `auto` (knows `CUST0000:00` + `MSFT8000:00`), `none`, or a specific id |
 | `touch_device` | `auto` | Touch I2C bus: `auto` resolves it from the ACPI link; explicit `/dev/i2c-2` works |
 | `debug` | `false` | Verbose DRM probe logging |
 | `opnsense_url` / `_key` / `_secret` | | OPNsense API (empty = page disabled) |

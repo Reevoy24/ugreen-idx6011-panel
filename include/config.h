@@ -12,7 +12,7 @@ typedef struct {
     char drm_device[64];   /* DRM device path, "" = scan /dev/dri (keys: drm_device, legacy drm_card) */
     char connector[32];    /* DRM connector name ("eDP-1"), numeric id, or "auto" */
     int drm_probe_timeout; /* seconds to wait for a connected connector before giving up */
-    char i2c_device[64];   /* ACPI id to unbind from i2c_hid_acpi: "auto", "none", or e.g. "MSFT8000:00" */
+    char i2c_device[64];   /* touch ACPI id to unbind from its HID-over-I2C driver (any name): "auto", "none", or e.g. "MSFT8000:00" */
     char opnsense_url[256];
     char opnsense_key[256];
     char opnsense_secret[256];

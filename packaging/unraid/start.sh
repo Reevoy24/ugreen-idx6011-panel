@@ -13,8 +13,40 @@ chmod 755 "$BIN"
 [ -f "$PERSIST/wallpaper.png" ] && cp -f "$PERSIST/wallpaper.png" /etc/ug-paneld/wallpaper.png
 [ -d "$PERSIST/wallpapers" ] && cp -f "$PERSIST/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
 
-# the touchscreen needs the i2c-dev character devices
+# --- touchscreen prerequisites -------------------------------------------
+# Unlike the Proxmox .deb (which ships /etc/modprobe.d/no-i2c-hid.conf), Unraid
+# has no persistent blacklist and its rootfs is rebuilt from flash every boot,
+# so we set everything up here on each start.
+#
+# 1) Free the touch controller from the kernel HID-over-I2C driver. If it stays
+#    bound, it owns I2C address 0x3b and the daemon's ioctl(I2C_SLAVE) fails with
+#    EBUSY -> touch is dead while the display still works. Blacklist for future
+#    boots AND unload it now in case it already grabbed the controller.
+mkdir -p /etc/modprobe.d
+echo "blacklist i2c_hid_acpi" > /etc/modprobe.d/ug-paneld-no-i2c-hid.conf
+rmmod i2c_hid_acpi 2>/dev/null
+
+# 2) Load the I2C host adapter the touch controller hangs off (Intel LPSS /
+#    DesignWare) and the /dev/i2c-N character devices. No-ops if built-in or
+#    already loaded; without the adapter the touch bus never enumerates and the
+#    daemon falls back to the wrong bus.
+modprobe intel_lpss_pci 2>/dev/null
+modprobe i2c_designware_platform 2>/dev/null
+modprobe i2c_designware_core 2>/dev/null
 modprobe i2c-dev 2>/dev/null
+
+# 3) The go-hook runs early in boot; give udev a moment and wait (bounded) for
+#    the touch controller to enumerate before starting, so the daemon's unbind
+#    and bus resolution have a target.
+command -v udevadm >/dev/null 2>&1 && udevadm settle 2>/dev/null
+i=0
+while [ "$i" -lt 15 ]; do
+    [ -e /sys/bus/i2c/devices/i2c-CUST0000:00 ] && break
+    [ -e /sys/bus/i2c/devices/i2c-MSFT8000:00 ] && break
+    i=$((i + 1))
+    sleep 1
+done
+# -------------------------------------------------------------------------
 
 pkill -x ug-paneld 2>/dev/null && sleep 1
 nohup "$BIN" >/var/log/ug-paneld.log 2>&1 &

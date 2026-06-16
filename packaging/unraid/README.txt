@@ -27,5 +27,18 @@ Configuration
 Log
     /var/log/ug-paneld.log
 
+Touchscreen not responding (display works)
+    start.sh blacklists i2c_hid_acpi and loads the I2C adapter so the daemon can
+    drive the touch controller directly. If taps still do nothing, check the log:
+      "Could not set I2C address 0x3b ... Device or resource busy"  -> the HID
+      driver still owns the controller; reboot so the blacklist takes effect, or
+      run start.sh again.
+      "no known touchscreen device present" / "guessing /dev/i2c-2"  -> the touch
+      I2C adapter did not load; report your `ls /sys/bus/i2c/devices/` output.
+      "i2c-hid: ... unbound" or "... already free for direct I2C", followed by
+      "Touch: first contact detected ..." on a tap  -> touch is working.
+    For a verbose I2C frame dump set "debug": true in config.json and re-run
+    start.sh, then share the "Touch raw:" lines.
+
 Uninstall
     sh uninstall.sh

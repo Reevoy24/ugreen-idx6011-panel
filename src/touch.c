@@ -9,7 +9,6 @@
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
-#include <dirent.h>
 #include <linux/i2c-dev.h>
 #include <sys/ioctl.h>
 
@@ -32,32 +31,63 @@ static int fail_count = 0;
 static char bus_path[32];
 static uint32_t disabled_at = 0;
 
-#define I2C_HID_DRIVER_DIR "/sys/bus/i2c/drivers/i2c_hid_acpi"
+/* verbose touch logging (config "debug"); off by default */
+static int touch_debug = 0;
+void touch_set_debug(int on) { touch_debug = on; }
 
 /* Touchscreen ACPI ids seen on iDX6011 Pro units so far. Newer revisions
  * enumerate the same controller as MSFT8000 instead of CUST0000. */
 static const char *known_touch_ids[] = { "CUST0000:00", "MSFT8000:00" };
 #define KNOWN_TOUCH_ID_COUNT (sizeof(known_touch_ids) / sizeof(known_touch_ids[0]))
 
-/* dev is the sysfs device name, e.g. "i2c-MSFT8000:00" */
-static int unbind_one(const char *dev) {
-    int fd = open(I2C_HID_DRIVER_DIR "/unbind", O_WRONLY);
+/* Release one touch client from whatever driver currently owns it by writing
+ * its kernel device name to /sys/bus/i2c/devices/i2c-<id>/driver/unbind. Going
+ * through the device's own "driver" symlink avoids hard-coding a driver name:
+ * it reaches i2c_hid_acpi (mainline) just as well as i2c_hid or a built-in
+ * HID-over-I2C driver. Slackware/Unraid kernels name that driver differently
+ * or build it in, so /sys/bus/i2c/drivers/i2c_hid_acpi may not exist at all —
+ * the old driver-dir approach silently gave up there and left the client
+ * bound, so the later ioctl(I2C_SLAVE, 0x3b) failed with EBUSY.
+ *
+ * id is the ACPI id without the sysfs "i2c-" prefix, e.g. "MSFT8000:00".
+ * Returns 1 if the client is present and now free for direct I2C (unbound, or
+ * already had no driver), 0 if no such device exists, -1 on a real error. */
+static int unbind_one(const char *id) {
+    char devdir[128];
+    snprintf(devdir, sizeof(devdir), "/sys/bus/i2c/devices/i2c-%s", id);
+    if (access(devdir, F_OK) != 0)
+        return 0;   /* this controller is not present on this revision */
+
+    /* the unbind attribute matches the device's kernel name, which is the
+     * device-dir basename — i.e. the id with the "i2c-" prefix kept */
+    char devname[64];
+    snprintf(devname, sizeof(devname), "i2c-%s", id);
+
+    char unbind_path[160];
+    snprintf(unbind_path, sizeof(unbind_path), "%s/driver/unbind", devdir);
+
+    int fd = open(unbind_path, O_WRONLY);
     if (fd < 0) {
-        fprintf(stderr, "i2c-hid: cannot open %s/unbind: %s\n",
-                I2C_HID_DRIVER_DIR, strerror(errno));
+        /* no "driver" symlink (ENOENT) means nothing owns the client — it is
+         * already free for direct I2C, which is success, not an error */
+        if (errno == ENOENT) {
+            fprintf(stderr, "i2c-hid: %s has no bound driver — already free for direct I2C\n", devname);
+            return 1;
+        }
+        fprintf(stderr, "i2c-hid: cannot open %s: %s\n", unbind_path, strerror(errno));
         return -1;
     }
 
-    ssize_t len = (ssize_t)strlen(dev);
-    ssize_t n = write(fd, dev, len);
+    ssize_t len = (ssize_t)strlen(devname);
+    ssize_t n = write(fd, devname, len);
     close(fd);
 
     if (n != len) {
-        fprintf(stderr, "i2c-hid: unbinding %s failed: %s\n", dev, strerror(errno));
+        fprintf(stderr, "i2c-hid: unbinding %s failed: %s\n", devname, strerror(errno));
         return -1;
     }
-    fprintf(stderr, "i2c-hid: unbound %s — touchscreen freed for direct I2C access\n", dev);
-    return 0;
+    fprintf(stderr, "i2c-hid: unbound %s — touchscreen freed for direct I2C access\n", devname);
+    return 1;
 }
 
 void touch_unbind_i2c_hid(const char *acpi_id) {
@@ -70,47 +100,24 @@ void touch_unbind_i2c_hid(const char *acpi_id) {
     if (!autodetect && strncmp(acpi_id, "i2c-", 4) == 0)
         acpi_id += 4;
 
-    DIR *dir = opendir(I2C_HID_DRIVER_DIR);
-    if (!dir) {
-        fprintf(stderr, "i2c-hid: driver i2c_hid_acpi not present (blacklisted or not loaded) — nothing to unbind\n");
+    if (!autodetect) {
+        if (unbind_one(acpi_id) == 0)
+            fprintf(stderr, "i2c-hid: configured device i2c-%s not found under "
+                            "/sys/bus/i2c/devices/ — check 'ls /sys/bus/i2c/devices/' "
+                            "for the id on your revision\n", acpi_id);
         return;
     }
 
-    int bound = 0, unbound = 0, skipped = 0;
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL) {
-        if (strncmp(ent->d_name, "i2c-", 4) != 0)
-            continue;
-        bound++;
+    int present = 0;
+    for (size_t i = 0; i < KNOWN_TOUCH_ID_COUNT; i++)
+        if (unbind_one(known_touch_ids[i]) != 0)
+            present++;
 
-        const char *id = ent->d_name + 4;
-        int match;
-        if (autodetect) {
-            match = 0;
-            for (size_t i = 0; i < KNOWN_TOUCH_ID_COUNT; i++)
-                if (strcasecmp(id, known_touch_ids[i]) == 0) { match = 1; break; }
-        } else {
-            match = (strcasecmp(id, acpi_id) == 0);
-        }
-
-        if (match) {
-            if (unbind_one(ent->d_name) == 0)
-                unbound++;
-        } else {
-            skipped++;
-            fprintf(stderr, "i2c-hid: leaving %s bound (not the configured/known touchscreen; "
-                            "set \"i2c_device\" in %s to override)\n", ent->d_name, CONFIG_FILE_PATH);
-        }
-    }
-    closedir(dir);
-
-    if (bound == 0)
-        fprintf(stderr, "i2c-hid: no devices bound to i2c_hid_acpi — nothing to unbind\n");
-    else if (unbound == 0 && !autodetect)
-        fprintf(stderr, "i2c-hid: configured device %s is not bound to i2c_hid_acpi (already unbound?)\n", acpi_id);
-    else if (unbound == 0 && autodetect && skipped > 0)
-        fprintf(stderr, "i2c-hid: no known touchscreen id (CUST0000:00, MSFT8000:00) is bound; "
-                        "check 'ls /sys/bus/i2c/devices/' for the id on your revision\n");
+    if (present == 0)
+        fprintf(stderr, "i2c-hid: no known touchscreen device present "
+                        "(checked CUST0000:00, MSFT8000:00) — check "
+                        "'ls /sys/bus/i2c/devices/' for the id on your revision and "
+                        "set \"i2c_device\" in %s\n", CONFIG_FILE_PATH);
 }
 
 /* The touchscreen's I2C bus number shifts between hardware revisions and
@@ -147,20 +154,27 @@ int touch_init(const char *i2c_bus) {
         if (resolve_touch_bus(resolved, sizeof(resolved)) == 0) {
             i2c_bus = resolved;
         } else {
-            fprintf(stderr, "Touch: no known touchscreen ACPI device found, "
-                            "falling back to /dev/i2c-2\n");
+            fprintf(stderr, "Touch: no known touchscreen ACPI device found under "
+                            "/sys/bus/i2c/devices/ — guessing /dev/i2c-2 (likely the "
+                            "wrong bus if the controller did not enumerate; set "
+                            "\"touch_device\" to the correct /dev/i2c-N if known)\n");
             i2c_bus = "/dev/i2c-2";
         }
     }
 
     i2c_fd = open(i2c_bus, O_RDWR);
     if (i2c_fd < 0) {
-        fprintf(stderr, "Warning: Could not open I2C bus %s\n", i2c_bus);
+        fprintf(stderr, "Warning: Could not open I2C bus %s: %s\n", i2c_bus, strerror(errno));
         return -1;
     }
 
     if (ioctl(i2c_fd, I2C_SLAVE, AXS_ADDR) < 0) {
-        fprintf(stderr, "Warning: Could not set I2C address 0x%02x\n", AXS_ADDR);
+        /* EBUSY here means a kernel driver still owns address 0x3b — the
+         * i2c-hid unbind above did not take effect (driver built-in or named
+         * differently, and not blacklisted). Any other errno points at the
+         * wrong or empty I2C bus. Printing it makes the log self-diagnosing. */
+        fprintf(stderr, "Warning: Could not set I2C address 0x%02x on %s: %s\n",
+                AXS_ADDR, i2c_bus, strerror(errno));
         close(i2c_fd);
         i2c_fd = -1;
         return -1;
@@ -228,6 +242,20 @@ int touch_poll(void) {
     }
 
     fail_count = 0;
+
+    /* With debug enabled, dump the raw frame (throttled) BEFORE the filters.
+     * This is the only way to tell "reads succeed but every frame is rejected"
+     * (wrong bus, or a firmware whose byte layout differs) from "touch never
+     * initialised". Off by default so it never floods a working box. */
+    if (touch_debug) {
+        static uint32_t last_dump = 0;
+        uint32_t tnow = custom_tick_get();
+        if ((int32_t)(tnow - last_dump) >= 1000) {
+            last_dump = tnow;
+            fprintf(stderr, "Touch raw: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
+        }
+    }
 
     uint8_t num = buf[1];
     uint8_t event = (buf[2] >> 6) & 0x03;

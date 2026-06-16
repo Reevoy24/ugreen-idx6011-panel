@@ -110,6 +110,7 @@ int main(int argc, char *argv[]) {
 
     /* Free the touchscreen from i2c-hid before anything else; harmless if the
      * module is blacklisted or the device id differs (it just logs). */
+    touch_set_debug(config.debug);
     touch_unbind_i2c_hid(config.i2c_device);
 
     int dret = display_init(&config);
