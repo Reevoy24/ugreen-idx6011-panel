@@ -27,18 +27,25 @@ Configuration
 Log
     /var/log/ug-paneld.log
 
-Touchscreen not responding (display works)
-    start.sh blacklists i2c_hid_acpi and loads the I2C adapter so the daemon can
-    drive the touch controller directly. If taps still do nothing, check the log:
-      "Could not set I2C address 0x3b ... Device or resource busy"  -> the HID
-      driver still owns the controller; reboot so the blacklist takes effect, or
-      run start.sh again.
-      "no known touchscreen device present" / "guessing /dev/i2c-2"  -> the touch
-      I2C adapter did not load; report your `ls /sys/bus/i2c/devices/` output.
-      "i2c-hid: ... unbound" or "... already free for direct I2C", followed by
-      "Touch: first contact detected ..." on a tap  -> touch is working.
-    For a verbose I2C frame dump set "debug": true in config.json and re-run
-    start.sh, then share the "Touch raw:" lines.
+Touchscreen on Unraid — KNOWN LIMITATION
+    The display and the front LEDs work on stock Unraid. The TOUCHSCREEN does
+    not, because Unraid's kernel does not ship the Intel LPSS / DesignWare I2C
+    driver (i2c-designware, intel-lpss). The touch panel hangs off that I2C
+    controller, so without the driver its bus never appears and nothing in
+    userspace can reach the panel. The dashboard simply stays on and is fully
+    readable — it just isn't touch-controlled. The log shows:
+        Touch: no touchscreen I2C bus found — the kernel is missing the Intel
+        LPSS / DesignWare I2C driver
+    Confirm with `ls /sys/bus/i2c/devices/`: you will see only an i801 SMBus and
+    i915 gmbus/AUX adapters, no DesignWare/LPSS adapter, even though the panel's
+    ACPI device (MSFT8000 / CUST0000) is present under /sys/bus/acpi/devices/.
+
+    To make touch work you need a custom Unraid kernel built with
+    CONFIG_I2C_DESIGNWARE_PLATFORM + CONFIG_MFD_INTEL_LPSS_PCI/ACPI (e.g. via the
+    Unraid Kernel Helper). Once such a kernel exposes i2c-MSFT8000:00 /
+    i2c-CUST0000:00, ug-paneld picks the touch up automatically — start.sh
+    already loads the modules and frees the controller. If you know the touch
+    bus, you can instead set "touch_device": "/dev/i2c-N" in config.json.
 
 Uninstall
     sh uninstall.sh

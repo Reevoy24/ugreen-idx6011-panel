@@ -65,11 +65,15 @@ sh install.sh
 ```
 
 > [!NOTE]
-> Everything here is **field-tested on Proxmox VE on real hardware** (a
-> newer-revision iDX6011 Pro). The TrueNAS SCALE and Unraid packages —
-> display and LEDs alike — ship the identical binaries and mirror that
-> proven setup, but have not been run on those platforms yet. If you try
-> them, feedback (good or bad) via the issues is very welcome.
+> The display, dashboard and front LEDs are **field-tested on Proxmox VE on
+> real hardware** (a newer-revision iDX6011 Pro). On **Unraid** the display and
+> LEDs work too, but the **touchscreen does not**: stock Unraid's kernel omits
+> the Intel LPSS / DesignWare I2C driver the touch panel needs, so its I2C bus
+> never appears (display and LEDs are unaffected; the dashboard stays on and
+> readable). See [`packaging/unraid/README.txt`](packaging/unraid/README.txt)
+> for the details and the custom-kernel workaround. The TrueNAS SCALE package
+> ships the identical binaries but has not been run on that platform yet —
+> feedback (good or bad) via the issues is very welcome.
 
 > [!IMPORTANT]
 > **Display stays black?** On newer iDX6011 Pro revisions the panel power is

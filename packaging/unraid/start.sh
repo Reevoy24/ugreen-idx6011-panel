@@ -27,9 +27,12 @@ echo "blacklist i2c_hid_acpi" > /etc/modprobe.d/ug-paneld-no-i2c-hid.conf
 rmmod i2c_hid_acpi 2>/dev/null
 
 # 2) Load the I2C host adapter the touch controller hangs off (Intel LPSS /
-#    DesignWare) and the /dev/i2c-N character devices. No-ops if built-in or
-#    already loaded; without the adapter the touch bus never enumerates and the
-#    daemon falls back to the wrong bus.
+#    DesignWare) and the /dev/i2c-N character devices. NOTE: stock Unraid's
+#    kernel does NOT ship the LPSS/DesignWare I2C driver, so on a stock kernel
+#    these are harmless no-ops and the touchscreen stays unavailable (the
+#    display and LEDs still work). Touch on Unraid needs a custom kernel built
+#    with I2C_DESIGNWARE_PLATFORM + MFD_INTEL_LPSS_*; these modprobes then make
+#    it work. Also no-ops when the drivers are built-in or already loaded.
 modprobe intel_lpss_pci 2>/dev/null
 modprobe i2c_designware_platform 2>/dev/null
 modprobe i2c_designware_core 2>/dev/null

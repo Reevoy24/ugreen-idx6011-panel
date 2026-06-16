@@ -151,15 +151,26 @@ static int resolve_touch_bus(char *out, size_t out_size) {
 int touch_init(const char *i2c_bus) {
     char resolved[32];
     if (!i2c_bus || !i2c_bus[0] || strcasecmp(i2c_bus, "auto") == 0) {
-        if (resolve_touch_bus(resolved, sizeof(resolved)) == 0) {
-            i2c_bus = resolved;
-        } else {
-            fprintf(stderr, "Touch: no known touchscreen ACPI device found under "
-                            "/sys/bus/i2c/devices/ — guessing /dev/i2c-2 (likely the "
-                            "wrong bus if the controller did not enumerate; set "
-                            "\"touch_device\" to the correct /dev/i2c-N if known)\n");
-            i2c_bus = "/dev/i2c-2";
+        if (resolve_touch_bus(resolved, sizeof(resolved)) != 0) {
+            /* The touchscreen's I2C bus is not present. Its ACPI device
+             * (CUST0000/MSFT8000) can exist, but without an I2C host adapter it
+             * never becomes a usable bus — which is the case when the kernel
+             * lacks the Intel LPSS / DesignWare I2C driver (i2c-designware,
+             * intel-lpss), as on stock Unraid. Do NOT guess a bus here: blindly
+             * opening /dev/i2c-2 lands on an unrelated adapter (e.g. an i915
+             * GMBUS) and spins forever in I2C-failure/reconnect logging. Disable
+             * touch cleanly instead; the display and LEDs are unaffected and the
+             * dashboard simply stays on (nothing could wake it from sleep
+             * anyway). A "touch_device" set explicitly in the config overrides
+             * this and is opened directly below. */
+            fprintf(stderr, "Touch: no touchscreen I2C bus found — the kernel is "
+                            "missing the Intel LPSS / DesignWare I2C driver "
+                            "(expected on stock Unraid). Display and LEDs work; "
+                            "touch is disabled. Set \"touch_device\" to a "
+                            "/dev/i2c-N to override.\n");
+            return -1;
         }
+        i2c_bus = resolved;
     }
 
     i2c_fd = open(i2c_bus, O_RDWR);
