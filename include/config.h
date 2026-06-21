@@ -21,6 +21,7 @@ typedef struct {
     char touch_device[64];
     int brightness;
     int backlight_timeout;
+    char language[4];      /* default UI language "de"/"en"; state.json (panel) overrides */
     int sleep_brightness;  /* backlight %% while asleep; 0 (default) = full off —
                               the touch chip stays responsive as long as it is
                               polled, so wake-by-tap works even at full off */

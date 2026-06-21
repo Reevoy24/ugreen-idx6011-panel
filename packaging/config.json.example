@@ -6,6 +6,7 @@
     "touch_device": "auto",
     "brightness": 100,
     "backlight_timeout": 30,
+    "language": "en",
     "sleep_brightness": 0,
     "debug": false
 }

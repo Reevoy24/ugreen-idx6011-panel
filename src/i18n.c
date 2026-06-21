@@ -1,7 +1,7 @@
 #include "i18n.h"
 #include <string.h>
 
-static int lang_en = 0; /* 0 = de (default), 1 = en */
+static int lang_en = 1; /* 1 = en (default), 0 = de */
 
 static const char *strings[TR_COUNT][2] = {
     /*                          de                          en               */

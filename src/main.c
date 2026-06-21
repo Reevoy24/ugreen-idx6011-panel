@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* panel-adjustable settings: state.json overrides config defaults */
-    settings_load(&ui_state, config.brightness, config.backlight_timeout);
+    settings_load(&ui_state, config.brightness, config.backlight_timeout, config.language);
     i18n_set_language(ui_state.language);
     bl_timeout_ms = (uint32_t)ui_state.backlight_timeout * 1000;
 

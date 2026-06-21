@@ -38,12 +38,14 @@ static int json_get_str(const char *json, const char *key, char *buf, size_t buf
     return 0;
 }
 
-void settings_load(ui_state_t *st, int default_brightness, int default_timeout)
+void settings_load(ui_state_t *st, int default_brightness, int default_timeout,
+                   const char *default_language)
 {
     st->brightness = default_brightness;
     st->backlight_timeout = default_timeout;
     st->wallpaper[0] = '\0'; /* "" = legacy auto: custom file if present, else none */
-    snprintf(st->language, sizeof(st->language), "de");
+    snprintf(st->language, sizeof(st->language), "%s",
+             (default_language && default_language[0]) ? default_language : "en");
     st->leds_on = 1;
     st->led_night = 0;
 

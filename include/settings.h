@@ -14,7 +14,8 @@ typedef struct {
     int led_night;         /* LEDs off during the configured night window */
 } ui_state_t;
 
-void settings_load(ui_state_t *st, int default_brightness, int default_timeout);
+void settings_load(ui_state_t *st, int default_brightness, int default_timeout,
+                   const char *default_language);
 int settings_save(const ui_state_t *st);
 
 #endif

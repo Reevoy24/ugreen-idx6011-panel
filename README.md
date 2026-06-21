@@ -3,7 +3,7 @@
 Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
 *Community project — not affiliated with or endorsed by UGREEN.*
 
-[![Release](https://img.shields.io/badge/release-v1.4.5-2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.4.6-2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
@@ -147,6 +147,7 @@ override:
     "poll_rate": 2,
     "brightness": 100,
     "backlight_timeout": 30,
+    "language": "en",
     "sleep_brightness": 0,
     "led_night_start": "21:00",
     "led_night_end": "08:00",
@@ -171,6 +172,7 @@ your `config.json` is never rewritten.
 | `poll_rate` | `2` | How often to poll system stats (seconds) |
 | `brightness` | `100` | Backlight brightness (1-100) |
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
+| `language` | `en` | UI language default, `en` or `de`. Changing the language on the panel itself is saved to `state.json` and overrides this; set it here for a reboot-stable default (e.g. `"de"` on TrueNAS, where `state.json` is not restored after a reboot) |
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` = fully off (tap-to-wake keeps working) |
 | `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`) |
 | `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`) |

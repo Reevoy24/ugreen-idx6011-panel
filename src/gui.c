@@ -1428,7 +1428,7 @@ lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
         memset(&fallback_state, 0, sizeof(fallback_state));
         fallback_state.brightness = 100;
         fallback_state.backlight_timeout = 30;
-        snprintf(fallback_state.language, sizeof(fallback_state.language), "de");
+        snprintf(fallback_state.language, sizeof(fallback_state.language), "en");
         setup.state = &fallback_state;
     }
 
