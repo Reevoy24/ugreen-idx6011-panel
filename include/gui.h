@@ -1,6 +1,7 @@
 #ifndef GUI_H
 #define GUI_H
 
+#include <pthread.h>
 #include "lvgl/lvgl.h"
 #include "system_stats.h"
 #include "opnsense.h"
@@ -17,6 +18,7 @@ typedef struct {
     int show_leds;                  /* front LED rows in the settings panel */
     int wan_max_mbps;
     ui_state_t *state;              /* shared; GUI mutates + persists it */
+    pthread_mutex_t *settings_lock; /* guards *state across the GUI + API threads (optional) */
     void (*set_brightness)(int pct);
     void (*set_timeout)(int seconds);
     void (*do_reboot)(void);
@@ -49,6 +51,15 @@ void gui_settings_open(void);
 void gui_settings_close(void);
 void gui_set_sleep(int on);   /* black overlay while the screen "sleeps" */
 void gui_leds_refresh(void);  /* re-read LED state into the panel rows */
+
+/* Entry points the main loop calls (on the GUI thread) to apply web-API
+ * changes that touch LVGL. Never call these from the API thread. */
+void gui_retranslate(void);                  /* re-render all labels after a language change */
+void gui_wallpaper_set(const char *name);    /* select + apply a wallpaper by name */
+void gui_wallpaper_rescan(void);             /* re-scan options + re-apply current (after upload) */
+/* Copy the current wallpaper option names (each <20 chars) for the web API.
+ * Returns the count; *cur = selected index. */
+int  gui_wallpaper_options(char out[][20], int max, int *cur);
 
 void gui_cleanup(void);
 

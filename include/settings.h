@@ -8,6 +8,7 @@
 typedef struct {
     int brightness;        /* 1..100 */
     int backlight_timeout; /* seconds, 0 = never */
+    int sleep_brightness;  /* backlight %% while asleep; 0 = full off */
     char wallpaper[32];    /* "none", a built-in name, or "custom" */
     char language[4];      /* "de" / "en" */
     int leds_on;           /* front status LEDs master switch (default 1) */
@@ -15,7 +16,7 @@ typedef struct {
 } ui_state_t;
 
 void settings_load(ui_state_t *st, int default_brightness, int default_timeout,
-                   const char *default_language);
+                   int default_sleep_brightness, const char *default_language);
 int settings_save(const ui_state_t *st);
 
 #endif

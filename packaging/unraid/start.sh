@@ -12,6 +12,7 @@ chmod 755 "$BIN"
 [ -f "$PERSIST/state.json" ] && cp -f "$PERSIST/state.json" /etc/ug-paneld/state.json
 [ -f "$PERSIST/wallpaper.png" ] && cp -f "$PERSIST/wallpaper.png" /etc/ug-paneld/wallpaper.png
 [ -d "$PERSIST/wallpapers" ] && cp -f "$PERSIST/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
+[ -d "$PERSIST/web" ] && { mkdir -p /usr/share/ug-paneld/web; cp -f "$PERSIST/web/"* /usr/share/ug-paneld/web/ 2>/dev/null; }
 
 # --- touchscreen prerequisites -------------------------------------------
 # Unlike the Proxmox .deb (which ships /etc/modprobe.d/no-i2c-hid.conf), Unraid

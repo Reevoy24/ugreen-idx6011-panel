@@ -33,6 +33,11 @@ build_deb() {
     cp packaging/wallpapers/*.png "$stage/usr/share/ug-paneld/wallpapers/"
     chmod 644 "$stage/usr/share/ug-paneld/wallpapers/"*.png
 
+    # web dashboard assets (served by ug-paneld when api_port is set)
+    mkdir -p "$stage/usr/share/ug-paneld/web"
+    cp web/* "$stage/usr/share/ug-paneld/web/"
+    chmod 644 "$stage/usr/share/ug-paneld/web/"*
+
     # keep the user's fan config across upgrades
     printf "/etc/ug-fand/config\n" > "$stage/DEBIAN/conffiles"
 

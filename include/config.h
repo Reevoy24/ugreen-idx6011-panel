@@ -26,6 +26,7 @@ typedef struct {
                               the touch chip stays responsive as long as it is
                               polled, so wake-by-tap works even at full off */
     int api_port;
+    char api_password[64]; /* web dashboard password ("" = controls open on LAN; power always needs it) */
     int debug;             /* verbose display probe logging */
     char led_night_start[8]; /* front LED night window start, "HH:MM" */
     char led_night_end[8];   /* front LED night window end, "HH:MM" */

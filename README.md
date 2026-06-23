@@ -3,7 +3,7 @@
 Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
 *Community project — not affiliated with or endorsed by UGREEN.*
 
-[![Release](https://img.shields.io/badge/release-v1.5.0-2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.6.0-2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
@@ -31,6 +31,9 @@ complete [front-LED setup](#front-panel-leds).
 - 🌀 **Fan monitoring + control** — swipe **left** from Home for live RPM and
   temps, **Silent / Default / Turbo** modes and the live curve; the bundled
   `ug-fand` daemon drives the ITE EC from userspace (no kernel module)
+- 🌐 **Web dashboard** — opt-in (`api_port`): ug-paneld serves a browser UI on
+  the LAN that mirrors the whole panel — stats, fan control, all settings,
+  wallpaper upload, restart/shutdown
 - 💡 **Front LED control** — stops the rolling animation; disk activity +
   SMART health + network blinking; LED toggle and **night mode**
   (21:00–08:00, configurable) right on the display
@@ -299,6 +302,37 @@ PY
 
 </details>
 
+## Web UI
+
+Opt-in: set `api_port` in the config and ug-paneld serves a browser dashboard on
+the LAN that **mirrors the whole panel** — live stats (CPU/RAM/temps/uptime,
+network, disks, Proxmox, OPNsense, GPU, fans), the fan **Silent / Default /
+Turbo** switch and curve, and every setting (brightness, screen-off timeout,
+sleep brightness, language, LEDs + night window, wallpaper incl. **custom
+upload**) plus **restart/shutdown**. It's built into ug-paneld — no extra
+service or container.
+
+```json
+{
+    "api_port": 8080,
+    "api_password": "choose-a-password"
+}
+```
+
+Restart ug-paneld, then open `http://<nas-ip>:8080`.
+
+- **Monitoring is open** on the LAN; **changing settings/fan** requires the
+  password when `api_password` is set; **restart/shutdown always require** it
+  (and are refused entirely when no password is set).
+- The legacy `GET/POST /backlight` endpoint still works (Home Assistant — see
+  below).
+
+> [!WARNING]
+> This is a control surface on a daemon running as root, over plain HTTP. **LAN
+> only — never port-forward it to the internet.** Set `api_password` and keep it
+> on a trusted network. (ug-fand's thermal failsafe still forces full speed above
+> the critical thresholds, so a bad curve can't overheat the box.)
+
 ## Configuration
 
 Everything is optional — without a config file ug-paneld auto-detects the
@@ -315,6 +349,7 @@ override:
     "led_night_start": "21:00",
     "led_night_end": "08:00",
     "api_port": 0,
+    "api_password": "",
     "opnsense_url": "https://192.168.1.1:8443",
     "opnsense_key": "your-api-key",
     "opnsense_secret": "your-api-secret",
@@ -339,7 +374,8 @@ your `config.json` is never rewritten.
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` = fully off (tap-to-wake keeps working) |
 | `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`) |
 | `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`) |
-| `api_port` | `0` | HTTP API port for backlight control (0 = disabled) |
+| `api_port` | `0` | Web dashboard + control API port (0 = disabled). See [Web UI](#web-ui) |
+| `api_password` | | Web dashboard password (empty = controls open on LAN; restart/shutdown always require it) |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `drm_device` | auto | DRM device path, e.g. `/dev/dri/card0`; empty = scan all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: name (`eDP-1`), numeric id, or `auto` |

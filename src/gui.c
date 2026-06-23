@@ -54,6 +54,12 @@
 /* ---- Pages ---- */
 #define MAX_PAGES 8
 static gui_setup_t setup;
+
+/* Serialize ui_state (*setup.state) access between the GUI thread (the settings
+ * callbacks below) and the web-API thread. NULL-safe: the mock renderer passes
+ * no lock. */
+static inline void state_lock(void)   { if (setup.settings_lock) pthread_mutex_lock(setup.settings_lock); }
+static inline void state_unlock(void) { if (setup.settings_lock) pthread_mutex_unlock(setup.settings_lock); }
 static ui_state_t fallback_state;
 static lv_obj_t *tileview = NULL;
 static lv_obj_t *tiles[MAX_PAGES];
@@ -1089,14 +1095,17 @@ static void bri_slider_cb(lv_event_t *e)
         lv_label_set_text(bri_val_label, buf);
         if (setup.set_brightness) setup.set_brightness(v);
     } else if (code == LV_EVENT_RELEASED) {
+        state_lock();
         setup.state->brightness = v;
         settings_save(setup.state);
+        state_unlock();
     }
 }
 
 static void timeout_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
+    state_lock();
     int cur = 0;
     for (int i = 0; i < TIMEOUT_PRESET_COUNT; i++)
         if (timeout_presets[i] == setup.state->backlight_timeout) { cur = i; break; }
@@ -1105,18 +1114,21 @@ static void timeout_btn_cb(lv_event_t *e)
     timeout_sub_refresh();
     if (setup.set_timeout) setup.set_timeout(setup.state->backlight_timeout);
     settings_save(setup.state);
+    state_unlock();
 }
 
 static void wp_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
     if (wp_opt_count == 0) return;
+    state_lock();
     wp_cur = (wp_cur + 1) % wp_opt_count;
     snprintf(setup.state->wallpaper, sizeof(setup.state->wallpaper), "%s",
              wp_opts[wp_cur]);
     apply_wallpaper(wp_opts[wp_cur]);
     lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
     settings_save(setup.state);
+    state_unlock();
 }
 
 static void lang_btn_cb(lv_event_t *e)
@@ -1124,11 +1136,13 @@ static void lang_btn_cb(lv_event_t *e)
     LV_UNUSED(e);
     int next = (i18n_language_index() + 1) % i18n_language_count();
     i18n_set_language(i18n_language_code(next));
+    state_lock();
     snprintf(setup.state->language, sizeof(setup.state->language), "%s",
              i18n_language_code(next));
     retranslate();
     timeout_sub_refresh();
     settings_save(setup.state);
+    state_unlock();
 }
 
 static void restart_btn_cb(lv_event_t *e) { LV_UNUSED(e); confirm_show(0); }
@@ -1147,18 +1161,50 @@ static void leds_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
     leds_toggle();
+    state_lock();
     setup.state->leds_on = leds_user_on();
     gui_leds_refresh();
     settings_save(setup.state);
+    state_unlock();
 }
 
 static void led_night_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
     leds_set_night(!leds_night_enabled());
+    state_lock();
     setup.state->led_night = leds_night_enabled();
     gui_leds_refresh();
     settings_save(setup.state);
+    state_unlock();
+}
+
+/* ---- web-API entry points (called on the GUI thread by the main loop) ---- */
+void gui_retranslate(void) { retranslate(); }
+
+void gui_wallpaper_set(const char *name)
+{
+    if (!name || wp_opt_count == 0) return;
+    for (int i = 0; i < wp_opt_count; i++)
+        if (strcmp(wp_opts[i], name) == 0) { wp_cur = i; break; }
+    apply_wallpaper(name);
+    if (wp_sub) lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
+}
+
+void gui_wallpaper_rescan(void)
+{
+    build_wp_options();                  /* re-scan; picks wp_cur from setup.state->wallpaper */
+    apply_wallpaper(wp_opts[wp_cur]);
+    if (wp_sub) lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
+}
+
+int gui_wallpaper_options(char out[][20], int max, int *cur)
+{
+    int n = wp_opt_count < max ? wp_opt_count : max;
+    for (int i = 0; i < n; i++)
+        snprintf(out[i], 20, "%.19s", wp_opts[i]);
+    if (cur) *cur = wp_cur;
+    return n;
 }
 
 static void edge_strip_cb(lv_event_t *e)
