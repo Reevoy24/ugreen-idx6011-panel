@@ -89,10 +89,10 @@ static void act_set_fan_mode(const char *mode) {
 static void read_fand_status(void) {
     int cpu_t = -1, sys_t = -1;
     long rpm[4] = { -1, -1, -1, -1 };
-    char mode[16] = "";
+    char mode[16] = "", cpu_curve[192] = "", sys_curve[192] = "";
     FILE *f = fopen("/run/ug-fand/status", "r");
     if (f) {
-        char line[128];
+        char line[256];
         while (fgets(line, sizeof(line), f)) {
             if      (sscanf(line, "cpu_temp=%d", &cpu_t) == 1) continue;
             else if (sscanf(line, "sys_temp=%d", &sys_t) == 1) continue;
@@ -100,11 +100,13 @@ static void read_fand_status(void) {
             else if (sscanf(line, "cpufan2=%ld", &rpm[1]) == 1) continue;
             else if (sscanf(line, "sysfan1=%ld", &rpm[2]) == 1) continue;
             else if (sscanf(line, "sysfan2=%ld", &rpm[3]) == 1) continue;
+            else if (sscanf(line, "cpu_curve=%191[^\n]", cpu_curve) == 1) continue;
+            else if (sscanf(line, "sys_curve=%191[^\n]", sys_curve) == 1) continue;
             else    sscanf(line, "mode=%15s", mode);
         }
         fclose(f);
     }
-    gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL);
+    gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL, cpu_curve, sys_curve);
 }
 
 static void signal_handler(int sig) {

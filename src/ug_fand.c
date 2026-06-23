@@ -287,8 +287,16 @@ static void load_config(fanconf_t *cf, int cli_force) {
 }
 
 /* cpu_pct / sys_pct in the status file are fan speed in percent (0-100). */
+static void fprint_curve(FILE *f, const char *key, const curve_t *c) {
+    fprintf(f, "%s=", key);
+    for (int i = 0; i < c->n; i++)
+        fprintf(f, "%s%d:%d", i ? "," : "", c->pts[i].temp, c->pts[i].pct);
+    fputc('\n', f);
+}
+
 static void write_status(fan_mode_t mode, int ct, int st,
-                         long c1, long c2, long s1, long s2, int cp, int sp) {
+                         long c1, long c2, long s1, long s2, int cp, int sp,
+                         const curve_t *cpu_c, const curve_t *sys_c) {
     char tmp[] = STATUS_PATH ".tmp";
     FILE *f = fopen(tmp, "w");
     if (!f) return;
@@ -296,6 +304,8 @@ static void write_status(fan_mode_t mode, int ct, int st,
                "cpufan1=%ld\ncpufan2=%ld\nsysfan1=%ld\nsysfan2=%ld\n"
                "cpu_pct=%d\nsys_pct=%d\n",
             mode_name(mode), ct, st, c1, c2, s1, s2, cp, sp);
+    fprint_curve(f, "cpu_curve", cpu_c);
+    fprint_curve(f, "sys_curve", sys_c);
     fclose(f);
     rename(tmp, STATUS_PATH);
 }
@@ -385,7 +395,8 @@ int main(int argc, char **argv) {
         write_status(cf.mode, ct, st,
                      fan_rpm(REG_CPUFAN1_RPM), fan_rpm(REG_CPUFAN2_RPM),
                      fan_rpm(REG_SYSFAN1_RPM), fan_rpm(REG_SYSFAN2_RPM),
-                     applied_cp, applied_sp);
+                     applied_cp, applied_sp,
+                     &cf.cpu[cf.mode], &cf.sys[cf.mode]);
 
         for (int slept = 0; slept < cf.interval && running; slept++) sleep(1);
     }

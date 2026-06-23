@@ -109,6 +109,15 @@ static lv_obj_t *fan_cpu_temp = NULL;
 static lv_obj_t *fan_sys_temp = NULL;
 static lv_obj_t *fan_mode_btn[3] = {0};  /* silent, default, turbo */
 static int fan_cur_mode = 1;             /* 0=silent 1=default 2=turbo */
+static uint32_t fan_mode_tick = 0;       /* lv_tick at last mode tap (anti-flicker grace) */
+static lv_obj_t *fan_curve_cpu = NULL;   /* curve-preview polylines */
+static lv_obj_t *fan_curve_sys = NULL;
+#define FAN_PLOT_W 210
+#define FAN_PLOT_H 88
+#define FAN_TMIN 20
+#define FAN_TMAX 90
+static lv_point_precise_t fan_cpu_pts[16];
+static lv_point_precise_t fan_sys_pts[16];
 
 /* ---- Hardware ---- */
 static lv_obj_t *hw_cpu_val = NULL;
@@ -1451,7 +1460,26 @@ static void fan_mode_cb(lv_event_t *e)
     int idx = (int)(intptr_t)lv_event_get_user_data(e);
     if (idx < 0 || idx > 2) return;
     fan_highlight(idx);
+    fan_mode_tick = lv_tick_get();
     if (setup.set_fan_mode) setup.set_fan_mode(fan_mode_cfg[idx]);
+}
+
+/* parse "temp:pct,..." into plot-pixel points; returns the count */
+static int parse_curve_pts(const char *s, lv_point_precise_t *pts, int maxn)
+{
+    int n = 0;
+    while (s && *s && n < maxn) {
+        while (*s == ' ' || *s == ',' || *s == '\t') s++;
+        int t, p, len = 0;
+        if (sscanf(s, "%d:%d%n", &t, &p, &len) != 2 || len == 0) break;
+        s += len;
+        if (t < FAN_TMIN) t = FAN_TMIN; else if (t > FAN_TMAX) t = FAN_TMAX;
+        if (p < 0) p = 0; else if (p > 100) p = 100;
+        pts[n].x = (lv_value_precise_t)((t - FAN_TMIN) * FAN_PLOT_W / (FAN_TMAX - FAN_TMIN));
+        pts[n].y = (lv_value_precise_t)(FAN_PLOT_H - p * FAN_PLOT_H / 100);
+        n++;
+    }
+    return n;
 }
 
 /* transparent, content-width inline flex row */
@@ -1526,9 +1554,30 @@ static void build_fans(int col)
         fan_mode_btn[i] = b;
     }
     fan_highlight(fan_cur_mode);
+
+    /* curve preview — active-mode temp->speed, CPU cyan over System green */
+    lv_obj_t *gc = card_new(cont);
+    lv_obj_t *plot = lv_obj_create(gc);
+    lv_obj_set_size(plot, FAN_PLOT_W, FAN_PLOT_H);
+    lv_obj_set_style_bg_opa(plot, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(plot, 0, 0);
+    lv_obj_set_style_pad_all(plot, 0, 0);
+    lv_obj_remove_flag(plot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(plot, LV_OBJ_FLAG_CLICKABLE);
+    fan_curve_sys = lv_line_create(plot);
+    lv_obj_set_pos(fan_curve_sys, 0, 0);
+    lv_obj_set_style_line_color(fan_curve_sys, lv_color_hex(COL_GREEN), 0);
+    lv_obj_set_style_line_width(fan_curve_sys, 3, 0);
+    lv_obj_set_style_line_rounded(fan_curve_sys, true, 0);
+    fan_curve_cpu = lv_line_create(plot);
+    lv_obj_set_pos(fan_curve_cpu, 0, 0);
+    lv_obj_set_style_line_color(fan_curve_cpu, lv_color_hex(COL_CYAN), 0);
+    lv_obj_set_style_line_width(fan_curve_cpu, 3, 0);
+    lv_obj_set_style_line_rounded(fan_curve_cpu, true, 0);
 }
 
-void gui_update_fans(int cpu_temp, int sys_temp, const long rpm[4], const char *mode)
+void gui_update_fans(int cpu_temp, int sys_temp, const long rpm[4], const char *mode,
+                     const char *cpu_curve, const char *sys_curve)
 {
     char buf[24];
     if (fan_cpu_temp) {
@@ -1554,9 +1603,20 @@ void gui_update_fans(int cpu_temp, int sys_temp, const long rpm[4], const char *
             lv_bar_set_value(fan_rpm_bar[i], v, LV_ANIM_OFF);
         }
     }
-    if (mode) {
+    /* reflect the daemon's mode, but not for a few seconds after a tap so the
+     * optimistic highlight doesn't flicker back while the daemon catches up */
+    if (mode && (fan_mode_tick == 0 || lv_tick_elaps(fan_mode_tick) > 6000)) {
         int idx = !strcmp(mode, "silent") ? 0 : !strcmp(mode, "turbo") ? 2 : 1;
         if (idx != fan_cur_mode) fan_highlight(idx);
+    }
+
+    if (fan_curve_cpu && cpu_curve && *cpu_curve) {
+        int n = parse_curve_pts(cpu_curve, fan_cpu_pts, 16);
+        if (n >= 2) lv_line_set_points(fan_curve_cpu, fan_cpu_pts, n);
+    }
+    if (fan_curve_sys && sys_curve && *sys_curve) {
+        int n = parse_curve_pts(sys_curve, fan_sys_pts, 16);
+        if (n >= 2) lv_line_set_points(fan_curve_sys, fan_sys_pts, n);
     }
 }
 
@@ -1987,10 +2047,12 @@ void gui_cleanup(void)
     tr_reg_count = 0;
     home_tile = NULL;
     fan_cpu_temp = fan_sys_temp = NULL;
+    fan_curve_cpu = fan_curve_sys = NULL;
     memset(fan_rpm_lbl, 0, sizeof(fan_rpm_lbl));
     memset(fan_rpm_bar, 0, sizeof(fan_rpm_bar));
     memset(fan_mode_btn, 0, sizeof(fan_mode_btn));
     fan_cur_mode = 1;
+    fan_mode_tick = 0;
     have_last_disks = 0;
     memset(tiles, 0, sizeof(tiles));
     memset(dots, 0, sizeof(dots));
