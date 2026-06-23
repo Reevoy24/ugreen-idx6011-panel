@@ -171,15 +171,44 @@ cpu_default=0:12,60:12,70:38,78:71,86:100
 sys_default=0:28,48:28,52:56,56:86,60:100
 ```
 
-The three modes are temperature→duty curves (silent = quietest … turbo =
-coolest). The temperature is smoothed and a speed deadband is applied, so the
-fans hold a steady speed instead of hunting on brief CPU spikes. Every curve is
-editable in the config as `cpu_*` / `sys_*` lines — comma-separated `°C:speed%`
-points (speed 0–100, 100 = full) — and reloads on save. `cpu_*` track the CPU
-temperature, `sys_*` the disk/NVMe temperature. CPU fans follow the CPU temperature, system fans follow the
-disk/NVMe temperature. A thermal failsafe forces full speed above the critical
-thresholds, and a missing temperature reading is treated as "full" — a broken
-sensor never silences the fans.
+The three modes are temperature→speed curves (silent = quietest … turbo =
+coolest). `cpu_*` curves follow the CPU temperature, `sys_*` the disk/NVMe
+temperature. The temperature is smoothed and a speed deadband is applied, so the
+fans hold a steady speed instead of hunting on brief CPU spikes. A thermal
+failsafe forces full speed above the critical thresholds (88 °C CPU, 60 °C
+disks), and a missing temperature reading is treated as "full" — a broken sensor
+never silences the fans.
+
+### Adjusting the curves
+
+Each curve is a comma-separated list of `temp:speed` points — temperature in °C,
+fan speed in percent (`0`–`100`, where `100` = full). Edit them in
+`/etc/ug-fand/config` with any editor:
+
+```bash
+sudo nano /etc/ug-fand/config      # or: vi /etc/ug-fand/config
+```
+
+Change the numbers and **save** — `ug-fand` reloads the file automatically, no
+restart needed. Then check the result:
+
+```bash
+cat /run/ug-fand/status            # mode, temps, RPM, and applied speed %
+```
+
+Lower the speed numbers (or push the ramp temperatures higher) for a quieter
+box; raise them for a cooler one. For example, to keep the system fans at their
+quiet floor until the disks get warmer, widen the flat part of the curve:
+
+```
+sys_default=0:28,53:28,56:60,58:88,60:100   # quiet up to 53 °C, then ramp
+```
+
+Delete a curve line to fall back to the built-in default.
+
+> On TrueNAS the rootfs is read-only and `/etc/ug-fand/config` is re-synced from
+> the copy on your pool at boot, so live edits there are not reboot-persistent —
+> edit `/mnt/<pool>/ug-fand/config` for changes that survive a reboot.
 
 ### Monitoring
 
