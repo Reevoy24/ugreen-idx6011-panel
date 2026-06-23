@@ -81,6 +81,17 @@ select { background: var(--btn); color: var(--text); border: 0.5px solid rgba(25
 .gdot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; flex: none; }
 .gdot.off { background: var(--inactive); }
 
+/* expandable rows (Proxmox guest list) */
+.exp summary { list-style: none; cursor: pointer; }
+.exp summary::-webkit-details-marker { display: none; }
+.exp summary:hover { background: rgba(255, 255, 255, .02); }
+.chev { width: 0; height: 0; border-left: 5px solid var(--muted); border-top: 4px solid transparent; border-bottom: 4px solid transparent; display: inline-block; transition: transform .15s; }
+.exp[open] .chev { transform: rotate(90deg); }
+.sublist { padding: 2px 0 8px; }
+.subrow { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 8px 18px; font-size: 13px; border-top: 0.5px solid rgba(255, 255, 255, .04); }
+.subrow .l { color: var(--text); }
+.subrow .sub-id { color: var(--muted); }
+
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 0; border-bottom: 0.5px solid rgba(255,255,255,.05); }
 .srow:last-child { border-bottom: none; }
 .srow.col { flex-direction: column; align-items: stretch; gap: 12px; }

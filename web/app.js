@@ -12,12 +12,14 @@ let optimisticMode = null, lastModeClick = 0;
 let authHeader = sessionStorage.getItem("ugpaneld_auth") || "";
 let toastTimer = null;
 let pendingPower = null;
+let pveOpen = false; // remember the Proxmox expand state across polls
 
 const t = (k) => (STRINGS[lang] || STRINGS.en)[k] ?? STRINGS.en[k] ?? k;
 const $ = (id) => document.getElementById(id);
 const setText = (id, v) => { const e = $(id); if (e) e.textContent = v; };
 const toggle = (id, show) => { const e = $(id); if (e) e.hidden = !show; };
 const num = (v) => (v == null ? null : v);
+const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
 
 function applyI18n() {
   document.documentElement.lang = lang;
@@ -139,13 +141,23 @@ function render(s) {
   if (showSvc) {
     let h = "";
     const pve = s.pve || {}, opn = s.opnsense || {};
-    if (pve.available)
-      h += `<div class="row"><span class="l">${t("proxmox")}</span><span>${pve.vm_running}/${pve.vm_total} ${t("vms")} · ${pve.lxc_running}/${pve.lxc_total} ${t("containers")}</span></div>`;
+    if (pve.available) {
+      const guests = (pve.guests || []).map((g) =>
+        `<div class="subrow"><span class="l"><span class="gdot${g.running ? "" : " off"}"></span>${esc(g.name)}</span>` +
+        `<span class="sub-id">${g.is_lxc ? "LXC" : "VM"} ${g.vmid}</span></div>`
+      ).join("");
+      h += `<details class="exp" id="pve-exp"${pveOpen ? " open" : ""}>` +
+        `<summary class="row"><span class="l"><span class="chev"></span>${t("proxmox")}</span>` +
+        `<span>${pve.vm_running}/${pve.vm_total} ${t("vms")} · ${pve.lxc_running}/${pve.lxc_total} ${t("containers")}</span></summary>` +
+        `<div class="sublist">${guests}</div></details>`;
+    }
     if (opn.available) {
-      h += `<div class="row"><span class="l">${t("opnsense")} · ${t("gateway")}</span><span>${opn.gw_rtt_ms < 0 ? "--" : opn.gw_rtt_ms + " ms"} · ${opn.gw_status || ""}</span></div>`;
+      h += `<div class="row"><span class="l">${t("opnsense")} · ${t("gateway")}</span><span>${opn.gw_rtt_ms < 0 ? "--" : opn.gw_rtt_ms + " ms"} · ${esc(opn.gw_status || "")}</span></div>`;
       h += `<div class="row"><span class="l">${t("dns_blocked")} · ${t("leases")}</span><span>${opn.dns_blocked_pct}% · ${opn.dhcp_leases}</span></div>`;
     }
     $("services").innerHTML = h;
+    const ex = $("pve-exp");
+    if (ex) ex.addEventListener("toggle", () => { pveOpen = ex.open; });
   }
 
   /* settings (skip controls the user is interacting with) */
