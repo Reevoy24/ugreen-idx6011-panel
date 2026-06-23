@@ -1,0 +1,11 @@
+# ug-fand — fan control for the UGREEN iDX6011 Pro
+#
+# mode: silent | default | performance
+mode=default
+#
+# polling / update interval in seconds (1..60)
+interval=3
+#
+# force=1 runs even if the DMI product name is not an iDX6011 (NOT recommended —
+# the EC fan registers are specific to this model).
+#force=1

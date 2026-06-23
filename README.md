@@ -24,7 +24,7 @@ complete [front-LED setup](#front-panel-leds).
 - 🖥️ **Six swipeable pages** — Home (clock, CPU ring, glass tiles), Hardware,
   Network, Disks, Proxmox guests (PVE hosts only), OPNsense (optional)
 - 👆 **Touch works** — swipe between pages, pull-down settings panel with
-  brightness, screen-off timeout, wallpaper, language (DE/EN),
+  brightness, screen-off timeout, wallpaper, language (EN/DE/ES/FR/PT/ID),
   restart/shutdown
 - 💡 **Front LED control** — stops the rolling animation; disk activity +
   SMART health + network blinking; LED toggle and **night mode**
@@ -136,6 +136,107 @@ and
 
 </details>
 
+## Fan control
+
+The iDX6011 Pro's fans hang off the same **ITE IT55xx embedded controller** as
+the backlight, reachable as a standard ACPI EC (ports `0x62`/`0x66`). UGOS
+drives them through a proprietary kernel module, so a stock Linux (Proxmox,
+TrueNAS, Debian) sees no fan sensors or control at all. **`ug-fand`** restores
+both — monitoring **and** control — entirely from userspace, no kernel module.
+
+> Reverse-engineered from UGOS' `ug_idx6011pro-sio.ko`. Runs on Proxmox /
+> TrueNAS / Debian — **not** on UGOS itself (its own driver owns the EC there).
+> The bundled curves are conservative starting points; writing fan registers
+> can overheat the box if a curve is wrong, so verify on your hardware.
+
+### Install the daemon
+
+Build it (`make fand` → `ug-fand` at the repo root), then:
+
+```bash
+# Proxmox / Debian (systemd service)
+sudo sh packaging/fand/install.sh
+
+# TrueNAS SCALE (installs onto a pool + registers a Post-Init script)
+sudo sh packaging/fand/install.sh /mnt/<pool>/ug-fand
+```
+
+Config — `/etc/ug-fand/config`:
+
+```
+mode=default       # silent | default | performance
+interval=3         # seconds between updates
+```
+
+The three modes are temperature→duty curves (silent = quietest … performance =
+coolest). CPU fans follow the CPU temperature, system fans follow the
+disk/NVMe temperature. A thermal failsafe forces full speed above the critical
+thresholds, and a missing temperature reading is treated as "full" — a broken
+sensor never silences the fans.
+
+### Monitoring
+
+`ug-fand` writes live values to `/run/ug-fand/status`:
+
+```
+$ cat /run/ug-fand/status
+mode=default
+cpu_temp=44
+sys_temp=45
+cpufan1=575
+cpufan2=599
+sysfan1=789
+sysfan2=796
+cpu_duty=40
+sys_duty=60
+```
+
+<details>
+<summary><b>EC fan registers (drive the fans yourself)</b></summary>
+
+Same EC as the backlight: read a byte = command `0x80`, write a byte = command
+`0x81`, address on `0x62` (wait for IBF = `0x66` bit `0x02` to clear before each
+write; OBF = bit `0x01` set before a read).
+
+**Tachometer — read, 16-bit big-endian = RPM:**
+
+| Fan | hi / lo |
+|-----|---------|
+| cpufan1 | `0x34` / `0x35` |
+| cpufan2 | `0x36` / `0x37` |
+| sysfan1 | `0x38` / `0x39` |
+| sysfan2 | `0x3A` / `0x3B` |
+
+**Duty — write; per fan: enable byte = `1`, then duty `0..198`:**
+
+| Fan | enable / duty |
+|-----|---------------|
+| cpufan1 | `0xB0` / `0xB1` |
+| cpufan2 | `0xB2` / `0xB3` |
+| sysfan1 | `0xB4` / `0xB5` |
+| sysfan2 | `0xB6` / `0xB7` |
+
+Read all four RPMs from the shell:
+
+```bash
+python3 - <<'PY'
+f=open('/dev/port','r+b',buffering=0)
+def rb(p): f.seek(p); return f.read(1)[0]
+def wb(p,v): f.seek(p); f.write(bytes([v]))
+def ibf():
+    for _ in range(20000):
+        if not (rb(0x66)&0x02): return
+def obf():
+    for _ in range(20000):
+        if rb(0x66)&0x01: return
+def ec(a): ibf(); wb(0x66,0x80); ibf(); wb(0x62,a); obf(); return rb(0x62)
+for n,h in (('cpufan1',0x34),('cpufan2',0x36),('sysfan1',0x38),('sysfan2',0x3a)):
+    print(n,(ec(h)<<8)|ec(h+1))
+PY
+```
+
+</details>
+
 ## Configuration
 
 Everything is optional — without a config file ug-paneld auto-detects the
@@ -172,7 +273,7 @@ your `config.json` is never rewritten.
 | `poll_rate` | `2` | How often to poll system stats (seconds) |
 | `brightness` | `100` | Backlight brightness (1-100) |
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
-| `language` | `en` | UI language default, `en` or `de`. Changing the language on the panel itself is saved to `state.json` and overrides this; set it here for a reboot-stable default (e.g. `"de"` on TrueNAS, where `state.json` is not restored after a reboot) |
+| `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing the language on the panel itself is saved to `state.json` and overrides this; set it here for a reboot-stable default (e.g. on TrueNAS, where `state.json` is not restored after a reboot) |
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` = fully off (tap-to-wake keeps working) |
 | `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`) |
 | `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`) |

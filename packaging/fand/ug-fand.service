@@ -1,0 +1,16 @@
+[Unit]
+Description=UGREEN iDX6011 Pro fan control (ug-fand)
+After=basic.target
+
+[Service]
+Type=simple
+# drivetemp exposes SATA disk temperatures via hwmon (used for the system fans)
+ExecStartPre=-/sbin/modprobe drivetemp
+ExecStart=/usr/bin/ug-fand
+Restart=always
+RestartSec=5
+# Exit code 2 = DMI says this is not an iDX6011; restarting cannot fix that.
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=multi-user.target
