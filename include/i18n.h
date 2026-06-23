@@ -1,10 +1,11 @@
 #ifndef I18N_H
 #define I18N_H
 
-/* The text fonts (sizes 14-20, regenerated in src/fonts/) include the German
- * umlauts ÄÖÜäöüß, so strings at those sizes may use them freely. The big
- * numeric fonts (24/32/48) are still ASCII-only built-ins — values rendered
- * there (numbers, units, "%") must stay umlaut-free. */
+/* The text fonts (sizes 14-20, in src/fonts/) include the Latin-1 accented
+ * letters (U+00C0..U+00FF) plus the inverted '!' and '?', so German, Spanish,
+ * French and Portuguese strings may use them freely. The big numeric fonts
+ * (24/32/48) are still ASCII-only built-ins — values rendered there (numbers,
+ * units, "%") must stay ASCII. */
 typedef enum {
     TR_HARDWARE, TR_NETWORK, TR_DISKS, TR_PROXMOX, TR_OPNSENSE,
     TR_LOAD, TR_TEMPERATURE, TR_MEMORY, TR_UPTIME, TR_TOTAL,
@@ -19,7 +20,16 @@ typedef enum {
 } tr_key_t;
 
 const char *tr(tr_key_t key);
-void i18n_set_language(const char *lang);  /* "de" or "en" */
+
+/* Language is selected by 2-letter code: "de","en","es","fr","pt","id".
+ * Unknown codes fall back to English. */
+void i18n_set_language(const char *lang);
 const char *i18n_get_language(void);
+
+/* For the settings-panel language picker, which cycles through all languages. */
+int i18n_language_count(void);
+int i18n_language_index(void);            /* current language, 0..count-1 */
+const char *i18n_language_code(int idx);  /* "de","en",... */
+const char *i18n_language_name(int idx);  /* native name, "Deutsch","Español",... */
 
 #endif

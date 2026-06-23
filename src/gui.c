@@ -977,8 +977,7 @@ static void retranslate(void)
     if (wp_sub)
         lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
     if (lang_sub)
-        lv_label_set_text(lang_sub,
-            strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
+        lv_label_set_text(lang_sub, i18n_language_name(i18n_language_index()));
     gui_leds_refresh();
     gui_update_clock();
 }
@@ -1104,9 +1103,10 @@ static void wp_btn_cb(lv_event_t *e)
 static void lang_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
-    const char *next = strcmp(i18n_get_language(), "de") == 0 ? "en" : "de";
-    i18n_set_language(next);
-    snprintf(setup.state->language, sizeof(setup.state->language), "%s", next);
+    int next = (i18n_language_index() + 1) % i18n_language_count();
+    i18n_set_language(i18n_language_code(next));
+    snprintf(setup.state->language, sizeof(setup.state->language), "%s",
+             i18n_language_code(next));
     retranslate();
     timeout_sub_refresh();
     settings_save(setup.state);
@@ -1355,8 +1355,7 @@ static void build_settings_panel(lv_obj_t *screen)
     list_row(lc, TR_LANGUAGE, &lang_sub, lang_btn_cb, 1);
     timeout_sub_refresh();
     lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
-    lv_label_set_text(lang_sub,
-        strcmp(i18n_get_language(), "en") == 0 ? "English" : "Deutsch");
+    lv_label_set_text(lang_sub, i18n_language_name(i18n_language_index()));
 
     if (setup.show_leds) {
         section_label(panel, TR_SEC_LEDS);
