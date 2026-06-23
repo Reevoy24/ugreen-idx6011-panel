@@ -126,8 +126,10 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: none;
 .sw:checked::after { left: 21px; }
 
 .wps { display: flex; gap: 10px; flex-wrap: wrap; }
-.wps .wp { width: 80px; height: 50px; border-radius: 8px; border: 0.5px solid rgba(255,255,255,.12); cursor: pointer; background-size: cover; background-position: center; color: var(--muted); font-size: 11px; display: flex; align-items: center; justify-content: center; }
+.wps .wp { position: relative; width: 92px; height: 58px; border-radius: 8px; border: 0.5px solid rgba(255,255,255,.12); cursor: pointer; background: var(--btn) center/cover no-repeat; overflow: hidden; }
 .wps .wp.on { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.wpname { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px; font-size: 11px; color: #fff; background: rgba(0,0,0,.45); text-align: center; }
+.wps .wp.none .wpname { top: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
 .upload { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; cursor: pointer; background: var(--btn); border: 0.5px solid rgba(255,255,255,.12); border-radius: 10px; padding: 9px 14px; font-size: 13px; }
 
 .acts { display: flex; gap: 10px; }

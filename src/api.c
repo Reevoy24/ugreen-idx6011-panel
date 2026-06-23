@@ -354,6 +354,32 @@ static void serve_file(int fd, const char *path) {
     close(ffd);
 }
 
+/* Serve a wallpaper PNG for the settings picker preview. name is the option
+ * name: "custom" -> /etc/ug-paneld/wallpaper.png, otherwise a built-in under
+ * /usr/share/ug-paneld/wallpapers. ("none" has no image.) */
+static void handle_wp_image(int fd, const char *name) {
+    if (!name[0] || strchr(name, '/') || strstr(name, "..")) { send_error(fd, 404, "not found"); return; }
+    char full[512];
+    if (strcmp(name, "custom") == 0)
+        snprintf(full, sizeof(full), "/etc/ug-paneld/wallpaper.png");
+    else
+        snprintf(full, sizeof(full), "/usr/share/ug-paneld/wallpapers/%s.png", name);
+
+    int ffd = open(full, O_RDONLY);
+    if (ffd < 0) { send_error(fd, 404, "not found"); return; }
+    struct stat st;
+    if (fstat(ffd, &st) != 0 || !S_ISREG(st.st_mode)) { close(ffd); send_error(fd, 404, "not found"); return; }
+    char hdr[256];
+    int hn = snprintf(hdr, sizeof(hdr),
+        "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: %ld\r\n"
+        "Connection: close\r\nCache-Control: no-cache\r\n\r\n", (long)st.st_size);
+    send_raw(fd, hdr, (size_t)hn);
+    char buf[65536];
+    ssize_t r;
+    while ((r = read(ffd, buf, sizeof(buf))) > 0) send_raw(fd, buf, (size_t)r);
+    close(ffd);
+}
+
 /* ---- auth ---- */
 static int password_set(void) { return api_password[0] != '\0'; }
 
@@ -784,6 +810,8 @@ static void handle_request(int fd) {
         if (is_get) handle_backlight_get(fd);
         else if (is_post) handle_backlight_post(fd, req.body ? req.body : "");
         else send_error(fd, 405, NULL);
+    } else if (strncmp(req.path, "/wp/", 4) == 0) {
+        if (is_get) handle_wp_image(fd, req.path + 4); else send_error(fd, 405, NULL);
     } else if (is_get) {
         serve_file(fd, req.path);
     } else {

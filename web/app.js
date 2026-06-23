@@ -197,9 +197,11 @@ function syncCheck(id, v) {
 function renderWallpapers(wp) {
   const box = $("wp-options");
   if (!box) return;
-  box.innerHTML = (wp.options || []).map((name) =>
-    `<div class="wp${name === wp.current ? " on" : ""}" data-wp="${name}">${name}</div>`
-  ).join("");
+  box.innerHTML = (wp.options || []).map((name) => {
+    const bg = name === "none" ? "" : ` style="background-image:url('/wp/${encodeURIComponent(name)}')"`;
+    const cls = "wp" + (name === wp.current ? " on" : "") + (name === "none" ? " none" : "");
+    return `<div class="${cls}" data-wp="${esc(name)}"${bg}><span class="wpname">${esc(name)}</span></div>`;
+  }).join("");
 }
 
 /* ---------- curve plot (matches the device geometry) ---------- */
