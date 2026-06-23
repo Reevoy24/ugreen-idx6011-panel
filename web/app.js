@@ -135,8 +135,7 @@ function render(s) {
   /* services */
   const caps = s.caps || {};
   const showSvc = caps.has_pve || caps.has_opnsense;
-  toggle("sec-services", showSvc);
-  toggle("services", showSvc);
+  toggle("block-services", showSvc);
   if (showSvc) {
     let h = "";
     const pve = s.pve || {}, opn = s.opnsense || {};

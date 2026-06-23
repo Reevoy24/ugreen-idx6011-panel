@@ -19,58 +19,74 @@
       </div>
     </header>
 
-    <div class="sec" data-i18n="sec_overview">Overview</div>
-    <div id="overview" class="grid"></div>
+    <div class="board">
+      <section class="block wide">
+        <div class="sec" data-i18n="sec_overview">Overview</div>
+        <div id="overview" class="grid"></div>
+      </section>
 
-    <div class="sec" data-i18n="sec_fan">Fan control</div>
-    <div class="cards">
-      <article class="card cpu">
-        <div class="ch"><span class="dot"></span><h2 data-i18n="cpu">CPU</h2><span class="temp"><span id="fan-cpu-temp">--</span><span class="deg">°</span></span></div>
-        <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 1</span><span class="rpm"><span id="cpufan1">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="cpufan1-bar"></span></span></div>
-        <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 2</span><span class="rpm"><span id="cpufan2">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="cpufan2-bar"></span></span></div>
-        <div class="ap"><span data-i18n="applied">Applied</span> <b id="cpu-pct">--</b>%</div>
-      </article>
-      <article class="card sys">
-        <div class="ch"><span class="dot"></span><h2 data-i18n="system">System</h2><span class="temp"><span id="fan-sys-temp">--</span><span class="deg">°</span></span></div>
-        <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 1</span><span class="rpm"><span id="sysfan1">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="sysfan1-bar"></span></span></div>
-        <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 2</span><span class="rpm"><span id="sysfan2">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="sysfan2-bar"></span></span></div>
-        <div class="ap"><span data-i18n="applied">Applied</span> <b id="sys-pct">--</b>%</div>
-      </article>
-    </div>
-    <div class="modes" id="modes">
-      <button class="seg" data-mode="silent" data-i18n="silent">Silent</button>
-      <button class="seg" data-mode="default" data-i18n="default">Default</button>
-      <button class="seg" data-mode="turbo" data-i18n="turbo">Turbo</button>
-    </div>
-    <div class="cc">
-      <div class="cch"><h3 data-i18n="curve">Curve</h3><div class="legend"><span><i style="background:#35d1e2"></i><span data-i18n="cpu">CPU</span></span><span><i style="background:#34c759"></i><span data-i18n="system">System</span></span></div></div>
-      <svg id="plot" viewBox="0 0 600 180" role="img" aria-label="Fan curves"></svg>
-    </div>
+      <section class="block wide">
+        <div class="sec" data-i18n="sec_fan">Fan control</div>
+        <div class="cards">
+          <article class="card cpu">
+            <div class="ch"><span class="dot"></span><h2 data-i18n="cpu">CPU</h2><span class="temp"><span id="fan-cpu-temp">--</span><span class="deg">°</span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 1</span><span class="rpm"><span id="cpufan1">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="cpufan1-bar"></span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 2</span><span class="rpm"><span id="cpufan2">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="cpufan2-bar"></span></span></div>
+            <div class="ap"><span data-i18n="applied">Applied</span> <b id="cpu-pct">--</b>%</div>
+          </article>
+          <article class="card sys">
+            <div class="ch"><span class="dot"></span><h2 data-i18n="system">System</h2><span class="temp"><span id="fan-sys-temp">--</span><span class="deg">°</span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 1</span><span class="rpm"><span id="sysfan1">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="sysfan1-bar"></span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 2</span><span class="rpm"><span id="sysfan2">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="sysfan2-bar"></span></span></div>
+            <div class="ap"><span data-i18n="applied">Applied</span> <b id="sys-pct">--</b>%</div>
+          </article>
+        </div>
+        <div class="modes" id="modes">
+          <button class="seg" data-mode="silent" data-i18n="silent">Silent</button>
+          <button class="seg" data-mode="default" data-i18n="default">Default</button>
+          <button class="seg" data-mode="turbo" data-i18n="turbo">Turbo</button>
+        </div>
+        <div class="cc">
+          <div class="cch"><h3 data-i18n="curve">Curve</h3><div class="legend"><span><i style="background:#35d1e2"></i><span data-i18n="cpu">CPU</span></span><span><i style="background:#34c759"></i><span data-i18n="system">System</span></span></div></div>
+          <svg id="plot" viewBox="0 0 600 180" role="img" aria-label="Fan curves"></svg>
+        </div>
+      </section>
 
-    <div class="sec" data-i18n="sec_storage">Storage</div>
-    <div class="panel" id="disks"></div>
+      <section class="block">
+        <div class="sec" data-i18n="sec_storage">Storage</div>
+        <div class="panel" id="disks"></div>
+      </section>
 
-    <div class="sec" data-i18n="sec_network">Network</div>
-    <div class="panel" id="net"></div>
+      <section class="block">
+        <div class="sec" data-i18n="sec_network">Network</div>
+        <div class="panel" id="net"></div>
+      </section>
 
-    <div class="sec" id="sec-services" data-i18n="sec_services" hidden>Services</div>
-    <div class="panel" id="services" hidden></div>
+      <section class="block" id="block-services" hidden>
+        <div class="sec" data-i18n="sec_services">Services</div>
+        <div class="panel" id="services"></div>
+      </section>
 
-    <div class="sec" data-i18n="sec_settings">Settings</div>
-    <div class="panel">
-      <div class="srow"><div class="sk" data-i18n="brightness">Brightness</div><div class="ctl"><input type="range" id="set-brightness" min="1" max="100" step="1"><span class="rdt" id="set-brightness-v">--</span></div></div>
-      <div class="srow"><div class="sk" data-i18n="timeout">Screen-off timeout</div><select id="set-timeout"></select></div>
-      <div class="srow"><div class="sk" data-i18n="sleep_brightness">Sleep brightness</div><div class="ctl"><input type="range" id="set-sleep" min="0" max="100" step="1"><span class="rdt" id="set-sleep-v">--</span></div></div>
-      <div class="srow"><div class="sk" data-i18n="language">Language</div><select id="set-language"></select></div>
-      <div class="srow" id="row-leds"><div class="sk" data-i18n="status_leds">Status LEDs</div><input type="checkbox" id="set-leds" class="sw"></div>
-      <div class="srow" id="row-night"><div class="sk" data-i18n="night_mode">LED night mode <small id="night-window"></small></div><input type="checkbox" id="set-night" class="sw"></div>
-      <div class="srow col"><div class="sk" data-i18n="wallpaper">Wallpaper</div><div class="wps" id="wp-options"></div><label class="upload"><input type="file" id="wp-upload" accept="image/png" hidden><span data-i18n="upload_image">Upload image</span></label></div>
-    </div>
+      <section class="block">
+        <div class="sec" data-i18n="sec_settings">Settings</div>
+        <div class="panel">
+          <div class="srow"><div class="sk" data-i18n="brightness">Brightness</div><div class="ctl"><input type="range" id="set-brightness" min="1" max="100" step="1"><span class="rdt" id="set-brightness-v">--</span></div></div>
+          <div class="srow"><div class="sk" data-i18n="timeout">Screen-off timeout</div><select id="set-timeout"></select></div>
+          <div class="srow"><div class="sk" data-i18n="sleep_brightness">Sleep brightness</div><div class="ctl"><input type="range" id="set-sleep" min="0" max="100" step="1"><span class="rdt" id="set-sleep-v">--</span></div></div>
+          <div class="srow"><div class="sk" data-i18n="language">Language</div><select id="set-language"></select></div>
+          <div class="srow" id="row-leds"><div class="sk" data-i18n="status_leds">Status LEDs</div><input type="checkbox" id="set-leds" class="sw"></div>
+          <div class="srow" id="row-night"><div class="sk" data-i18n="night_mode">LED night mode <small id="night-window"></small></div><input type="checkbox" id="set-night" class="sw"></div>
+          <div class="srow col"><div class="sk" data-i18n="wallpaper">Wallpaper</div><div class="wps" id="wp-options"></div><label class="upload"><input type="file" id="wp-upload" accept="image/png" hidden><span data-i18n="upload_image">Upload image</span></label></div>
+        </div>
+      </section>
 
-    <div class="sec" data-i18n="sec_power">Power</div>
-    <div class="acts">
-      <button class="act warn" id="btn-restart"><span data-i18n="restart">Restart</span></button>
-      <button class="act dng" id="btn-shutdown"><span data-i18n="shutdown">Shutdown</span></button>
+      <section class="block">
+        <div class="sec" data-i18n="sec_power">Power</div>
+        <div class="acts">
+          <button class="act warn" id="btn-restart"><span data-i18n="restart">Restart</span></button>
+          <button class="act dng" id="btn-shutdown"><span data-i18n="shutdown">Shutdown</span></button>
+        </div>
+      </section>
     </div>
 
     <footer data-i18n="lan_only">LAN only — do not expose to the internet.</footer>
