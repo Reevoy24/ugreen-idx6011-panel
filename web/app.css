@@ -23,13 +23,13 @@ body {
 .cols > .block { break-inside: avoid; margin: 0 0 24px; }
 @media (max-width: 900px) { .cols { columns: 1; } }
 
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .mark { width: 9px; height: 26px; border-radius: 3px; background: linear-gradient(var(--cyan), var(--green)); }
 .bt { display: flex; flex-direction: column; line-height: 1.12; }
 .bt strong { font-size: 17px; font-weight: 700; }
 .bt small { color: var(--muted); font-size: 11px; letter-spacing: .5px; text-transform: uppercase; }
-.tr { display: flex; align-items: center; gap: 10px; }
+.tr { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; background: var(--btn); color: var(--muted); font-size: 12px; }
 .pdot { width: 8px; height: 8px; border-radius: 50%; background: var(--inactive); transition: background .2s; }
 .pill[data-state="ok"] { color: var(--text); } .pill[data-state="ok"] .pdot { background: var(--green); }
@@ -106,6 +106,7 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: none;
 .act:hover { background: var(--btn); }
 .act.warn { border-color: rgba(255,210,49,.5); color: var(--yellow); }
 .act.dng { border-color: rgba(255,69,58,.5); color: var(--red); }
+.topbtn { flex: none; padding: 8px 15px; font-size: 13px; border-radius: 9px; }
 
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 10; }
 .modal[hidden] { display: none; }
