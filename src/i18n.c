@@ -55,6 +55,10 @@ static const char *strings[TR_COUNT][LANG_COUNT] = {
     [TR_OFF]           = { "Aus",                      "Off",                   "Apagado",                  "Éteint",                "Desligado",                "Mati" },
     [TR_SEC_DISPLAY]   = { "Anzeige",                  "Display",               "Pantalla",                 "Affichage",             "Tela",                     "Layar" },
     [TR_SEC_LEDS]      = { "LEDs",                     "LEDs",                  "LEDs",                     "LEDs",                  "LEDs",                     "LED" },
+    [TR_FANS]          = { "Lüfter",                   "Fans",                  "Ventiladores",             "Ventilateurs",          "Ventoinhas",               "Kipas" },
+    [TR_SILENT]        = { "Leise",                    "Silent",                "Silencioso",               "Silencieux",            "Silencioso",               "Senyap" },
+    [TR_MODE_DEFAULT]  = { "Standard",                 "Default",               "Normal",                   "Normal",                "Padrão",                   "Standar" },
+    [TR_TURBO]         = { "Turbo",                    "Turbo",                 "Turbo",                    "Turbo",                 "Turbo",                    "Turbo" },
 };
 
 const char *tr(tr_key_t key)

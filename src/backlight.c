@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <sys/io.h>
 #include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/file.h>
 
 #define EC_SC   0x66
 #define EC_DATA 0x62
@@ -13,6 +16,7 @@
 #define BL_MAX 198
 
 static int ec_ready = 0;
+static int ec_lock_fd = -1;   /* shared EC mutex with ug-fand (/run/ug-ec.lock) */
 
 static int ec_wait_ibf_clear(void) {
     for (int i = 0; i < 5000; i++) {
@@ -25,13 +29,20 @@ static int ec_wait_ibf_clear(void) {
 }
 
 static int ec_write(unsigned char addr, unsigned char val) {
-    if (ec_wait_ibf_clear()) return -1;
+    /* hold the shared EC lock for the whole transaction so a fan-daemon
+     * access can't interleave with ours and scramble both */
+    if (ec_lock_fd >= 0) flock(ec_lock_fd, LOCK_EX);
+    int rc = -1;
+    if (ec_wait_ibf_clear()) goto done;
     outb(0x81, EC_SC);
-    if (ec_wait_ibf_clear()) return -1;
+    if (ec_wait_ibf_clear()) goto done;
     outb(addr, EC_DATA);
-    if (ec_wait_ibf_clear()) return -1;
+    if (ec_wait_ibf_clear()) goto done;
     outb(val, EC_DATA);
-    return 0;
+    rc = 0;
+done:
+    if (ec_lock_fd >= 0) flock(ec_lock_fd, LOCK_UN);
+    return rc;
 }
 
 int backlight_init(void) {
@@ -39,6 +50,8 @@ int backlight_init(void) {
         fprintf(stderr, "Warning: iopl failed, backlight unavailable (needs to run as root)\n");
         return -1;
     }
+    /* serialize EC access with ug-fand, which writes the fan registers */
+    ec_lock_fd = open("/run/ug-ec.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0644);
     ec_ready = 1;
     return 0;
 }

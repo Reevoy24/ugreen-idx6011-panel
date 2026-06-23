@@ -59,6 +59,54 @@ static void act_poweroff(void) {
         fprintf(stderr, "Warning: poweroff command failed\n");
 }
 
+/* Write ug-fand's mode (from the fan page), preserving the other config lines. */
+static void act_set_fan_mode(const char *mode) {
+    const char *path = "/etc/ug-fand/config";
+    static char lines[64][256];
+    int n = 0, found = 0;
+    FILE *f = fopen(path, "r");
+    if (f) {
+        while (n < 64 && fgets(lines[n], sizeof(lines[n]), f)) {
+            if (strncmp(lines[n], "mode=", 5) == 0) {
+                snprintf(lines[n], sizeof(lines[n]), "mode=%s\n", mode);
+                found = 1;
+            }
+            n++;
+        }
+        fclose(f);
+    }
+    if (!found && n < 64) {
+        snprintf(lines[n], sizeof(lines[n]), "mode=%s\n", mode);
+        n++;
+    }
+    FILE *w = fopen(path, "w");
+    if (!w) { fprintf(stderr, "fan: cannot write %s\n", path); return; }
+    for (int i = 0; i < n; i++) fputs(lines[i], w);
+    fclose(w);
+}
+
+/* Pull the fan daemon's live status into the fan page (NULL mode = not running). */
+static void read_fand_status(void) {
+    int cpu_t = -1, sys_t = -1;
+    long rpm[4] = { -1, -1, -1, -1 };
+    char mode[16] = "";
+    FILE *f = fopen("/run/ug-fand/status", "r");
+    if (f) {
+        char line[128];
+        while (fgets(line, sizeof(line), f)) {
+            if      (sscanf(line, "cpu_temp=%d", &cpu_t) == 1) continue;
+            else if (sscanf(line, "sys_temp=%d", &sys_t) == 1) continue;
+            else if (sscanf(line, "cpufan1=%ld", &rpm[0]) == 1) continue;
+            else if (sscanf(line, "cpufan2=%ld", &rpm[1]) == 1) continue;
+            else if (sscanf(line, "sysfan1=%ld", &rpm[2]) == 1) continue;
+            else if (sscanf(line, "sysfan2=%ld", &rpm[3]) == 1) continue;
+            else    sscanf(line, "mode=%15s", mode);
+        }
+        fclose(f);
+    }
+    gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL);
+}
+
 static void signal_handler(int sig) {
     (void)sig;
     signal_count++;
@@ -172,6 +220,7 @@ int main(int argc, char *argv[]) {
         .set_timeout = act_set_timeout,
         .do_reboot = act_reboot,
         .do_poweroff = act_poweroff,
+        .set_fan_mode = act_set_fan_mode,
     };
     gui_create_dashboard(&setup);
 
@@ -302,6 +351,8 @@ int main(int argc, char *argv[]) {
 
             if (has_gpu)
                 gui_update_gpu(gpu_stats_usage());
+
+            read_fand_status();
 
             if (has_opnsense && opnsense_collect(&opn_stats) == 0) {
                 gui_update_opnsense(&opn_stats);

@@ -52,7 +52,7 @@
 #define GLASS_RADIUS 16
 
 /* ---- Pages ---- */
-#define MAX_PAGES 6
+#define MAX_PAGES 8
 static gui_setup_t setup;
 static ui_state_t fallback_state;
 static lv_obj_t *tileview = NULL;
@@ -80,6 +80,7 @@ static lv_image_dsc_t wp_clean_dsc;
 static lv_obj_t *wp_bg_img = NULL;
 
 /* ---- Home ---- */
+static lv_obj_t *home_tile = NULL;       /* home page tile (wallpaper bakes onto it) */
 static lv_obj_t *time_label = NULL;
 static lv_obj_t *date_label = NULL;
 static lv_obj_t *home_cpu_canvas = NULL; /* pre-rendered CPU ring */
@@ -100,6 +101,14 @@ static lv_obj_t *home_sys_sub = NULL;
 static lv_obj_t *home_net_rx = NULL;
 static lv_obj_t *home_net_tx = NULL;
 static lv_obj_t *home_up_val = NULL;
+
+/* ---- Fans ---- */
+static lv_obj_t *fan_rpm_lbl[4] = {0};   /* cpufan1, cpufan2, sysfan1, sysfan2 */
+static lv_obj_t *fan_rpm_bar[4] = {0};
+static lv_obj_t *fan_cpu_temp = NULL;
+static lv_obj_t *fan_sys_temp = NULL;
+static lv_obj_t *fan_mode_btn[3] = {0};  /* silent, default, turbo */
+static int fan_cur_mode = 1;             /* 0=silent 1=default 2=turbo */
 
 /* ---- Hardware ---- */
 static lv_obj_t *hw_cpu_val = NULL;
@@ -564,12 +573,12 @@ static void glass_set_baked(int baked)
  * instead of on every frame. */
 static void bake_glass_into_wallpaper(void)
 {
-    if (!wp_buf || glass_tile_count == 0 || !tiles[0]) return;
+    if (!wp_buf || glass_tile_count == 0 || !home_tile) return;
 
-    lv_obj_update_layout(tiles[0]);
+    lv_obj_update_layout(home_tile);
 
     lv_area_t base;
-    lv_obj_get_coords(tiles[0], &base);
+    lv_obj_get_coords(home_tile, &base);
 
     for (int t = 0; t < glass_tile_count; t++) {
         lv_area_t a;
@@ -676,6 +685,7 @@ static void build_home(int col)
 {
     lv_obj_t *tile = lv_tileview_add_tile(tileview, col, 0, LV_DIR_HOR);
     tiles[col] = tile;
+    home_tile = tile;
     lv_obj_set_style_bg_opa(tile, LV_OPA_TRANSP, 0);
 
     wp_img = lv_image_create(tile);
@@ -1420,6 +1430,136 @@ static void build_settings_panel(lv_obj_t *screen)
 
 /* ================= public API ================= */
 
+/* ================= fan control page ================= */
+
+static const char *const fan_mode_cfg[3] = { "silent", "default", "turbo" };
+
+static void fan_highlight(int idx)
+{
+    fan_cur_mode = idx;
+    for (int i = 0; i < 3; i++) {
+        if (!fan_mode_btn[i]) continue;
+        int on = (i == idx);
+        lv_obj_set_style_bg_color(fan_mode_btn[i], lv_color_hex(on ? COL_CYAN : COL_BTN), 0);
+        lv_obj_t *l = lv_obj_get_child(fan_mode_btn[i], 0);
+        if (l) lv_obj_set_style_text_color(l, lv_color_hex(on ? COL_BG : COL_SUB), 0);
+    }
+}
+
+static void fan_mode_cb(lv_event_t *e)
+{
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx > 2) return;
+    fan_highlight(idx);
+    if (setup.set_fan_mode) setup.set_fan_mode(fan_mode_cfg[idx]);
+}
+
+/* transparent, content-width inline flex row */
+static lv_obj_t *inline_row(lv_obj_t *parent, int gap)
+{
+    lv_obj_t *r = lv_obj_create(parent);
+    lv_obj_set_size(r, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(r, 0, 0);
+    lv_obj_set_style_pad_all(r, 0, 0);
+    lv_obj_set_style_pad_column(r, gap, 0);
+    lv_obj_remove_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+    return r;
+}
+
+static lv_obj_t *fan_group_card(lv_obj_t *cont, const char *title, uint32_t dotcol,
+                                lv_obj_t **temp_out)
+{
+    lv_obj_t *card = card_new(cont);
+    lv_obj_t *hr = row_new(card);
+    lv_obj_t *left = inline_row(hr, 8);
+    lv_obj_set_flex_align(left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    dot_new(left, dotcol, 7);
+    label_new(left, title, &lv_font_montserrat_18, COL_TEXT);
+    *temp_out = label_new(hr, "-- °C", &lv_font_montserrat_16, COL_SUB);
+    return card;
+}
+
+static void fan_row(lv_obj_t *card, const char *name, uint32_t barcol,
+                    lv_obj_t **rpm_out, lv_obj_t **bar_out)
+{
+    label_new(card, name, &lv_font_montserrat_14, COL_SUB);
+    lv_obj_t *r = row_new(card);
+    lv_obj_t *lhs = inline_row(r, 4);
+    *rpm_out = label_new(lhs, "--", &lv_font_montserrat_24, COL_TEXT);
+    label_new(lhs, "rpm", &lv_font_montserrat_14, COL_SUB);
+    lv_obj_t *bar = bar_new(r, barcol);
+    lv_obj_set_width(bar, 96);
+    *bar_out = bar;
+}
+
+static void build_fans(int col)
+{
+    lv_obj_t *cont = page_new(col, TR_FANS);
+
+    lv_obj_t *cpu = fan_group_card(cont, "CPU", COL_CYAN, &fan_cpu_temp);
+    fan_row(cpu, "Fan 1", COL_CYAN, &fan_rpm_lbl[0], &fan_rpm_bar[0]);
+    fan_row(cpu, "Fan 2", COL_CYAN, &fan_rpm_lbl[1], &fan_rpm_bar[1]);
+
+    lv_obj_t *sys = fan_group_card(cont, "System", COL_GREEN, &fan_sys_temp);
+    fan_row(sys, "Fan 1", COL_GREEN, &fan_rpm_lbl[2], &fan_rpm_bar[2]);
+    fan_row(sys, "Fan 2", COL_GREEN, &fan_rpm_lbl[3], &fan_rpm_bar[3]);
+
+    lv_obj_t *mc = card_new(cont);
+    lv_obj_set_flex_flow(mc, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_all(mc, 6, 0);
+    lv_obj_set_style_pad_column(mc, 6, 0);
+    lv_obj_remove_flag(mc, LV_OBJ_FLAG_SCROLLABLE);
+    static const tr_key_t mk[3] = { TR_SILENT, TR_MODE_DEFAULT, TR_TURBO };
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t *b = lv_button_create(mc);
+        lv_obj_set_flex_grow(b, 1);
+        lv_obj_set_height(b, 52);
+        lv_obj_set_style_radius(b, 12, 0);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        lv_obj_set_style_bg_color(b, lv_color_hex(COL_BTN), 0);
+        lv_obj_add_event_cb(b, fan_mode_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *l = label_tr(b, mk[i], &lv_font_montserrat_16, COL_SUB);
+        lv_obj_center(l);
+        fan_mode_btn[i] = b;
+    }
+    fan_highlight(fan_cur_mode);
+}
+
+void gui_update_fans(int cpu_temp, int sys_temp, const long rpm[4], const char *mode)
+{
+    char buf[24];
+    if (fan_cpu_temp) {
+        if (cpu_temp > 0) snprintf(buf, sizeof(buf), "%d °C", cpu_temp);
+        else              snprintf(buf, sizeof(buf), "-- °C");
+        lv_label_set_text(fan_cpu_temp, buf);
+    }
+    if (fan_sys_temp) {
+        if (sys_temp > 0) snprintf(buf, sizeof(buf), "%d °C", sys_temp);
+        else              snprintf(buf, sizeof(buf), "-- °C");
+        lv_label_set_text(fan_sys_temp, buf);
+    }
+    static const int rpm_max[4] = { 2400, 2400, 2200, 2200 };
+    for (int i = 0; i < 4; i++) {
+        if (fan_rpm_lbl[i]) {
+            if (rpm[i] >= 0) snprintf(buf, sizeof(buf), "%ld", rpm[i]);
+            else             snprintf(buf, sizeof(buf), "--");
+            lv_label_set_text(fan_rpm_lbl[i], buf);
+        }
+        if (fan_rpm_bar[i]) {
+            int v = rpm[i] > 0 ? (int)(rpm[i] * 100 / rpm_max[i]) : 0;
+            if (v > 100) v = 100;
+            lv_bar_set_value(fan_rpm_bar[i], v, LV_ANIM_OFF);
+        }
+    }
+    if (mode) {
+        int idx = !strcmp(mode, "silent") ? 0 : !strcmp(mode, "turbo") ? 2 : 1;
+        if (idx != fan_cur_mode) fan_highlight(idx);
+    }
+}
+
 lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
 {
     setup = *s;
@@ -1448,6 +1588,8 @@ lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
     lv_obj_add_event_cb(tileview, tile_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     int col = 0;
+    build_fans(col++);          /* page 0 — to the left of Home */
+    int home_col = col;
     build_home(col++);
     build_hardware(col++);
     build_network(col++);
@@ -1491,6 +1633,9 @@ lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
     lv_obj_add_flag(sleep_overlay, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_flag(sleep_overlay, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(sleep_overlay, LV_OBJ_FLAG_CLICKABLE);
+
+    /* land on Home; the fan page sits one swipe to its left */
+    gui_show_page(home_col);
 
     return screen;
 }
@@ -1840,6 +1985,12 @@ void gui_cleanup(void)
     dots_box = NULL;
     page_count = 0;
     tr_reg_count = 0;
+    home_tile = NULL;
+    fan_cpu_temp = fan_sys_temp = NULL;
+    memset(fan_rpm_lbl, 0, sizeof(fan_rpm_lbl));
+    memset(fan_rpm_bar, 0, sizeof(fan_rpm_bar));
+    memset(fan_mode_btn, 0, sizeof(fan_mode_btn));
+    fan_cur_mode = 1;
     have_last_disks = 0;
     memset(tiles, 0, sizeof(tiles));
     memset(dots, 0, sizeof(dots));
