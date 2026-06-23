@@ -126,7 +126,7 @@ void api_action_power(int poweroff) {
 
 /* Pull the fan daemon's live status into the fan page (NULL mode = not running)
  * and cache it for the web-API snapshot. */
-static void read_fand_status(void) {
+static void read_fand_status(int update_gui) {
     int cpu_t = -1, sys_t = -1, cp = -1, sp = -1, running = 0;
     long rpm[4] = { -1, -1, -1, -1 };
     char mode[16] = "", cpu_curve[192] = "", sys_curve[192] = "";
@@ -149,7 +149,8 @@ static void read_fand_status(void) {
         }
         fclose(f);
     }
-    gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL, cpu_curve, sys_curve);
+    if (update_gui)
+        gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL, cpu_curve, sys_curve);
 
     g_fan_running = running && mode[0];
     g_fan_cpu = cpu_t; g_fan_sys = sys_t;
@@ -443,6 +444,29 @@ int main(int argc, char *argv[]) {
                 api_set_state(1);
                 last_touch_time = custom_tick_get();
             } else {
+                /* Keep the web dashboard live while the screen is off: refresh
+                 * stats at the normal cadence (sensor reads + publish only — no
+                 * GUI, no EC/backlight). Gated on the web API being enabled so a
+                 * panel without a dashboard still sleeps fully idle. */
+                if (config.api_port > 0) {
+                    uint32_t nowz = custom_tick_get();
+                    if (nowz - last_stats_update >= stats_interval) {
+                        system_stats_collect(&stats);
+                        net_stats_collect(&net);
+                        if (has_gpu) gpu_usage = gpu_stats_usage();
+                        read_fand_status(0);
+                        if (has_opnsense) opnsense_collect(&opn_stats);
+                        if (nowz - last_slow_update >= slow_interval) {
+                            disk_stats_collect(&disks);
+                            if (has_pve) pve_stats_collect(&pve);
+                            last_slow_update = nowz;
+                        }
+                        publish_snapshot(&stats, &net, &disks, &pve,
+                                         has_opnsense ? &opn_stats : NULL, gpu_usage,
+                                         has_gpu, has_pve, has_opnsense, has_leds, has_touch);
+                        last_stats_update = nowz;
+                    }
+                }
                 nanosleep(&sleep_long, NULL);
                 continue;
             }
@@ -521,7 +545,7 @@ int main(int argc, char *argv[]) {
                 gui_update_gpu(gpu_usage);
             }
 
-            read_fand_status();
+            read_fand_status(1);
 
             if (has_opnsense && opnsense_collect(&opn_stats) == 0) {
                 gui_update_opnsense(&opn_stats);
