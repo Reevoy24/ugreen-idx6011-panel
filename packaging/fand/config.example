@@ -11,12 +11,16 @@ interval=3
 #force=1
 #
 # Fan curves (optional, hot-reloaded on save). Each value is a comma-separated
-# list of  temp:duty  points (temp in C, duty 0..198). cpu_* curves follow the
-# CPU temperature, sys_* curves the disk/NVMe temperature. Omit a line to keep
-# the built-in default shown here. Higher duty = faster + louder.
-#cpu_silent=0:18,64:18,74:70,82:140,88:198
-#cpu_default=0:24,60:24,70:75,78:140,86:198
-#cpu_turbo=0:50,55:50,66:130,75:185,82:198
-#sys_silent=0:40,49:40,53:95,57:160,60:198
-#sys_default=0:55,48:55,52:110,56:170,60:198
-#sys_turbo=0:95,47:95,51:150,55:190,58:198
+# list of  TEMP:SPEED  points, where TEMP is degrees Celsius and SPEED is the
+# fan speed in PERCENT (0-100; 100 = full speed). The speed is interpolated
+# between points and held flat below the first / above the last point.
+# cpu_* curves follow the CPU temperature, sys_* the disk/NVMe temperature.
+# Omit a line to keep the built-in default shown here.
+#cpu_silent=0:9,64:9,74:35,82:71,88:100
+#cpu_default=0:12,60:12,70:38,78:71,86:100
+#cpu_turbo=0:25,55:25,66:66,75:93,82:100
+#sys_silent=0:20,49:20,53:48,57:81,60:100
+#sys_default=0:28,48:28,52:56,56:86,60:100
+#sys_turbo=0:48,47:48,51:76,55:96,58:100
+#
+# Safety: above 88 C (CPU) or 60 C (disks) the fans go to 100% regardless.
