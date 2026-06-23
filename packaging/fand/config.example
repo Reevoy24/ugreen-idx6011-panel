@@ -1,6 +1,6 @@
 # ug-fand — fan control for the UGREEN iDX6011 Pro
 #
-# mode: silent | default | performance
+# mode: silent | default | turbo
 mode=default
 #
 # polling / update interval in seconds (1..60)

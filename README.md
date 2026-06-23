@@ -164,12 +164,13 @@ sudo sh packaging/fand/install.sh /mnt/<pool>/ug-fand
 Config — `/etc/ug-fand/config`:
 
 ```
-mode=default       # silent | default | performance
+mode=default       # silent | default | turbo
 interval=3         # seconds between updates
 ```
 
-The three modes are temperature→duty curves (silent = quietest … performance =
-coolest). CPU fans follow the CPU temperature, system fans follow the
+The three modes are temperature→duty curves (silent = quietest … turbo =
+coolest). The temperature is smoothed and a duty deadband is applied, so the
+fans hold a steady speed instead of hunting on brief CPU spikes. CPU fans follow the CPU temperature, system fans follow the
 disk/NVMe temperature. A thermal failsafe forces full speed above the critical
 thresholds, and a missing temperature reading is treated as "full" — a broken
 sensor never silences the fans.
