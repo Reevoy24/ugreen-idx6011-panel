@@ -79,7 +79,7 @@ function setBar(id, rpm, dom) {
 function setOnline(on) {
   document.body.classList.toggle("offline", !on);
   const pill = $("pill");
-  pill.dataset.state = on ? "ok" : "bad";
+  if (pill) pill.dataset.state = on ? "ok" : "bad";
   setText("pill-text", on ? t("online") : t("offline"));
 }
 
@@ -253,8 +253,8 @@ function buildSelects() {
     return `<option value="${s}">${label}</option>`;
   }).join("");
   const langOpts = Object.keys(STRINGS).map((c) => `<option value="${c}">${LANG_NAMES[c] || c}</option>`).join("");
-  $("set-language").innerHTML = langOpts;
-  $("lang").innerHTML = langOpts;
+  const sl = $("set-language"); if (sl) sl.innerHTML = langOpts;
+  const tl = $("lang"); if (tl) tl.innerHTML = langOpts;
 }
 
 function wireControls() {
@@ -270,8 +270,8 @@ function wireControls() {
     if (b) b.value = v;
     postSettings({ language: v });
   };
-  $("set-language").addEventListener("change", (e) => changeLanguage(e.target.value));
-  $("lang").addEventListener("change", (e) => changeLanguage(e.target.value));
+  const sl2 = $("set-language"); if (sl2) sl2.addEventListener("change", (e) => changeLanguage(e.target.value));
+  const tl2 = $("lang"); if (tl2) tl2.addEventListener("change", (e) => changeLanguage(e.target.value));
   $("set-leds").addEventListener("change", (e) => postSettings({ leds_on: e.target.checked ? 1 : 0 }));
   $("set-night").addEventListener("change", (e) => postSettings({ led_night: e.target.checked ? 1 : 0 }));
 
