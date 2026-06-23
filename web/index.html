@@ -49,8 +49,22 @@
           <button class="seg" data-mode="turbo" data-i18n="turbo">Turbo</button>
         </div>
         <div class="cc">
-          <div class="cch"><h3 data-i18n="curve">Curve</h3><div class="legend"><span><i style="background:#35d1e2"></i><span data-i18n="cpu">CPU</span></span><span><i style="background:#34c759"></i><span data-i18n="system">System</span></span></div></div>
+          <div class="cch">
+            <h3 data-i18n="curve">Curve</h3>
+            <div class="cch-r">
+              <div class="legend"><span><i style="background:#35d1e2"></i><span data-i18n="cpu">CPU</span></span><span><i style="background:#34c759"></i><span data-i18n="system">System</span></span></div>
+              <button class="editbtn" id="curve-edit" data-i18n="edit">Edit</button>
+            </div>
+          </div>
           <svg id="plot" viewBox="0 0 600 180" role="img" aria-label="Fan curves"></svg>
+          <div id="curve-editor" hidden>
+            <div class="ed-head">
+              <div class="ed-seg"><button class="seg sm on" id="ed-cpu" data-i18n="cpu">CPU</button><button class="seg sm" id="ed-sys" data-i18n="system">System</button></div>
+              <div class="ed-act"><button class="act sm" id="curve-cancel" data-i18n="cancel">Cancel</button><button class="act sm okbtn" id="curve-save" data-i18n="save">Save</button></div>
+            </div>
+            <div id="ed-points"></div>
+            <button class="addpt" id="ed-add" data-i18n="add_point">+ Add point</button>
+          </div>
         </div>
       </section>
 

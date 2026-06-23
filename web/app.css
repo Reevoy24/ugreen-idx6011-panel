@@ -73,6 +73,24 @@ select { background: var(--btn); color: var(--text); border: 0.5px solid rgba(25
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 13px; height: 3px; border-radius: 2px; display: inline-block; }
 #plot { display: block; width: 100%; height: auto; }
+.cch-r { display: flex; align-items: center; gap: 14px; }
+.editbtn { cursor: pointer; font: inherit; font-size: 12px; color: var(--cyan); background: transparent; border: 0.5px solid rgba(53, 209, 226, .4); border-radius: 8px; padding: 5px 12px; }
+.editbtn:hover { background: rgba(53, 209, 226, .08); }
+#curve-editor { margin-top: 12px; border-top: 0.5px solid var(--line); padding-top: 12px; }
+.ed-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.ed-seg { display: flex; gap: 6px; }
+.seg.sm { padding: 7px 16px; font-size: 13px; flex: none; }
+.ed-act { display: flex; gap: 8px; }
+.act.sm { flex: none; padding: 7px 16px; font-size: 13px; }
+.act.okbtn { border-color: rgba(53, 209, 226, .5); color: var(--cyan); }
+#ed-points { display: flex; flex-direction: column; gap: 8px; }
+.ptrow { display: flex; align-items: center; gap: 8px; }
+.ptrow input { width: 66px; background: var(--btn); color: var(--text); border: 0.5px solid rgba(255, 255, 255, .12); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
+.ptrow .u { color: var(--muted); font-size: 12px; }
+.ptrow .rm { margin-left: auto; cursor: pointer; color: var(--muted); background: transparent; border: none; font-size: 20px; line-height: 1; padding: 0 8px; }
+.ptrow .rm:hover { color: var(--red); }
+.addpt { margin-top: 10px; cursor: pointer; font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 0.5px dashed rgba(255, 255, 255, .2); border-radius: 8px; padding: 8px 14px; }
+.addpt:hover { color: var(--text); border-color: rgba(255, 255, 255, .35); }
 
 .panel { background: var(--card); border: 0.5px solid var(--line); border-radius: 14px; padding: 6px 14px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 0.5px solid rgba(255,255,255,.05); font-size: 13px; }

@@ -13,6 +13,7 @@ let authHeader = sessionStorage.getItem("ugpaneld_auth") || "";
 let toastTimer = null;
 let pendingPower = null;
 let pveOpen = false; // remember the Proxmox expand state across polls
+let editing = false, editDomain = "cpu", editMode = "default", editPoints = [];
 
 const t = (k) => (STRINGS[lang] || STRINGS.en)[k] ?? STRINGS.en[k] ?? k;
 const $ = (id) => document.getElementById(id);
@@ -119,8 +120,8 @@ function render(s) {
   setText("sys-pct", num(fan.sys_pct) ?? "--");
   let activeMode = fan.mode;
   if (optimisticMode && Date.now() - lastModeClick < MODE_GRACE_MS) activeMode = optimisticMode;
-  document.querySelectorAll(".seg").forEach((b) => b.classList.toggle("on", b.dataset.mode === activeMode));
-  drawPlot(fan);
+  document.querySelectorAll("#modes .seg").forEach((b) => b.classList.toggle("on", b.dataset.mode === activeMode));
+  if (!editing) drawPlot(fan);
 
   /* storage */
   const dk = s.disks || { items: [] };
@@ -280,7 +281,7 @@ function wireControls() {
     e.target.value = "";
   });
 
-  document.querySelectorAll(".seg").forEach((b) => {
+  document.querySelectorAll("#modes .seg").forEach((b) => {
     b.addEventListener("click", async () => {
       const mode = b.dataset.mode;
       optimisticMode = mode; lastModeClick = Date.now();
@@ -306,6 +307,91 @@ function openConfirm(action) {
   $("confirm").hidden = false;
 }
 
+/* ---------- curve editor (edits the active mode's CPU or System curve) ---------- */
+function setEditDomainButtons() {
+  $("ed-cpu").classList.toggle("on", editDomain === "cpu");
+  $("ed-sys").classList.toggle("on", editDomain === "sys");
+}
+function renderEditPoints() {
+  $("ed-points").innerHTML = editPoints.map((pt, i) =>
+    `<div class="ptrow" data-i="${i}">` +
+    `<input type="number" class="pt-t" min="0" max="120" value="${pt.t}"><span class="u">°C</span>` +
+    `<input type="number" class="pt-p" min="0" max="100" value="${pt.p}"><span class="u">%</span>` +
+    `<button class="rm" aria-label="remove">×</button></div>`
+  ).join("");
+}
+function drawEditPreview() {
+  if (!last || !last.fan) return;
+  drawPlot({
+    cpu_curve: editDomain === "cpu" ? editPoints : (last.fan.cpu_curve || []),
+    sys_curve: editDomain === "sys" ? editPoints : (last.fan.sys_curve || []),
+    cpu_temp: last.fan.cpu_temp, sys_temp: last.fan.sys_temp,
+  });
+}
+function loadEditPoints() {
+  const c = last && last.fan ? (editDomain === "cpu" ? last.fan.cpu_curve : last.fan.sys_curve) : null;
+  editPoints = (c && c.length ? c : [{ t: 0, p: 20 }, { t: 80, p: 100 }]).map((p) => ({ t: p.t, p: p.p }));
+  renderEditPoints();
+  drawEditPreview();
+}
+function enterEdit() {
+  if (!last || !last.fan) return;
+  editing = true;
+  editMode = last.fan.mode || "default";
+  editDomain = "cpu";
+  setEditDomainButtons();
+  loadEditPoints();
+  $("curve-editor").hidden = false;
+  $("curve-edit").hidden = true;
+}
+function exitEdit() {
+  editing = false;
+  $("curve-editor").hidden = true;
+  $("curve-edit").hidden = false;
+  if (last && last.fan) drawPlot(last.fan);
+}
+function wireEditor() {
+  $("curve-edit").addEventListener("click", enterEdit);
+  $("curve-cancel").addEventListener("click", exitEdit);
+  $("ed-cpu").addEventListener("click", () => { editDomain = "cpu"; setEditDomainButtons(); loadEditPoints(); });
+  $("ed-sys").addEventListener("click", () => { editDomain = "sys"; setEditDomainButtons(); loadEditPoints(); });
+  $("ed-add").addEventListener("click", () => {
+    if (editPoints.length >= 12) { toast(t("curve_invalid")); return; }
+    const lp = editPoints[editPoints.length - 1] || { t: 40, p: 50 };
+    editPoints.push({ t: Math.min(120, lp.t + 5), p: lp.p });
+    renderEditPoints();
+    drawEditPreview();
+  });
+  $("ed-points").addEventListener("input", (e) => {
+    const row = e.target.closest(".ptrow");
+    if (!row) return;
+    const i = +row.dataset.i;
+    if (e.target.classList.contains("pt-t")) editPoints[i].t = parseInt(e.target.value || "0", 10);
+    else if (e.target.classList.contains("pt-p")) editPoints[i].p = parseInt(e.target.value || "0", 10);
+    drawEditPreview();
+  });
+  $("ed-points").addEventListener("click", (e) => {
+    if (!e.target.classList.contains("rm")) return;
+    if (editPoints.length <= 1) return;
+    editPoints.splice(+e.target.closest(".ptrow").dataset.i, 1);
+    renderEditPoints();
+    drawEditPreview();
+  });
+  $("curve-save").addEventListener("click", async () => {
+    const pts = editPoints.map((p) => ({ t: p.t | 0, p: p.p | 0 }));
+    pts.sort((a, b) => a.t - b.t);
+    const bad = pts.length < 1 || pts.length > 12 ||
+      pts.some((p) => p.t < 0 || p.t > 120 || p.p < 0 || p.p > 100) ||
+      pts.some((p, i) => i > 0 && p.t === pts[i - 1].t);
+    if (bad) { toast(t("curve_invalid")); return; }
+    try {
+      await postJSON("/api/fan/mode", { mode: editMode, domain: editDomain, points: pts });
+      toast(t("saved"), true);
+      exitEdit();
+    } catch (err) { toast(err.message); }
+  });
+}
+
 /* ---------- poll ---------- */
 async function tick() {
   try {
@@ -327,4 +413,5 @@ function startPolling() {
 buildSelects();
 applyI18n();
 wireControls();
+wireEditor();
 startPolling();
