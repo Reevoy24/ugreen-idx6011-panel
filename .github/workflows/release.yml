@@ -28,6 +28,9 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Build fan daemon
+        run: gcc -O2 -Wall -o ug-fand src/ug_fand.c
+
       - name: Build .deb packages
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -41,9 +44,14 @@ jobs:
             mkdir -p "${pkg}/usr/bin"
             mkdir -p "${pkg}/lib/systemd/system"
             mkdir -p "${pkg}/etc/ug-paneld"
+            mkdir -p "${pkg}/etc/ug-fand"
 
-            cp ug-paneld "${pkg}/usr/bin/"
-            cp ug-paneld.service "${pkg}/lib/systemd/system/"
+            cp ug-paneld ug-fand "${pkg}/usr/bin/"
+            cp ug-paneld.service packaging/fand/ug-fand.service "${pkg}/lib/systemd/system/"
+            cp packaging/fand/config.example "${pkg}/etc/ug-fand/config"
+
+            # keep the user's fan config across upgrades
+            printf "/etc/ug-fand/config\n" > "${pkg}/DEBIAN/conffiles"
 
             local desc_extra=""
             if [ "$blacklist" = "yes" ]; then
@@ -51,34 +59,39 @@ jobs:
               echo "blacklist i2c_hid_acpi" > "${pkg}/etc/modprobe.d/no-i2c-hid.conf"
               desc_extra=" Blacklists i2c-hid-acpi to free the touchscreen."
 
-              printf "/etc/modprobe.d/no-i2c-hid.conf\n" > "${pkg}/DEBIAN/conffiles"
+              printf "/etc/modprobe.d/no-i2c-hid.conf\n" >> "${pkg}/DEBIAN/conffiles"
             fi
 
             cat > "${pkg}/DEBIAN/control" <<CTRL
           Package: ug-paneld
           Version: ${VERSION}
           Architecture: amd64
-          Maintainer: Adam Conway
+          Maintainer: Sebastian Kowski
           Depends: libdrm2, libcurl4
-          Description: Front panel display controller for Ugreen iDX6011 Pro NAS
-           Drives the 258x960 display, backlight, and touchscreen from userspace.${desc_extra}
+          Description: Front panel display + fan control for Ugreen iDX6011 Pro NAS
+           Drives the 258x960 display, backlight and touchscreen, and bundles ug-fand for
+           fan monitoring and control, all from userspace.${desc_extra}
           CTRL
             sed -i 's/^          //' "${pkg}/DEBIAN/control"
 
             cat > "${pkg}/DEBIAN/postinst" <<'SCRIPT'
           #!/bin/sh
           systemctl daemon-reload
-          systemctl enable ug-paneld 2>/dev/null || true
-          systemctl restart ug-paneld 2>/dev/null || true
-          echo "ug-paneld installed and (re)started."
+          for s in ug-paneld ug-fand; do
+            systemctl enable "$s" 2>/dev/null || true
+            systemctl restart "$s" 2>/dev/null || true
+          done
+          echo "ug-paneld + ug-fand installed and (re)started."
           SCRIPT
             sed -i 's/^          //' "${pkg}/DEBIAN/postinst"
             chmod 755 "${pkg}/DEBIAN/postinst"
 
             cat > "${pkg}/DEBIAN/prerm" <<'SCRIPT'
           #!/bin/sh
-          systemctl stop ug-paneld 2>/dev/null || true
-          systemctl disable ug-paneld 2>/dev/null || true
+          for s in ug-paneld ug-fand; do
+            systemctl stop "$s" 2>/dev/null || true
+            systemctl disable "$s" 2>/dev/null || true
+          done
           SCRIPT
             sed -i 's/^          //' "${pkg}/DEBIAN/prerm"
             chmod 755 "${pkg}/DEBIAN/prerm"

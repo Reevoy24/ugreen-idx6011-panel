@@ -15,3 +15,15 @@ modprobe i2c-dev 2>/dev/null
 pkill -x ug-paneld 2>/dev/null && sleep 1
 nohup "$DIR/ug-paneld" >/var/log/ug-paneld.log 2>&1 &
 echo "ug-paneld started (log: /var/log/ug-paneld.log)"
+
+# fan control daemon (bundled) — monitors temps and drives the fans via the EC
+if [ -f "$DIR/ug-fand" ]; then
+    mkdir -p /etc/ug-fand 2>/dev/null
+    # pool copy is the source of truth (/etc is ephemeral on TrueNAS); edit
+    # $DIR/fand-config and re-run this script to apply.
+    [ -f "$DIR/fand-config" ] && cp -f "$DIR/fand-config" /etc/ug-fand/config
+    modprobe drivetemp 2>/dev/null   # exposes SATA drive temps as hwmon
+    pkill -x ug-fand 2>/dev/null && sleep 1
+    nohup "$DIR/ug-fand" >/var/log/ug-fand.log 2>&1 &
+    echo "ug-fand started (log: /var/log/ug-fand.log)"
+fi

@@ -26,6 +26,10 @@ cp -f wallpapers/*.png "$DEST/wallpapers/" 2>/dev/null || true
 chmod 755 "$DEST/ug-paneld" "$DEST/start.sh"
 [ -f "$DEST/config.json" ] || cp -f config.json.example "$DEST/config.json"
 
+# bundled fan control daemon (start.sh launches it if present)
+[ -f ug-fand ]     && { cp -f ug-fand "$DEST/ug-fand"; chmod 755 "$DEST/ug-fand"; }
+[ -f fand-config ] && [ ! -f "$DEST/fand-config" ] && cp -f fand-config "$DEST/fand-config"
+
 # Register a Post-Init script so it starts on every boot (survives updates).
 if command -v midclt >/dev/null 2>&1; then
     if midclt call initshutdownscript.query "[[\"comment\",\"=\",\"$COMMENT\"]]" 2>/dev/null | grep -q "$COMMENT"; then
