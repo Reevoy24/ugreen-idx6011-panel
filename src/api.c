@@ -306,15 +306,12 @@ static void send_error(int fd, int code, const char *msg) {
     send_json(fd, code, body);
 }
 
+/* 401 WITHOUT a WWW-Authenticate header on purpose: the frontend handles auth
+ * with its own single password prompt, so we must NOT trigger the browser's
+ * native Basic-auth dialog (which would double-prompt and ask for a useless
+ * username — the server only checks the password). */
 static void send_auth_required(int fd) {
-    const char *body = "{\"error\":\"authentication required\"}";
-    char hdr[256];
-    int hn = snprintf(hdr, sizeof(hdr),
-        "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"ug-paneld\"\r\n"
-        "Content-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n",
-        strlen(body));
-    send_raw(fd, hdr, (size_t)hn);
-    send_raw(fd, body, strlen(body));
+    send_error(fd, 401, "password required");
 }
 
 static const char *content_type(const char *path) {
