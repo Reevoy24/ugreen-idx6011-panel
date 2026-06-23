@@ -1777,7 +1777,7 @@ void gui_update_clock(void)
     localtime_r(&now, &tm);
     char buf[64];
 
-    strftime(buf, sizeof(buf), "%H:%M", &tm);
+    strftime(buf, sizeof(buf), (setup.state && !setup.state->clock_24h) ? "%I:%M %p" : "%H:%M", &tm);
     if (strcmp(buf, prev_time) != 0) {
         snprintf(prev_time, sizeof(prev_time), "%s", buf);
         lv_label_set_text(time_label, buf);

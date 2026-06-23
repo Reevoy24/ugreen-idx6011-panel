@@ -171,6 +171,7 @@ int api_apply_settings(const api_settings_patch_t *p) {
     if (p->has_brightness) { ui_state.brightness = p->brightness; act_set_brightness(p->brightness); changed = 1; }
     if (p->has_timeout)    { ui_state.backlight_timeout = p->timeout; act_set_timeout(p->timeout); changed = 1; }
     if (p->has_sleep)      { ui_state.sleep_brightness = p->sleep_brightness; changed = 1; }
+    if (p->has_clock_24h)  { ui_state.clock_24h = p->clock_24h; changed = 1; }
     if (p->has_language)   { snprintf(ui_state.language, sizeof(ui_state.language), "%.3s", p->language);
                              i18n_set_language(p->language); lang_changed = 1; changed = 1; }
     if (changed) settings_save(&ui_state);
@@ -225,6 +226,7 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
     g_snap.sleep_brightness = ui_state.sleep_brightness;
     g_snap.leds_on = ui_state.leds_on;
     g_snap.led_night = ui_state.led_night;
+    g_snap.clock_24h = ui_state.clock_24h;
     snprintf(g_snap.language, sizeof(g_snap.language), "%s", ui_state.language);
     snprintf(g_snap.wallpaper, sizeof(g_snap.wallpaper), "%s", ui_state.wallpaper);
     snprintf(g_snap.led_night_start, sizeof(g_snap.led_night_start), "%s", ui_state.led_night_start);

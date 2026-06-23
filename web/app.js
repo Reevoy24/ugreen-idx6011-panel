@@ -5,6 +5,17 @@ const MODE_GRACE_MS = 6000;          // optimistic-highlight grace, mirrors the 
 const RPM_MAX = { cpu: 2400, sys: 2200 };
 const TIMEOUTS = [60, 300, 900, 1800, 0];
 const LANG_NAMES = { en: "English", de: "Deutsch", es: "Español", fr: "Français", pt: "Português", id: "Indonesia" };
+const TIMEZONES = [
+  "UTC",
+  "Europe/London", "Europe/Berlin", "Europe/Paris", "Europe/Madrid", "Europe/Rome",
+  "Europe/Amsterdam", "Europe/Zurich", "Europe/Lisbon", "Europe/Warsaw", "Europe/Athens",
+  "Europe/Moscow", "Europe/Istanbul",
+  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Sao_Paulo", "America/Mexico_City", "America/Toronto",
+  "Asia/Dubai", "Asia/Kolkata", "Asia/Jakarta", "Asia/Singapore", "Asia/Shanghai",
+  "Asia/Tokyo", "Asia/Seoul",
+  "Australia/Sydney", "Pacific/Auckland"
+];
 
 let lang = pickLang();
 let last = null;
@@ -175,7 +186,8 @@ function render(s) {
   setText("night-window", stx.led_night_window ? "(" + stx.led_night_window + ")" : "");
   syncVal("night-start", stx.led_night_start);
   syncVal("night-end", stx.led_night_end);
-  syncVal("set-tz", stx.timezone);
+  syncSelect("set-format", stx.clock_24h === false ? "12" : "24");
+  syncTzSelect(stx.timezone);
 
   renderWallpapers(s.wallpapers || { options: [], current: "" });
 }
@@ -203,6 +215,17 @@ function syncVal(id, v) {
   if (v == null) return;
   const el = $(id);
   if (!el || document.activeElement === el) return;
+  el.value = v;
+}
+function syncTzSelect(v) {
+  const el = $("set-tz");
+  if (!el || document.activeElement === el) return;
+  v = v || "";
+  if (v && ![...el.options].some((o) => o.value === v)) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    el.insertBefore(o, el.firstChild);
+  }
   el.value = v;
 }
 function renderWallpapers(wp) {
@@ -265,6 +288,8 @@ function buildSelects() {
   const langOpts = Object.keys(STRINGS).map((c) => `<option value="${c}">${LANG_NAMES[c] || c}</option>`).join("");
   const sl = $("set-language"); if (sl) sl.innerHTML = langOpts;
   const tl = $("lang"); if (tl) tl.innerHTML = langOpts;
+  const tz = $("set-tz");
+  if (tz) tz.innerHTML = TIMEZONES.map((z) => `<option value="${z}">${z}</option>`).join("");
 }
 
 function wireControls() {
@@ -292,13 +317,15 @@ function wireControls() {
   });
   const nsv = $("night-save");
   if (nsv) nsv.addEventListener("click", async () => {
-    try { await postJSON("/api/settings", { led_night_start: $("night-start").value, led_night_end: $("night-end").value }); toast(t("saved"), true); }
-    catch (err) { toast(err.message); }
-  });
-  const tzs = $("tz-save");
-  if (tzs) tzs.addEventListener("click", async () => {
-    try { await postJSON("/api/settings", { timezone: $("set-tz").value.trim() }); toast(t("saved"), true); }
-    catch (err) { toast(err.message); }
+    try {
+      await postJSON("/api/settings", {
+        led_night_start: $("night-start").value,
+        led_night_end: $("night-end").value,
+        timezone: $("set-tz").value.trim(),
+        clock_24h: $("set-format").value === "24" ? 1 : 0,
+      });
+      toast(t("saved"), true);
+    } catch (err) { toast(err.message); }
   });
 
   $("wp-options").addEventListener("click", async (e) => {

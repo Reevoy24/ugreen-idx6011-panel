@@ -94,12 +94,13 @@
           <div class="srow" id="row-night"><div class="sk"><button class="nx" id="night-x" aria-label="schedule">▸</button> <span data-i18n="night_mode">LED night mode</span> <small id="night-window"></small></div><input type="checkbox" id="set-night" class="sw"></div>
           <div class="srow" id="night-edit" hidden>
             <div class="tgrid">
+              <label class="tfield"><span data-i18n="time_format">Clock</span><select id="set-format"><option value="24">24h</option><option value="12">12h</option></select></label>
               <label class="tfield"><span data-i18n="start">Start</span><input type="time" id="night-start"></label>
               <label class="tfield"><span data-i18n="end">End</span><input type="time" id="night-end"></label>
+              <label class="tfield"><span data-i18n="timezone">Timezone</span><select id="set-tz"></select></label>
             </div>
             <button class="act sm okbtn" id="night-save" data-i18n="save">Save</button>
           </div>
-          <div class="srow"><div class="sk" data-i18n="timezone">Timezone</div><div class="ctl"><input type="text" id="set-tz" class="tzinput" placeholder="Europe/Berlin"><button class="act sm okbtn" id="tz-save" data-i18n="save">Save</button></div></div>
           <div class="srow col"><div class="sk" data-i18n="wallpaper">Wallpaper</div><div class="wps" id="wp-options"></div><label class="upload"><input type="file" id="wp-upload" accept="image/png" hidden><span data-i18n="upload_image">Upload image</span></label></div>
         </div>
       </section>

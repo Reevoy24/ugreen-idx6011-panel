@@ -551,9 +551,10 @@ static void handle_stats(int fd) {
     jappend(&b, ",\"crit\":{\"cpu\":88,\"sys\":60}},");
 
     jappend(&b, "\"settings\":{\"brightness\":%d,\"backlight_timeout\":%d,\"sleep_brightness\":%d,"
-                "\"leds_on\":%s,\"led_night\":%s,\"language\":",
+                "\"leds_on\":%s,\"led_night\":%s,\"clock_24h\":%s,\"language\":",
             s.brightness, s.backlight_timeout, s.sleep_brightness,
-            s.leds_on ? "true" : "false", s.led_night ? "true" : "false");
+            s.leds_on ? "true" : "false", s.led_night ? "true" : "false",
+            s.clock_24h ? "true" : "false");
     jstr(&b, s.language);
     jappend(&b, ",\"wallpaper\":"); jstr(&b, s.wallpaper);
     jappend(&b, ",\"led_night_window\":"); jstr(&b, s.led_night_window);
@@ -583,9 +584,10 @@ static void handle_settings_get(int fd) {
     char out[512];
     jbuf_t b = { out, sizeof(out), 0 };
     jappend(&b, "{\"brightness\":%d,\"backlight_timeout\":%d,\"sleep_brightness\":%d,"
-                "\"leds_on\":%s,\"led_night\":%s,\"has_leds\":%s,\"language\":",
+                "\"leds_on\":%s,\"led_night\":%s,\"clock_24h\":%s,\"has_leds\":%s,\"language\":",
             s.brightness, s.backlight_timeout, s.sleep_brightness,
-            s.leds_on ? "true" : "false", s.led_night ? "true" : "false", s.has_leds ? "true" : "false");
+            s.leds_on ? "true" : "false", s.led_night ? "true" : "false",
+            s.clock_24h ? "true" : "false", s.has_leds ? "true" : "false");
     jstr(&b, s.language);
     jappend(&b, ",\"wallpaper\":"); jstr(&b, s.wallpaper);
     jappend(&b, ",\"led_night_window\":"); jstr(&b, s.led_night_window);
@@ -635,6 +637,7 @@ static void handle_settings_post(int fd, const http_req_t *req) {
         if (v < 0 || v > 100) { send_error(fd, 400, "sleep_brightness 0-100"); return; }
         p.has_sleep = 1; p.sleep_brightness = v;
     }
+    if (json_get_int(j, "clock_24h", &v) == 0) { p.has_clock_24h = 1; p.clock_24h = !!v; }
     if (json_get_str(j, "language", s, sizeof(s)) == 0) {
         if (!valid_language(s)) { send_error(fd, 400, "unknown language"); return; }
         p.has_language = 1; snprintf(p.language, sizeof(p.language), "%.7s", s);
@@ -660,7 +663,7 @@ static void handle_settings_post(int fd, const http_req_t *req) {
 
     if (!(p.has_brightness || p.has_timeout || p.has_sleep || p.has_language ||
           p.has_leds_on || p.has_led_night || p.has_wallpaper ||
-          p.has_night_start || p.has_night_end || p.has_timezone)) {
+          p.has_night_start || p.has_night_end || p.has_timezone || p.has_clock_24h)) {
         send_error(fd, 400, "no changes");
         return;
     }

@@ -131,8 +131,10 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: none;
 .nx.open { transform: rotate(90deg); }
 .tgrid { display: flex; gap: 16px; flex-wrap: wrap; }
 .tfield { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
-input[type="time"], .tzinput { background: var(--btn); color: var(--text); border: 0.5px solid rgba(255, 255, 255, .12); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
-.tzinput { width: 190px; }
+input[type="time"], .tfield select { background: var(--btn); color: var(--text); border: 0.5px solid rgba(255, 255, 255, .12); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
+.tfield select { cursor: pointer; }
+#set-format { width: 84px; }
+#set-tz { max-width: 200px; }
 
 .wps { display: flex; gap: 10px; flex-wrap: wrap; }
 .wps .wp { position: relative; width: 92px; height: 58px; border-radius: 8px; border: 0.5px solid rgba(255,255,255,.12); cursor: pointer; background: var(--btn) center/cover no-repeat; overflow: hidden; }

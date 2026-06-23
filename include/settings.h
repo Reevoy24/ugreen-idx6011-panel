@@ -18,6 +18,7 @@ typedef struct {
     char led_night_start[8]; /* night window start, "HH:MM" */
     char led_night_end[8];   /* night window end, "HH:MM" */
     char timezone[40];       /* panel time zone; "" = system default */
+    int  clock_24h;          /* 1 = 24-hour clock (default), 0 = 12-hour */
 } ui_state_t;
 
 /* Defaults come from config.json; state.json (panel/web edits) overrides them. */

@@ -30,7 +30,7 @@ typedef struct {
     char fan_mode[16], fan_cpu_curve[192], fan_sys_curve[192];
 
     /* current settings (copy of ui_state + derived) */
-    int  brightness, backlight_timeout, sleep_brightness, leds_on, led_night;
+    int  brightness, backlight_timeout, sleep_brightness, leds_on, led_night, clock_24h;
     char language[8], wallpaper[32], led_night_window[16];
     char led_night_start[8], led_night_end[8], timezone[40];
 
@@ -51,6 +51,7 @@ typedef struct {
     int has_night_start; char night_start[8];
     int has_night_end;   char night_end[8];
     int has_timezone;    char timezone[40];
+    int has_clock_24h,   clock_24h;
 } api_settings_patch_t;
 
 /* GUI-affecting commands the API enqueues; the main loop drains + runs them on
