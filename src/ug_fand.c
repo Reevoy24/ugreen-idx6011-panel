@@ -177,13 +177,18 @@ typedef struct { int temp; int duty; } point_t;
 
 /* CPU fans driven by CPU temp; SYS fans driven by disk/NVMe temp.
  * Each table is sorted ascending by temp; duty is interpolated. The first
- * point's duty is the floor (fans never go below it, to keep airflow). */
-static const point_t cpu_silent[] = {{0,30},{55,45},{65,80},{75,130},{85,198}};
-static const point_t cpu_default[]= {{0,40},{50,60},{60,100},{70,150},{82,198}};
-static const point_t cpu_perf[]   = {{0,70},{45,100},{55,140},{65,180},{78,198}};
-static const point_t sys_silent[] = {{0,45},{40,60},{45,90},{50,140},{55,198}};
-static const point_t sys_default[]= {{0,60},{38,80},{44,120},{50,170},{56,198}};
-static const point_t sys_perf[]   = {{0,90},{35,120},{42,160},{48,195},{54,198}};
+ * two points share a duty = the idle floor (flat until the ramp starts).
+ *
+ * Tuned from measured duty->RPM on a real iDX6011 (CPU ~25 RPM/duty,
+ * SYS ~10.5 RPM/duty): "default" idles near UGOS' stock levels
+ * (CPU duty ~26 ≈ 650 rpm, SYS ~64 ≈ 770 rpm), silent quieter, performance
+ * cooler; all reach full speed before the critical thresholds. */
+static const point_t cpu_silent[] = {{0,20},{55,20},{68,70},{78,130},{85,198}};
+static const point_t cpu_default[]= {{0,26},{55,26},{66,75},{74,135},{82,198}};
+static const point_t cpu_perf[]   = {{0,55},{50,55},{60,140},{70,188},{80,198}};
+static const point_t sys_silent[] = {{0,45},{46,45},{50,100},{54,160},{58,198}};
+static const point_t sys_default[]= {{0,64},{47,64},{51,120},{55,175},{58,198}};
+static const point_t sys_perf[]   = {{0,110},{46,110},{50,160},{54,195},{58,198}};
 #define NPTS 5
 
 static int curve_duty(const point_t *c, int temp) {
