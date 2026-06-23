@@ -8,6 +8,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
+/* the hidden attribute must win over author display rules (.srow is flex, etc.) */
+[hidden] { display: none !important; }
 body {
   background: radial-gradient(120% 60% at 50% -10%, #12141b 0%, var(--bg) 55%) fixed, var(--bg);
   color: var(--text); font-family: var(--font); font-variant-numeric: tabular-nums;
