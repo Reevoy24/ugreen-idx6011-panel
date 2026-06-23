@@ -166,11 +166,16 @@ Config — `/etc/ug-fand/config`:
 ```
 mode=default       # silent | default | turbo
 interval=3         # seconds between updates
+# optional per-mode curves — comma-separated temp:duty points (°C : 0-198):
+cpu_default=0:24,60:24,70:75,78:140,86:198
+sys_default=0:55,48:55,52:110,56:170,60:198
 ```
 
 The three modes are temperature→duty curves (silent = quietest … turbo =
 coolest). The temperature is smoothed and a duty deadband is applied, so the
-fans hold a steady speed instead of hunting on brief CPU spikes. CPU fans follow the CPU temperature, system fans follow the
+fans hold a steady speed instead of hunting on brief CPU spikes. Every curve is
+editable in the config (`cpu_*` / `sys_*` lines, °C : duty points) and reloads
+on save — `cpu_*` track the CPU temperature, `sys_*` the disk/NVMe temperature. CPU fans follow the CPU temperature, system fans follow the
 disk/NVMe temperature. A thermal failsafe forces full speed above the critical
 thresholds, and a missing temperature reading is treated as "full" — a broken
 sensor never silences the fans.

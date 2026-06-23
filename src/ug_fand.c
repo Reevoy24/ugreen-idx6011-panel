@@ -15,8 +15,8 @@
  * Runs on Proxmox / TrueNAS / Debian (anywhere with /dev port I/O as root).
  * NOT for UGOS — there the proprietary driver owns the EC and would fight us.
  *
- * Needs root (port I/O via ioperm). The fan curves below are tuned starting
- * points; verify on real hardware.
+ * Config (/etc/ug-fand/config): mode, interval, and per-mode fan curves
+ * (temp:duty point lists). Needs root (port I/O via ioperm).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,7 +77,6 @@ static int ec_wait(int mask, int want) {
     return -1;
 }
 
-/* read one EC memory byte; returns 0 on success */
 static int ec_read(uint8_t addr, uint8_t *out) {
     int rc = -1;
     ec_lock();
@@ -93,7 +92,6 @@ done:
     return rc;
 }
 
-/* write one EC memory byte; returns 0 on success */
 static int ec_write(uint8_t addr, uint8_t val) {
     int rc = -1;
     ec_lock();
@@ -115,7 +113,6 @@ static long fan_rpm(uint8_t reg) {
     return ((long)hi << 8) | lo;
 }
 
-/* write duty to a fan pair (enable byte = 1, then duty) */
 static void set_fan_pair(uint8_t base, int duty) {
     if (duty < 0) duty = 0;
     if (duty > DUTY_MAX) duty = DUTY_MAX;
@@ -135,8 +132,6 @@ static int read_sysfs_int(const char *path) {
     return (int)v;
 }
 
-/* Return the highest tempN_input (deg C) of all hwmon devices whose name
- * matches `want` (substring). -1 if none found. */
 static int hwmon_temp_max(const char *want) {
     int best = -1;
     DIR *d = opendir("/sys/class/hwmon");
@@ -173,61 +168,114 @@ static int sys_temp(void) {
     return t;
 }
 
-/* ---- fan curves (tuned on a real iDX6011) ---- */
+/* ---- fan curves ---- */
+#define CURVE_MAX 12
 typedef struct { int temp; int duty; } point_t;
+typedef struct { point_t pts[CURVE_MAX]; int n; } curve_t;
 
-/* CPU fans driven by CPU temp; SYS fans driven by disk/NVMe temp.
- * Each table is sorted ascending by temp; duty is interpolated. The first
- * two points share a duty = the idle floor, held FLAT well past typical idle
- * so brief CPU spikes don't ramp the fans. Combined with the EMA smoothing
- * and the duty deadband in the loop, this stops audible hunting.
- *
- * Measured: CPU ~25 RPM/duty, SYS ~10.5 RPM/duty. UGOS stays quiet by ramping
- * late + smoothing; we mirror that — "default" holds a stock-like quiet floor
- * (CPU ~24 = ~620 rpm, SYS ~55 = ~680 rpm) until real, sustained load, then
- * ramps to full before the critical thresholds. */
-static const point_t cpu_silent[]  = {{0,18},{64,18},{74,70},{82,140},{88,198}};
-static const point_t cpu_default[] = {{0,24},{60,24},{70,75},{78,140},{86,198}};
-static const point_t cpu_turbo[]   = {{0,50},{55,50},{66,130},{75,185},{82,198}};
-static const point_t sys_silent[]  = {{0,40},{49,40},{53,95},{57,160},{60,198}};
-static const point_t sys_default[] = {{0,55},{48,55},{52,110},{56,170},{60,198}};
-static const point_t sys_turbo[]   = {{0,95},{47,95},{51,150},{55,190},{58,198}};
-#define NPTS 5
-
-static int curve_duty(const point_t *c, int temp) {
-    if (temp <= c[0].temp) return c[0].duty;
-    if (temp >= c[NPTS-1].temp) return c[NPTS-1].duty;
-    for (int i = 1; i < NPTS; i++) {
-        if (temp <= c[i].temp) {
-            int t0 = c[i-1].temp, t1 = c[i].temp, d0 = c[i-1].duty, d1 = c[i].duty;
-            return d0 + (d1 - d0) * (temp - t0) / (t1 - t0);
-        }
-    }
-    return c[NPTS-1].duty;
-}
-
-/* ---- config (mode) ---- */
-typedef enum { MODE_SILENT, MODE_DEFAULT, MODE_TURBO } fan_mode_t;
+typedef enum { MODE_SILENT, MODE_DEFAULT, MODE_TURBO, MODE_COUNT } fan_mode_t;
 static const char *mode_name(fan_mode_t m) {
     return m == MODE_SILENT ? "silent" : m == MODE_TURBO ? "turbo" : "default";
 }
 
-static void read_config(fan_mode_t *mode, int *interval, int *force) {
+typedef struct {
+    fan_mode_t mode;
+    int interval;
+    int force;
+    curve_t cpu[MODE_COUNT];
+    curve_t sys[MODE_COUNT];
+} fanconf_t;
+
+/* Linear interpolation; table is sorted ascending by temp. */
+static int curve_duty(const curve_t *cv, int temp) {
+    const point_t *c = cv->pts; int n = cv->n;
+    if (n <= 0) return DUTY_MAX;
+    if (temp <= c[0].temp) return c[0].duty;
+    if (temp >= c[n-1].temp) return c[n-1].duty;
+    for (int i = 1; i < n; i++) {
+        if (temp <= c[i].temp) {
+            int t0 = c[i-1].temp, t1 = c[i].temp, d0 = c[i-1].duty, d1 = c[i].duty;
+            return t1 == t0 ? d1 : d0 + (d1 - d0) * (temp - t0) / (t1 - t0);
+        }
+    }
+    return c[n-1].duty;
+}
+
+/* Parse "t:d,t:d,..." into a curve (clamped + sorted). Returns 0 on success. */
+static int parse_curve(const char *s, curve_t *c) {
+    int n = 0;
+    while (*s && n < CURVE_MAX) {
+        while (*s == ' ' || *s == '\t' || *s == ',') s++;
+        int t, d, len = 0;
+        if (sscanf(s, "%d:%d%n", &t, &d, &len) != 2 || len == 0) break;
+        s += len;
+        if (t < 0) t = 0; else if (t > 120) t = 120;
+        if (d < 0) d = 0; else if (d > DUTY_MAX) d = DUTY_MAX;
+        c->pts[n].temp = t; c->pts[n].duty = d; n++;
+    }
+    if (n < 1) return -1;
+    for (int i = 1; i < n; i++) {                 /* insertion sort by temp */
+        point_t k = c->pts[i]; int j = i - 1;
+        while (j >= 0 && c->pts[j].temp > k.temp) { c->pts[j+1] = c->pts[j]; j--; }
+        c->pts[j+1] = k;
+    }
+    c->n = n;
+    return 0;
+}
+
+static void set_curve(curve_t *c, const point_t *src, int n) {
+    c->n = n;
+    for (int i = 0; i < n; i++) c->pts[i] = src[i];
+}
+
+/* Built-in defaults (used for any curve the config doesn't override). Tuned on
+ * a real iDX6011: quiet stock-like idle floor held flat past typical idle, then
+ * ramps to full before the critical thresholds. */
+static void config_defaults(fanconf_t *cf, int cli_force) {
+    cf->mode = MODE_DEFAULT;
+    cf->interval = 3;
+    cf->force = cli_force;
+    static const point_t cs[] = {{0,18},{64,18},{74,70},{82,140},{88,198}};
+    static const point_t cd[] = {{0,24},{60,24},{70,75},{78,140},{86,198}};
+    static const point_t ct[] = {{0,50},{55,50},{66,130},{75,185},{82,198}};
+    static const point_t ss[] = {{0,40},{49,40},{53,95},{57,160},{60,198}};
+    static const point_t sd[] = {{0,55},{48,55},{52,110},{56,170},{60,198}};
+    static const point_t st[] = {{0,95},{47,95},{51,150},{55,190},{58,198}};
+    set_curve(&cf->cpu[MODE_SILENT], cs, 5);
+    set_curve(&cf->cpu[MODE_DEFAULT], cd, 5);
+    set_curve(&cf->cpu[MODE_TURBO], ct, 5);
+    set_curve(&cf->sys[MODE_SILENT], ss, 5);
+    set_curve(&cf->sys[MODE_DEFAULT], sd, 5);
+    set_curve(&cf->sys[MODE_TURBO], st, 5);
+}
+
+/* Reset to defaults, then apply overrides from the config file. Called at
+ * startup and whenever the file changes (so edits hot-reload). */
+static void load_config(fanconf_t *cf, int cli_force) {
+    config_defaults(cf, cli_force);
     FILE *f = fopen(CONFIG_PATH, "r");
     if (!f) return;
-    char line[128];
+    char line[256];
     while (fgets(line, sizeof(line), f)) {
-        char key[64], val[64];
-        if (sscanf(line, " %63[^= ] = %63s", key, val) != 2) continue;
+        char key[64], val[192];
+        if (sscanf(line, " %63[^= ] = %191[^\n\r]", key, val) != 2) continue;
+        size_t L = strlen(val);
+        while (L && (val[L-1] == ' ' || val[L-1] == '\t' || val[L-1] == '\r')) val[--L] = 0;
         if (!strcmp(key, "mode")) {
-            if (!strcmp(val, "silent"))      *mode = MODE_SILENT;
-            else if (!strcmp(val, "turbo") || !strcmp(val, "performance")) *mode = MODE_TURBO;
-            else                              *mode = MODE_DEFAULT;
+            if (!strcmp(val, "silent")) cf->mode = MODE_SILENT;
+            else if (!strcmp(val, "turbo") || !strcmp(val, "performance")) cf->mode = MODE_TURBO;
+            else cf->mode = MODE_DEFAULT;
         } else if (!strcmp(key, "interval")) {
-            int v = atoi(val); if (v >= 1 && v <= 60) *interval = v;
+            int v = atoi(val); if (v >= 1 && v <= 60) cf->interval = v;
         } else if (!strcmp(key, "force")) {
-            *force = atoi(val);
+            cf->force = atoi(val);
         }
+        else if (!strcmp(key, "cpu_silent"))  parse_curve(val, &cf->cpu[MODE_SILENT]);
+        else if (!strcmp(key, "cpu_default")) parse_curve(val, &cf->cpu[MODE_DEFAULT]);
+        else if (!strcmp(key, "cpu_turbo"))   parse_curve(val, &cf->cpu[MODE_TURBO]);
+        else if (!strcmp(key, "sys_silent"))  parse_curve(val, &cf->sys[MODE_SILENT]);
+        else if (!strcmp(key, "sys_default")) parse_curve(val, &cf->sys[MODE_DEFAULT]);
+        else if (!strcmp(key, "sys_turbo"))   parse_curve(val, &cf->sys[MODE_TURBO]);
     }
     fclose(f);
 }
@@ -256,15 +304,14 @@ static int dmi_is_supported(void) {
 static void on_signal(int s) { (void)s; running = 0; }
 
 int main(int argc, char **argv) {
-    int force = 0;
+    int cli_force = 0;
     for (int i = 1; i < argc; i++)
-        if (!strcmp(argv[i], "--force")) force = 1;
+        if (!strcmp(argv[i], "--force")) cli_force = 1;
 
-    fan_mode_t mode = MODE_DEFAULT;
-    int interval = 3;
-    read_config(&mode, &interval, &force);
+    fanconf_t cf;
+    load_config(&cf, cli_force);
 
-    if (!dmi_is_supported() && !force) {
+    if (!dmi_is_supported() && !cf.force) {
         fprintf(stderr, "ug-fand: this is not a UGREEN iDX6011 (DMI product_name). "
                         "Refusing to poke the EC. Use --force or set force=1 in "
                         CONFIG_PATH " to override.\n");
@@ -287,46 +334,39 @@ int main(int argc, char **argv) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
-    fprintf(stderr, "ug-fand: started, mode=%s, interval=%ds\n", mode_name(mode), interval);
+    fprintf(stderr, "ug-fand: started, mode=%s, interval=%ds\n",
+            mode_name(cf.mode), cf.interval);
 
     time_t cfg_mtime = 0;
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
     int applied_cd = -1, applied_sd = -1;
     while (running) {
-        /* hot-reload mode/interval when the config file changes */
+        /* hot-reload mode/interval/curves when the config file changes */
         struct stat sb;
         if (stat(CONFIG_PATH, &sb) == 0 && sb.st_mtime != cfg_mtime) {
             cfg_mtime = sb.st_mtime;
-            fan_mode_t nm = mode; int ni = interval, nf = force;
-            read_config(&nm, &ni, &nf);
-            if (nm != mode) {
-                fprintf(stderr, "ug-fand: mode -> %s\n", mode_name(nm));
-                applied_cd = applied_sd = -1;   /* snap to the new curve at once */
-            }
-            mode = nm; interval = ni;
+            fan_mode_t prev = cf.mode;
+            load_config(&cf, cli_force);
+            if (cf.mode != prev)
+                fprintf(stderr, "ug-fand: mode -> %s\n", mode_name(cf.mode));
+            applied_cd = applied_sd = -1;   /* snap to the (possibly new) curves */
         }
 
         int ct = cpu_temp(), st = sys_temp();
 
-        /* EMA-smooth the temperatures so brief CPU spikes (a few seconds of
-         * background load) don't make the fans ramp up and down audibly. */
+        /* EMA-smooth so brief CPU spikes don't make the fans ramp up and down. */
         if (ct >= 0) cpu_ema = cpu_ema < 0 ? ct : cpu_ema + (ct - cpu_ema) * 0.2;
         if (st >= 0) sys_ema = sys_ema < 0 ? st : sys_ema + (st - sys_ema) * 0.2;
         int cts = cpu_ema < 0 ? -1 : (int)(cpu_ema + 0.5);
         int sts = sys_ema < 0 ? -1 : (int)(sys_ema + 0.5);
 
-        const point_t *cc = mode == MODE_SILENT ? cpu_silent
-                          : mode == MODE_TURBO ? cpu_turbo : cpu_default;
-        const point_t *sc = mode == MODE_SILENT ? sys_silent
-                          : mode == MODE_TURBO ? sys_turbo : sys_default;
-
-        int cd = cts < 0 ? DUTY_MAX : curve_duty(cc, cts);  /* no reading -> full (safe) */
-        int sd = sts < 0 ? DUTY_MAX : curve_duty(sc, sts);
+        int cd = cts < 0 ? DUTY_MAX : curve_duty(&cf.cpu[cf.mode], cts);
+        int sd = sts < 0 ? DUTY_MAX : curve_duty(&cf.sys[cf.mode], sts);
         if (ct >= CPU_CRIT) cd = DUTY_MAX;                  /* failsafe on RAW temp */
         if (st >= SYS_CRIT) sd = DUTY_MAX;
 
-        /* Deadband: hold the current duty for small target changes so the fan
-         * speed stays steady instead of hunting. Always honour a jump to full. */
+        /* Deadband: hold the current duty for small target changes (anti-hunt);
+         * always honour a jump to full. */
         if (applied_cd < 0 || cd == DUTY_MAX || abs(cd - applied_cd) >= DUTY_DEADBAND)
             applied_cd = cd;
         if (applied_sd < 0 || sd == DUTY_MAX || abs(sd - applied_sd) >= DUTY_DEADBAND)
@@ -335,16 +375,15 @@ int main(int argc, char **argv) {
         set_fan_pair(REG_CPU_EN1, applied_cd);
         set_fan_pair(REG_SYS_EN1, applied_sd);
 
-        write_status(mode, ct, st,
+        write_status(cf.mode, ct, st,
                      fan_rpm(REG_CPUFAN1_RPM), fan_rpm(REG_CPUFAN2_RPM),
                      fan_rpm(REG_SYSFAN1_RPM), fan_rpm(REG_SYSFAN2_RPM),
                      applied_cd, applied_sd);
 
-        for (int slept = 0; slept < interval && running; slept++) sleep(1);
+        for (int slept = 0; slept < cf.interval && running; slept++) sleep(1);
     }
 
-    /* failsafe on exit: leave fans at a safe, audible level so a stopped
-     * daemon never leaves them too slow to cool the box */
+    /* failsafe on exit: leave fans at a safe, audible level */
     set_fan_pair(REG_CPU_EN1, 140);
     set_fan_pair(REG_SYS_EN1, 140);
     fprintf(stderr, "ug-fand: stopped (fans set to failsafe duty 140)\n");
