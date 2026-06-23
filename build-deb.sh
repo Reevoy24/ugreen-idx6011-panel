@@ -49,7 +49,8 @@ CTRL
 #!/bin/sh
 systemctl daemon-reload
 systemctl enable ug-paneld 2>/dev/null || true
-echo "ug-paneld installed. Start with: systemctl start ug-paneld"
+systemctl restart ug-paneld 2>/dev/null || true
+echo "ug-paneld installed and (re)started."
 SCRIPT
     chmod 755 "$stage/DEBIAN/postinst"
 
