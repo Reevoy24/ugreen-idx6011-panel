@@ -402,6 +402,16 @@ int main(int argc, char *argv[]) {
                 settings_save(&ui_state);
                 pthread_mutex_unlock(&settings_lock);
                 break;
+            case API_CMD_WALLPAPER_DELETE:
+                /* custom file already removed; drop "custom" and fall back if it
+                 * was selected, then re-scan + re-apply. */
+                pthread_mutex_lock(&settings_lock);
+                if (strcmp(ui_state.wallpaper, "custom") == 0)
+                    snprintf(ui_state.wallpaper, sizeof(ui_state.wallpaper), "none");
+                gui_wallpaper_rescan();
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                break;
             case API_CMD_LEDS_TOGGLE:
                 if (cmd.arg_int != leds_user_on()) leds_toggle();
                 pthread_mutex_lock(&settings_lock);

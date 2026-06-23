@@ -200,7 +200,8 @@ function renderWallpapers(wp) {
   box.innerHTML = (wp.options || []).map((name) => {
     const bg = name === "none" ? "" : ` style="background-image:url('/wp/${encodeURIComponent(name)}')"`;
     const cls = "wp" + (name === wp.current ? " on" : "") + (name === "none" ? " none" : "");
-    return `<div class="${cls}" data-wp="${esc(name)}"${bg}><span class="wpname">${esc(name)}</span></div>`;
+    const del = name === "custom" ? `<button class="wpdel" aria-label="delete">×</button>` : "";
+    return `<div class="${cls}" data-wp="${esc(name)}"${bg}><span class="wpname">${esc(name)}</span>${del}</div>`;
   }).join("");
 }
 
@@ -268,7 +269,13 @@ function wireControls() {
   $("set-leds").addEventListener("change", (e) => postSettings({ leds_on: e.target.checked ? 1 : 0 }));
   $("set-night").addEventListener("change", (e) => postSettings({ led_night: e.target.checked ? 1 : 0 }));
 
-  $("wp-options").addEventListener("click", (e) => {
+  $("wp-options").addEventListener("click", async (e) => {
+    if (e.target.classList.contains("wpdel")) {
+      e.stopPropagation();
+      try { await authed("/api/wallpaper", { method: "DELETE" }); toast(t("deleted"), true); }
+      catch (err) { toast(err.message); }
+      return;
+    }
     const el = e.target.closest("[data-wp]");
     if (el) postSettings({ wallpaper: el.dataset.wp });
   });

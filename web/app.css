@@ -130,6 +130,8 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: none;
 .wps .wp.on { outline: 2px solid var(--cyan); outline-offset: 1px; }
 .wpname { position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 4px; font-size: 11px; color: #fff; background: rgba(0,0,0,.45); text-align: center; }
 .wps .wp.none .wpname { top: 0; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+.wpdel { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0; border: none; border-radius: 6px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.wpdel:hover { background: var(--red); }
 .upload { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; cursor: pointer; background: var(--btn); border: 0.5px solid rgba(255,255,255,.12); border-radius: 10px; padding: 9px 14px; font-size: 13px; }
 
 .acts { display: flex; gap: 10px; }

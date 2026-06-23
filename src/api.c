@@ -744,6 +744,17 @@ static void handle_wallpaper_upload(int fd, const http_req_t *req) {
     send_json(fd, 200, "{\"ok\":true,\"wallpaper\":\"custom\"}");
 }
 
+/* Delete the custom wallpaper only (built-ins live read-only under /usr/share). */
+static void handle_wallpaper_delete(int fd) {
+    if (unlink("/etc/ug-paneld/wallpaper.png") != 0 && errno != ENOENT) {
+        send_error(fd, 500, "delete failed");
+        return;
+    }
+    api_cmd_t c = { .type = API_CMD_WALLPAPER_DELETE };
+    api_cmd_push(&c);
+    send_json(fd, 200, "{\"ok\":true}");
+}
+
 /* legacy /backlight (kept for the Home Assistant light entity) */
 static void handle_backlight_get(int fd) {
     char body[128];
@@ -780,6 +791,7 @@ static void handle_request(int fd) {
 
     int is_get = strcmp(req.method, "GET") == 0;
     int is_post = strcmp(req.method, "POST") == 0;
+    int is_delete = strcmp(req.method, "DELETE") == 0;
 
     if (strcmp(req.path, "/healthz") == 0) {
         send_json(fd, 200, "{\"ok\":true}");
@@ -794,9 +806,10 @@ static void handle_request(int fd) {
     } else if (strcmp(req.path, "/api/wallpapers") == 0) {
         if (is_get) handle_wallpapers(fd); else send_error(fd, 405, NULL);
     } else if (strcmp(req.path, "/api/wallpaper") == 0) {
-        if (!is_post) send_error(fd, 405, NULL);
+        if (!is_post && !is_delete) send_error(fd, 405, NULL);
         else if (password_set() && !password_ok(&req)) send_auth_required(fd);
-        else handle_wallpaper_upload(fd, &req);
+        else if (is_post) handle_wallpaper_upload(fd, &req);
+        else handle_wallpaper_delete(fd);
     } else if (strcmp(req.path, "/api/fan/mode") == 0) {
         if (!is_post) send_error(fd, 405, NULL);
         else if (password_set() && !password_ok(&req)) send_auth_required(fd);
