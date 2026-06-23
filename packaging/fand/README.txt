@@ -19,7 +19,7 @@ TrueNAS SCALE (read-only root -> installs onto a pool + Post-Init script):
 Configure
 ---------
     /etc/ug-fand/config
-        mode=default        # silent | default | performance
+        mode=default        # silent | default | turbo
         interval=3          # seconds between updates
 
 Apply a config change:

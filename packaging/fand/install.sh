@@ -44,7 +44,7 @@ if [ -n "$DEST" ]; then
         echo "midclt not found. Add under System Settings > Advanced > Init/Shutdown Scripts:  sh $DEST/start.sh"
     fi
     sh "$DEST/start.sh"
-    echo "Installed to $DEST. Edit $DEST/config (mode=silent|default|performance), then: sh $DEST/start.sh"
+    echo "Installed to $DEST. Edit $DEST/config (mode=silent|default|turbo), then: sh $DEST/start.sh"
 else
     # ---------- systemd install (Proxmox / Debian) ----------
     command -v systemctl >/dev/null 2>&1 || { echo "No systemd. For TrueNAS run: sh install.sh /mnt/<pool>/ug-fand" >&2; exit 1; }

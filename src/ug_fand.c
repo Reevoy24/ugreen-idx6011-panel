@@ -269,7 +269,7 @@ static void load_config(fanconf_t *cf, int cli_force) {
         while (L && (val[L-1] == ' ' || val[L-1] == '\t' || val[L-1] == '\r')) val[--L] = 0;
         if (!strcmp(key, "mode")) {
             if (!strcmp(val, "silent")) cf->mode = MODE_SILENT;
-            else if (!strcmp(val, "turbo") || !strcmp(val, "performance")) cf->mode = MODE_TURBO;
+            else if (!strcmp(val, "turbo")) cf->mode = MODE_TURBO;
             else cf->mode = MODE_DEFAULT;
         } else if (!strcmp(key, "interval")) {
             int v = atoi(val); if (v >= 1 && v <= 60) cf->interval = v;

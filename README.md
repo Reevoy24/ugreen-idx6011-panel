@@ -3,7 +3,7 @@
 Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
 *Community project — not affiliated with or endorsed by UGREEN.*
 
-[![Release](https://img.shields.io/badge/release-v1.4.6-2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.5.0-2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
@@ -19,13 +19,18 @@ complete [front-LED setup](#front-panel-leds).
 
 ![All dashboard pages](images/pages-overview.png)
 
+**Jump to:** [Install](#install) · [Front panel LEDs](#front-panel-leds) · [Fan control](#fan-control) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+
 ## Highlights
 
-- 🖥️ **Six swipeable pages** — Home (clock, CPU ring, glass tiles), Hardware,
+- 🖥️ **Swipeable dashboard** — Home (clock, CPU ring, glass tiles), Hardware,
   Network, Disks, Proxmox guests (PVE hosts only), OPNsense (optional)
 - 👆 **Touch works** — swipe between pages, pull-down settings panel with
   brightness, screen-off timeout, wallpaper, language (EN/DE/ES/FR/PT/ID),
   restart/shutdown
+- 🌀 **Fan monitoring + control** — swipe **left** from Home for live RPM and
+  temps, **Silent / Default / Turbo** modes and the live curve; the bundled
+  `ug-fand` daemon drives the ITE EC from userspace (no kernel module)
 - 💡 **Front LED control** — stops the rolling animation; disk activity +
   SMART health + network blinking; LED toggle and **night mode**
   (21:00–08:00, configurable) right on the display
@@ -64,9 +69,13 @@ tar xzf ug-paneld_*_unraid_amd64.tar.gz && cd ug-paneld
 sh install.sh
 ```
 
+> Every package **bundles fan control**: installing also installs and starts the
+> `ug-fand` daemon, so the [Fan control](#fan-control) page works out of the box
+> — no separate step.
+
 > [!NOTE]
-> The display, dashboard and front LEDs are **field-tested on Proxmox VE on
-> real hardware** (a newer-revision iDX6011 Pro). On **Unraid** the display and
+> The display, dashboard, front LEDs and fan control are **field-tested on
+> Proxmox VE on real hardware** (a newer-revision iDX6011 Pro). On **Unraid** the display and
 > LEDs work too, but the **touchscreen does not**: stock Unraid's kernel omits
 > the Intel LPSS / DesignWare I2C driver the touch panel needs, so its I2C bus
 > never appears (display and LEDs are unaffected; the dashboard stays on and
@@ -149,9 +158,22 @@ both — monitoring **and** control — entirely from userspace, no kernel modul
 > The bundled curves are conservative starting points; writing fan registers
 > can overheat the box if a curve is wrong, so verify on your hardware.
 
-### Install the daemon
+### Setup
 
-Build it (`make fand` → `ug-fand` at the repo root), then:
+Nothing to do — `ug-fand` is **bundled with the package** and started
+automatically by the [install](#install) above (the `.deb` ships it as a systemd
+service; the TrueNAS and Unraid tarballs install and launch it too). Confirm it
+is running:
+
+```bash
+systemctl status ug-fand          # Proxmox / Debian
+cat /var/log/ug-fand.log          # TrueNAS / Unraid
+```
+
+<details open>
+<summary><b>Standalone install (building from source / daemon only)</b></summary>
+
+Build just the daemon (`make fand` → `ug-fand` at the repo root), then:
 
 ```bash
 # Proxmox / Debian (systemd service)
@@ -160,6 +182,8 @@ sudo sh packaging/fand/install.sh
 # TrueNAS SCALE (installs onto a pool + registers a Post-Init script)
 sudo sh packaging/fand/install.sh /mnt/<pool>/ug-fand
 ```
+
+</details>
 
 Config — `/etc/ug-fand/config`:
 
@@ -206,9 +230,11 @@ sys_default=0:28,53:28,56:60,58:88,60:100   # quiet up to 53 °C, then ramp
 
 Delete a curve line to fall back to the built-in default.
 
-> On TrueNAS the rootfs is read-only and `/etc/ug-fand/config` is re-synced from
-> the copy on your pool at boot, so live edits there are not reboot-persistent —
-> edit `/mnt/<pool>/ug-fand/config` for changes that survive a reboot.
+> On TrueNAS the rootfs is rebuilt every boot, so `/etc/ug-fand/config` (and a
+> mode set on the panel) is **not** reboot-persistent — it is re-synced at boot
+> from the copy on your pool. Edit the pool copy for changes that survive a
+> reboot: `<install-dir>/fand-config` (bundled install) or
+> `/mnt/<pool>/ug-fand/config` (standalone daemon).
 
 ### Monitoring
 
@@ -388,7 +414,7 @@ template:
 | `/api/core/firmware/status` | Update availability |
 | `/api/dhcpv4/leases/searchLease` | Active DHCP lease count |
 | `/api/unbound/overview/totals/0` | DNS queries / blocked % |
-| `/api/interfaces/traffic/top/{interface}` | WAN in/out gauges |
+| `/api/diagnostics/traffic/top/{interface}` | WAN in/out gauges |
 
 Create the API key in OPNsense under System → Access → Users.
 
