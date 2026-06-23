@@ -15,12 +15,13 @@ body {
 }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 22px 48px; }
 
-/* dashboard grid: wide blocks (overview, fan) span full width; the rest sit in
-   two columns on wide screens, one column on narrow. */
-.board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 26px; align-items: start; margin-top: 24px; }
+/* Overview / Fan / Power span the full width; the middle sections masonry-pack
+   into two columns (fill by height, no big gaps), collapsing to one when narrow. */
+.board { display: flex; flex-direction: column; gap: 24px; margin-top: 24px; }
 .block { min-width: 0; }
-.block.wide { grid-column: 1 / -1; }
-@media (max-width: 900px) { .board { grid-template-columns: 1fr; gap: 20px; } .block.wide { grid-column: auto; } }
+.cols { columns: 2; column-gap: 26px; }
+.cols > .block { break-inside: avoid; margin: 0 0 24px; }
+@media (max-width: 900px) { .cols { columns: 1; } }
 
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 10px; }
