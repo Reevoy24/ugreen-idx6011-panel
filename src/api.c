@@ -446,6 +446,21 @@ static int valid_wallpaper(const char *name) {
     return ok;
 }
 
+static int valid_hhmm(const char *s) {
+    int h = -1, m = -1;
+    if (sscanf(s, "%d:%d", &h, &m) != 2) return 0;
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+}
+
+/* "" = system default; otherwise must name an existing zoneinfo file */
+static int valid_timezone(const char *tz) {
+    if (!tz[0]) return 1;
+    if (tz[0] == '/' || strstr(tz, "..")) return 0;
+    char p[256];
+    snprintf(p, sizeof(p), "/usr/share/zoneinfo/%s", tz);
+    return access(p, F_OK) == 0;
+}
+
 /* ---- handlers ---- */
 static void handle_stats(int fd) {
     api_snapshot_t s;
@@ -542,6 +557,9 @@ static void handle_stats(int fd) {
     jstr(&b, s.language);
     jappend(&b, ",\"wallpaper\":"); jstr(&b, s.wallpaper);
     jappend(&b, ",\"led_night_window\":"); jstr(&b, s.led_night_window);
+    jappend(&b, ",\"led_night_start\":"); jstr(&b, s.led_night_start);
+    jappend(&b, ",\"led_night_end\":"); jstr(&b, s.led_night_end);
+    jappend(&b, ",\"timezone\":"); jstr(&b, s.timezone);
     jappend(&b, "},");
 
     jappend(&b, "\"wallpapers\":{\"current\":");
@@ -571,6 +589,9 @@ static void handle_settings_get(int fd) {
     jstr(&b, s.language);
     jappend(&b, ",\"wallpaper\":"); jstr(&b, s.wallpaper);
     jappend(&b, ",\"led_night_window\":"); jstr(&b, s.led_night_window);
+    jappend(&b, ",\"led_night_start\":"); jstr(&b, s.led_night_start);
+    jappend(&b, ",\"led_night_end\":"); jstr(&b, s.led_night_end);
+    jappend(&b, ",\"timezone\":"); jstr(&b, s.timezone);
     jappend(&b, "}");
     send_json(fd, 200, out);
 }
@@ -624,9 +645,22 @@ static void handle_settings_post(int fd, const http_req_t *req) {
         if (!valid_wallpaper(s)) { send_error(fd, 400, "unknown wallpaper"); return; }
         p.has_wallpaper = 1; snprintf(p.wallpaper, sizeof(p.wallpaper), "%.31s", s);
     }
+    if (has_leds_cap && json_get_str(j, "led_night_start", s, sizeof(s)) == 0) {
+        if (!valid_hhmm(s)) { send_error(fd, 400, "led_night_start must be HH:MM"); return; }
+        p.has_night_start = 1; snprintf(p.night_start, sizeof(p.night_start), "%.7s", s);
+    }
+    if (has_leds_cap && json_get_str(j, "led_night_end", s, sizeof(s)) == 0) {
+        if (!valid_hhmm(s)) { send_error(fd, 400, "led_night_end must be HH:MM"); return; }
+        p.has_night_end = 1; snprintf(p.night_end, sizeof(p.night_end), "%.7s", s);
+    }
+    if (json_get_str(j, "timezone", s, sizeof(s)) == 0) {
+        if (!valid_timezone(s)) { send_error(fd, 400, "unknown timezone"); return; }
+        p.has_timezone = 1; snprintf(p.timezone, sizeof(p.timezone), "%.39s", s);
+    }
 
     if (!(p.has_brightness || p.has_timeout || p.has_sleep || p.has_language ||
-          p.has_leds_on || p.has_led_night || p.has_wallpaper)) {
+          p.has_leds_on || p.has_led_night || p.has_wallpaper ||
+          p.has_night_start || p.has_night_end || p.has_timezone)) {
         send_error(fd, 400, "no changes");
         return;
     }

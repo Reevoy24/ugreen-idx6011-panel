@@ -38,17 +38,18 @@ static int json_get_str(const char *json, const char *key, char *buf, size_t buf
     return 0;
 }
 
-void settings_load(ui_state_t *st, int default_brightness, int default_timeout,
-                   int default_sleep_brightness, const char *default_language)
+void settings_load(ui_state_t *st, const config_t *cfg)
 {
-    st->brightness = default_brightness;
-    st->backlight_timeout = default_timeout;
-    st->sleep_brightness = default_sleep_brightness;
+    st->brightness = cfg->brightness;
+    st->backlight_timeout = cfg->backlight_timeout;
+    st->sleep_brightness = cfg->sleep_brightness;
     st->wallpaper[0] = '\0'; /* "" = legacy auto: custom file if present, else none */
-    snprintf(st->language, sizeof(st->language), "%s",
-             (default_language && default_language[0]) ? default_language : "en");
+    snprintf(st->language, sizeof(st->language), "%s", cfg->language[0] ? cfg->language : "en");
     st->leds_on = 1;
     st->led_night = 0;
+    snprintf(st->led_night_start, sizeof(st->led_night_start), "%s", cfg->led_night_start);
+    snprintf(st->led_night_end, sizeof(st->led_night_end), "%s", cfg->led_night_end);
+    snprintf(st->timezone, sizeof(st->timezone), "%s", cfg->timezone);
 
     FILE *fp = fopen(STATE_FILE_PATH, "r");
     if (!fp) return;
@@ -65,6 +66,9 @@ void settings_load(ui_state_t *st, int default_brightness, int default_timeout,
     json_get_str(json, "language", st->language, sizeof(st->language));
     json_get_int(json, "leds_on", &st->leds_on);
     json_get_int(json, "led_night", &st->led_night);
+    json_get_str(json, "led_night_start", st->led_night_start, sizeof(st->led_night_start));
+    json_get_str(json, "led_night_end", st->led_night_end, sizeof(st->led_night_end));
+    json_get_str(json, "timezone", st->timezone, sizeof(st->timezone));
 
     if (st->brightness < 1) st->brightness = 1;
     if (st->brightness > 100) st->brightness = 100;
@@ -91,10 +95,14 @@ int settings_save(const ui_state_t *st)
             "    \"wallpaper\": \"%s\",\n"
             "    \"language\": \"%s\",\n"
             "    \"leds_on\": %d,\n"
-            "    \"led_night\": %d\n"
+            "    \"led_night\": %d,\n"
+            "    \"led_night_start\": \"%s\",\n"
+            "    \"led_night_end\": \"%s\",\n"
+            "    \"timezone\": \"%s\"\n"
             "}\n",
             st->brightness, st->backlight_timeout, st->sleep_brightness,
-            st->wallpaper, st->language, st->leds_on, st->led_night);
+            st->wallpaper, st->language, st->leds_on, st->led_night,
+            st->led_night_start, st->led_night_end, st->timezone);
     fclose(fp);
 
     if (rename(tmp, STATE_FILE_PATH) != 0) {

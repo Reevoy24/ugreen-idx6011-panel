@@ -30,6 +30,7 @@ typedef struct {
     int debug;             /* verbose display probe logging */
     char led_night_start[8]; /* front LED night window start, "HH:MM" */
     char led_night_end[8];   /* front LED night window end, "HH:MM" */
+    char timezone[40];       /* panel time zone (e.g. "Europe/Berlin"); "" = system default */
     int boot_settle_secs;    /* cold-boot settle: re-assert the backlight and
                                 hold off the idle timeout until the EC accepts a
                                 write (panel lit), or at most this many seconds

@@ -32,6 +32,7 @@ typedef struct {
     /* current settings (copy of ui_state + derived) */
     int  brightness, backlight_timeout, sleep_brightness, leds_on, led_night;
     char language[8], wallpaper[32], led_night_window[16];
+    char led_night_start[8], led_night_end[8], timezone[40];
 
     /* wallpaper options */
     int  wp_count, wp_cur;
@@ -47,6 +48,9 @@ typedef struct {
     int has_leds_on,    leds_on;
     int has_led_night,  led_night;
     int has_wallpaper;  char wallpaper[32];
+    int has_night_start; char night_start[8];
+    int has_night_end;   char night_end[8];
+    int has_timezone;    char timezone[40];
 } api_settings_patch_t;
 
 /* GUI-affecting commands the API enqueues; the main loop drains + runs them on
@@ -57,13 +61,15 @@ typedef enum {
     API_CMD_WALLPAPER_RESCAN,
     API_CMD_WALLPAPER_DELETE,
     API_CMD_LEDS_TOGGLE,
-    API_CMD_LEDS_SET_NIGHT
+    API_CMD_LEDS_SET_NIGHT,
+    API_CMD_SET_NIGHT_WINDOW,
+    API_CMD_SET_TIMEZONE
 } api_cmd_type_t;
 
 typedef struct {
     api_cmd_type_t type;
     int  arg_int;
-    char arg_str[32];
+    char arg_str[48];
 } api_cmd_t;
 
 /* --- server lifecycle --- */

@@ -10,6 +10,7 @@
 
     "led_night_start": "21:00",
     "led_night_end": "08:00",
+    "timezone": "",
 
     "debug": false
 }

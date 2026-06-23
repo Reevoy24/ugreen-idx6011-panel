@@ -182,6 +182,16 @@ int api_apply_settings(const api_settings_patch_t *p) {
                             snprintf(c.arg_str, sizeof(c.arg_str), "%s", p->wallpaper); api_cmd_push(&c); }
     if (p->has_leds_on)   { api_cmd_t c = { .type = API_CMD_LEDS_TOGGLE,   .arg_int = p->leds_on };   api_cmd_push(&c); }
     if (p->has_led_night) { api_cmd_t c = { .type = API_CMD_LEDS_SET_NIGHT, .arg_int = p->led_night }; api_cmd_push(&c); }
+    if (p->has_night_start && p->has_night_end) {
+        api_cmd_t c = { .type = API_CMD_SET_NIGHT_WINDOW };
+        snprintf(c.arg_str, sizeof(c.arg_str), "%s-%s", p->night_start, p->night_end);
+        api_cmd_push(&c);
+    }
+    if (p->has_timezone) {
+        api_cmd_t c = { .type = API_CMD_SET_TIMEZONE };
+        snprintf(c.arg_str, sizeof(c.arg_str), "%s", p->timezone);
+        api_cmd_push(&c);
+    }
     return 0;
 }
 
@@ -217,6 +227,9 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
     g_snap.led_night = ui_state.led_night;
     snprintf(g_snap.language, sizeof(g_snap.language), "%s", ui_state.language);
     snprintf(g_snap.wallpaper, sizeof(g_snap.wallpaper), "%s", ui_state.wallpaper);
+    snprintf(g_snap.led_night_start, sizeof(g_snap.led_night_start), "%s", ui_state.led_night_start);
+    snprintf(g_snap.led_night_end, sizeof(g_snap.led_night_end), "%s", ui_state.led_night_end);
+    snprintf(g_snap.timezone, sizeof(g_snap.timezone), "%s", ui_state.timezone);
     pthread_mutex_unlock(&settings_lock);
 
     if (has_leds)
@@ -293,10 +306,10 @@ int main(int argc, char *argv[]) {
     }
 
     /* panel-adjustable settings: state.json overrides config defaults */
-    settings_load(&ui_state, config.brightness, config.backlight_timeout,
-                  config.sleep_brightness, config.language);
+    settings_load(&ui_state, &config);
     i18n_set_language(ui_state.language);
     bl_timeout_ms = (uint32_t)ui_state.backlight_timeout * 1000;
+    if (ui_state.timezone[0]) { setenv("TZ", ui_state.timezone, 1); tzset(); }
 
     backlight_init();
     backlight_set(ui_state.brightness);
@@ -321,7 +334,7 @@ int main(int argc, char *argv[]) {
 
     /* Front LED rows appear only when the LED setup exists on this host
      * (led-ugreen kernel module or ugreen_leds_cli; tools/setup-ugreen-leds.sh). */
-    int has_leds = leds_init(config.led_night_start, config.led_night_end);
+    int has_leds = leds_init(ui_state.led_night_start, ui_state.led_night_end);
     if (has_leds) {
         leds_startup(ui_state.leds_on, ui_state.led_night);
         fprintf(stderr, "Front LED control enabled (night window %s)\n",
@@ -390,7 +403,7 @@ int main(int argc, char *argv[]) {
                 break;
             case API_CMD_WALLPAPER_SET:
                 pthread_mutex_lock(&settings_lock);
-                snprintf(ui_state.wallpaper, sizeof(ui_state.wallpaper), "%s", cmd.arg_str);
+                snprintf(ui_state.wallpaper, sizeof(ui_state.wallpaper), "%.31s", cmd.arg_str);
                 gui_wallpaper_set(cmd.arg_str);
                 settings_save(&ui_state);
                 pthread_mutex_unlock(&settings_lock);
@@ -427,6 +440,27 @@ int main(int argc, char *argv[]) {
                 settings_save(&ui_state);
                 pthread_mutex_unlock(&settings_lock);
                 gui_leds_refresh();
+                break;
+            case API_CMD_SET_NIGHT_WINDOW: {
+                char ns[8] = "", ne[8] = "";
+                sscanf(cmd.arg_str, "%7[^-]-%7s", ns, ne);
+                leds_set_window(ns, ne);
+                pthread_mutex_lock(&settings_lock);
+                snprintf(ui_state.led_night_start, sizeof(ui_state.led_night_start), "%s", ns);
+                snprintf(ui_state.led_night_end, sizeof(ui_state.led_night_end), "%s", ne);
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                gui_leds_refresh();
+                break;
+            }
+            case API_CMD_SET_TIMEZONE:
+                if (cmd.arg_str[0]) setenv("TZ", cmd.arg_str, 1);
+                else unsetenv("TZ");
+                tzset();
+                pthread_mutex_lock(&settings_lock);
+                snprintf(ui_state.timezone, sizeof(ui_state.timezone), "%.39s", cmd.arg_str);
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
                 break;
             }
         }

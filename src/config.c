@@ -87,6 +87,7 @@ int config_load(config_t *config) {
     config->api_password[0] = '\0';
     snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
     snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
+    config->timezone[0] = '\0';
     config->boot_settle_secs = 120;
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
@@ -129,6 +130,7 @@ int config_load(config_t *config) {
     json_get_str(json, "api_password", config->api_password, sizeof(config->api_password));
     json_get_str(json, "led_night_start", config->led_night_start, sizeof(config->led_night_start));
     json_get_str(json, "led_night_end", config->led_night_end, sizeof(config->led_night_end));
+    json_get_str(json, "timezone", config->timezone, sizeof(config->timezone));
     json_get_int(json, "boot_settle_secs", &config->boot_settle_secs);
 
     free(json);

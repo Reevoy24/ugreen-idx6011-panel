@@ -171,7 +171,11 @@ function render(s) {
   syncCheck("set-night", stx.led_night);
   toggle("row-leds", caps.has_leds);
   toggle("row-night", caps.has_leds);
+  if (!caps.has_leds) { const ne = $("night-edit"); if (ne) ne.hidden = true; }
   setText("night-window", stx.led_night_window ? "(" + stx.led_night_window + ")" : "");
+  syncVal("night-start", stx.led_night_start);
+  syncVal("night-end", stx.led_night_end);
+  syncVal("set-tz", stx.timezone);
 
   renderWallpapers(s.wallpapers || { options: [], current: "" });
 }
@@ -194,6 +198,12 @@ function syncCheck(id, v) {
   const el = $(id);
   if (!el || document.activeElement === el) return;
   el.checked = !!v;
+}
+function syncVal(id, v) {
+  if (v == null) return;
+  const el = $(id);
+  if (!el || document.activeElement === el) return;
+  el.value = v;
 }
 function renderWallpapers(wp) {
   const box = $("wp-options");
@@ -274,6 +284,22 @@ function wireControls() {
   const tl2 = $("lang"); if (tl2) tl2.addEventListener("change", (e) => changeLanguage(e.target.value));
   $("set-leds").addEventListener("change", (e) => postSettings({ leds_on: e.target.checked ? 1 : 0 }));
   $("set-night").addEventListener("change", (e) => postSettings({ led_night: e.target.checked ? 1 : 0 }));
+
+  const nx = $("night-x");
+  if (nx) nx.addEventListener("click", () => {
+    const e = $("night-edit");
+    if (e) { e.hidden = !e.hidden; nx.classList.toggle("open", !e.hidden); }
+  });
+  const nsv = $("night-save");
+  if (nsv) nsv.addEventListener("click", async () => {
+    try { await postJSON("/api/settings", { led_night_start: $("night-start").value, led_night_end: $("night-end").value }); toast(t("saved"), true); }
+    catch (err) { toast(err.message); }
+  });
+  const tzs = $("tz-save");
+  if (tzs) tzs.addEventListener("click", async () => {
+    try { await postJSON("/api/settings", { timezone: $("set-tz").value.trim() }); toast(t("saved"), true); }
+    catch (err) { toast(err.message); }
+  });
 
   $("wp-options").addEventListener("click", async (e) => {
     if (e.target.classList.contains("wpdel")) {

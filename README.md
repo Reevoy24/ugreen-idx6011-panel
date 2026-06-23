@@ -372,8 +372,9 @@ your `config.json` is never rewritten.
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
 | `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing the language on the panel itself is saved to `state.json` and overrides this; set it here for a reboot-stable default (e.g. on TrueNAS, where `state.json` is not restored after a reboot) |
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` = fully off (tap-to-wake keeps working) |
-| `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`) |
-| `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`) |
+| `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`); editable from the web UI |
+| `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`); editable from the web UI |
+| `timezone` | | Panel time zone, e.g. `Europe/Berlin` (empty = system default); editable from the web UI. Affects the panel clock + night window only, not the system |
 | `api_port` | `0` | Web dashboard + control API port (0 = disabled). See [Web UI](#web-ui) |
 | `api_password` | | Web dashboard password (empty = controls open on LAN; restart/shutdown always require it) |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
