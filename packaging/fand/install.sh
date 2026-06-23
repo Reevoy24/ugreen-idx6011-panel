@@ -53,6 +53,7 @@ else
     [ -f /etc/ug-fand/config ] || install -m 644 "$CFG" /etc/ug-fand/config
     install -m 644 "$SVC" /lib/systemd/system/ug-fand.service
     systemctl daemon-reload
-    systemctl enable --now ug-fand
+    systemctl enable ug-fand
+    systemctl restart ug-fand   # restart so a reinstall always loads the new binary
     echo "Installed. Status: systemctl status ug-fand   |   config: /etc/ug-fand/config"
 fi
