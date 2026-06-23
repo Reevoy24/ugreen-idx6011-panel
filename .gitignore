@@ -1,5 +1,6 @@
 # Build artifacts
 ug-paneld
+ug-fand
 *.o
 *.deb
 *.tar.gz

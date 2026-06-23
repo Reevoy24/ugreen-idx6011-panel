@@ -121,6 +121,10 @@ int main(void)
     gui_update_wan_throughput(420e6f, 38e6f);
     gui_update_clock();
 
+    long fan_rpm[4] = { 1410, 1452, 776, 777 };
+    gui_update_fans(62, 44, fan_rpm, "default",
+                    "0:12,60:12,70:38,78:71,86:100", "0:28,48:28,52:56,56:86,60:100");
+
     pump(10);
 
     for (int p = 0; p < gui_page_count(); p++) {

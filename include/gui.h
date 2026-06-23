@@ -21,6 +21,7 @@ typedef struct {
     void (*set_timeout)(int seconds);
     void (*do_reboot)(void);
     void (*do_poweroff)(void);
+    void (*set_fan_mode)(const char *mode);  /* write ug-fand's mode (optional) */
 } gui_setup_t;
 
 /* Multi-page dashboard (swipeable tileview): Home, Hardware, Netzwerk,
@@ -36,6 +37,11 @@ void gui_update_disks(const disk_stats_t *disks);
 void gui_update_pve(const pve_stats_t *pve);
 void gui_update_opnsense(const opnsense_stats_t *stats);
 void gui_update_wan_throughput(float wan_in_bps, float wan_out_bps);
+/* Fan page: temps in °C (<=0 = unknown), rpm[4]=cpufan1/2,sysfan1/2 (<0 = n/a),
+ * mode = "silent"/"default"/"turbo" or NULL (daemon not running), cpu_curve /
+ * sys_curve = "temp:pct,..." active-mode curves (NULL/"" = leave unchanged). */
+void gui_update_fans(int cpu_temp, int sys_temp, const long rpm[4], const char *mode,
+                     const char *cpu_curve, const char *sys_curve);
 
 int  gui_page_count(void);
 void gui_show_page(int idx);

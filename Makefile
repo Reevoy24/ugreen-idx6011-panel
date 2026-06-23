@@ -54,7 +54,7 @@ MAINOBJ = $(MAINSRC:.c=$(OBJEXT))
 SRCS = $(ASRCS) $(CSRCS) $(MAINSRC)
 OBJS = $(AOBJS) $(COBJS) $(MAINOBJ)
 
-all: default
+all: default fand
 
 %.o: %.c
 	@$(CC) $(CFLAGS) -c $< -o $@
@@ -63,6 +63,13 @@ all: default
 default: $(AOBJS) $(COBJS) $(MAINOBJ)
 	$(CC) -o $(BIN) $(MAINOBJ) $(AOBJS) $(COBJS) $(LDFLAGS)
 	@echo "Built $(BIN)"
+
+# Standalone fan monitor/control daemon (libc only — no LVGL/DRM/curl).
+FAND = ug-fand
+fand: $(FAND)
+$(FAND): src/ug_fand.c
+	$(CC) -O2 -g0 -Wall -Wextra -Iinclude -o $(FAND) src/ug_fand.c
+	@echo "Built $(FAND)"
 
 # Host-only mockup renderer: GUI + LVGL with fake data, no DRM/curl needed.
 LVGL_OBJS = $(filter-out ./src/%,$(COBJS))
@@ -79,9 +86,9 @@ install: default
 	sudo cp $(BIN) /usr/bin/$(BIN)
 
 clean:
-	rm -f $(BIN) render-mock $(AOBJS) $(COBJS) $(MAINOBJ) $(MOCKOBJ)
+	rm -f $(BIN) $(FAND) render-mock $(AOBJS) $(COBJS) $(MAINOBJ) $(MOCKOBJ)
 
 run: default
 	./$(BIN)
 
-.PHONY: all default clean install run
+.PHONY: all default fand clean install run

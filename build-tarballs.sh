@@ -8,6 +8,7 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 
 [ -f ug-paneld ] || { echo "ug-paneld binary missing — run 'make' first" >&2; exit 1; }
+gcc -O2 -Wall -o ug-fand src/ug_fand.c || { echo "ug-fand build failed" >&2; exit 1; }
 
 build_tarball() {
     local platform="$1"
@@ -16,11 +17,12 @@ build_tarball() {
     rm -rf "/tmp/ug-paneld-tarball-$platform"
     mkdir -p "$stage"
 
-    cp ug-paneld "$stage/"
+    cp ug-paneld ug-fand "$stage/"
     cp packaging/config.json.example "$stage/"
+    cp packaging/fand/config.example "$stage/fand-config"
     cp "packaging/$platform/install.sh" "packaging/$platform/uninstall.sh" \
        "packaging/$platform/start.sh" "packaging/$platform/README.txt" "$stage/"
-    chmod 755 "$stage/ug-paneld" "$stage"/*.sh
+    chmod 755 "$stage/ug-paneld" "$stage/ug-fand" "$stage"/*.sh
     mkdir -p "$stage/wallpapers"
     cp packaging/wallpapers/*.png "$stage/wallpapers/"
 
