@@ -166,6 +166,7 @@ function render(s) {
   syncSelect("set-timeout", stx.backlight_timeout);
   syncRange("set-sleep", stx.sleep_brightness);
   syncSelect("set-language", stx.language);
+  syncSelect("lang", stx.language);
   syncCheck("set-leds", stx.leds_on);
   syncCheck("set-night", stx.led_night);
   toggle("row-leds", caps.has_leds);
@@ -251,8 +252,9 @@ function buildSelects() {
     const label = s === 0 ? t("never") : (s % 60 === 0 ? (s / 60) + " min" : s + " s");
     return `<option value="${s}">${label}</option>`;
   }).join("");
-  const ls = $("set-language");
-  ls.innerHTML = Object.keys(STRINGS).map((c) => `<option value="${c}">${LANG_NAMES[c] || c}</option>`).join("");
+  const langOpts = Object.keys(STRINGS).map((c) => `<option value="${c}">${LANG_NAMES[c] || c}</option>`).join("");
+  $("set-language").innerHTML = langOpts;
+  $("lang").innerHTML = langOpts;
 }
 
 function wireControls() {
@@ -261,11 +263,15 @@ function wireControls() {
   $("set-sleep").addEventListener("input", (e) => setText("set-sleep-v", e.target.value + "%"));
   $("set-sleep").addEventListener("change", (e) => postSettings({ sleep_brightness: parseInt(e.target.value, 10) }));
   $("set-timeout").addEventListener("change", (e) => postSettings({ backlight_timeout: parseInt(e.target.value, 10) }));
-  $("set-language").addEventListener("change", (e) => {
-    const v = e.target.value;
+  const changeLanguage = (v) => {
     if (STRINGS[v]) { lang = v; localStorage.setItem("ugpaneld_lang", lang); applyI18n(); }
+    const a = $("lang"), b = $("set-language");
+    if (a) a.value = v;
+    if (b) b.value = v;
     postSettings({ language: v });
-  });
+  };
+  $("set-language").addEventListener("change", (e) => changeLanguage(e.target.value));
+  $("lang").addEventListener("change", (e) => changeLanguage(e.target.value));
   $("set-leds").addEventListener("change", (e) => postSettings({ leds_on: e.target.checked ? 1 : 0 }));
   $("set-night").addEventListener("change", (e) => postSettings({ led_night: e.target.checked ? 1 : 0 }));
 
