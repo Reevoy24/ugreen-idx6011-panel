@@ -139,7 +139,8 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: none;
 .act:hover { background: var(--btn); }
 .act.warn { border-color: rgba(255,210,49,.5); color: var(--yellow); }
 .act.dng { border-color: rgba(255,69,58,.5); color: var(--red); }
-.topbtn { flex: none; padding: 8px 15px; font-size: 13px; border-radius: 9px; }
+.topbtn { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 8px 14px; font-size: 13px; border-radius: 9px; }
+.topbtn svg { display: block; }
 
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 10; }
 .modal[hidden] { display: none; }
