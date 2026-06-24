@@ -55,9 +55,11 @@
 #define SPEED_FULL   100      /* fan speed is a percent 0..100 */
 #define SPEED_DEADBAND 3      /* % — hold steady for smaller changes (anti-hunt) */
 
-/* Critical temperatures (deg C) that force fans to full regardless of mode */
+/* Critical temperatures (deg C) that force fans to full regardless of mode.
+ * SYS_CRIT is set for spinning HDDs, which run warm (60C is reached fast in
+ * summer); the curve already ramps hard well before this last-resort failsafe. */
 #define CPU_CRIT 88
-#define SYS_CRIT 60
+#define SYS_CRIT 68
 
 /* Shared with ug-paneld's backlight: serialize EC transactions */
 #define EC_LOCK_PATH   "/run/ug-ec.lock"
@@ -241,11 +243,11 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->mode = MODE_DEFAULT;
     cf->interval = 3;
     cf->force = cli_force;
-    static const point_t cs[] = {{0,9}, {64,9}, {74,35},{82,71}, {88,100}};
-    static const point_t cd[] = {{0,12},{60,12},{70,38},{78,71}, {86,100}};
+    static const point_t cs[] = {{0,14},{64,14},{74,35},{82,71}, {88,100}};
+    static const point_t cd[] = {{0,15},{60,15},{70,38},{78,71}, {86,100}};
     static const point_t ct[] = {{0,25},{55,25},{66,66},{75,93}, {82,100}};
-    static const point_t ss[] = {{0,20},{49,20},{53,48},{57,81}, {60,100}};
-    static const point_t sd[] = {{0,28},{48,28},{52,56},{56,86}, {60,100}};
+    static const point_t ss[] = {{0,20},{54,20},{60,45},{64,75}, {68,100}};
+    static const point_t sd[] = {{0,28},{52,28},{58,55},{63,80}, {68,100}};
     static const point_t st[] = {{0,48},{47,48},{51,76},{55,96}, {58,100}};
     set_curve(&cf->cpu[MODE_SILENT], cs, 5);
     set_curve(&cf->cpu[MODE_DEFAULT], cd, 5);

@@ -194,15 +194,15 @@ Config — `/etc/ug-fand/config`:
 mode=default       # silent | default | turbo
 interval=3         # seconds between updates
 # optional per-mode curves — comma-separated temp:speed points (°C : 0-100%):
-cpu_default=0:12,60:12,70:38,78:71,86:100
-sys_default=0:28,48:28,52:56,56:86,60:100
+cpu_default=0:15,60:15,70:38,78:71,86:100
+sys_default=0:28,52:28,58:55,63:80,68:100
 ```
 
 The three modes are temperature→speed curves (silent = quietest … turbo =
 coolest). `cpu_*` curves follow the CPU temperature, `sys_*` the disk/NVMe
 temperature. The temperature is smoothed and a speed deadband is applied, so the
 fans hold a steady speed instead of hunting on brief CPU spikes. A thermal
-failsafe forces full speed above the critical thresholds (88 °C CPU, 60 °C
+failsafe forces full speed above the critical thresholds (88 °C CPU, 68 °C
 disks), and a missing temperature reading is treated as "full" — a broken sensor
 never silences the fans.
 
@@ -228,7 +228,7 @@ box; raise them for a cooler one. For example, to keep the system fans at their
 quiet floor until the disks get warmer, widen the flat part of the curve:
 
 ```
-sys_default=0:28,53:28,56:60,58:88,60:100   # quiet up to 53 °C, then ramp
+sys_default=0:28,56:28,60:55,64:80,68:100   # quiet up to 56 °C, then ramp
 ```
 
 Delete a curve line to fall back to the built-in default.
