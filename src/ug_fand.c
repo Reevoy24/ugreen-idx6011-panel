@@ -360,6 +360,7 @@ int main(int argc, char **argv) {
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
     int applied_cp = -1, applied_sp = -1; /* last applied speed % */
     int warn_cpu_crit = 0, warn_sys_crit = 0, warn_cpu_read = 0, warn_sys_read = 0;
+    int cpu_crit_streak = 0, sys_crit_streak = 0;
     while (running) {
         /* hot-reload mode/interval/curves when the config file changes */
         struct stat sb;
@@ -382,13 +383,19 @@ int main(int argc, char **argv) {
 
         int cp = cts < 0 ? SPEED_FULL : curve_pct(&cf.cpu[cf.mode], cts);  /* percent */
         int sp = sts < 0 ? SPEED_FULL : curve_pct(&cf.sys[cf.mode], sts);
-        if (ct >= CPU_CRIT) cp = SPEED_FULL;                /* failsafe on RAW temp */
-        if (st >= SYS_CRIT) sp = SPEED_FULL;
+        /* Critical-temp failsafe on the RAW temp, but debounced: a single cycle
+         * over the limit (a brief turbo spike or a one-off bad reading) is
+         * ignored; two in a row (~6s) forces full. A missing reading stays
+         * instant (handled above via cts/sts < 0). */
+        cpu_crit_streak = (ct >= CPU_CRIT) ? cpu_crit_streak + 1 : 0;
+        sys_crit_streak = (st >= SYS_CRIT) ? sys_crit_streak + 1 : 0;
+        int cpu_crit = (cpu_crit_streak >= 2), sys_crit = (sys_crit_streak >= 2);
+        if (cpu_crit) cp = SPEED_FULL;
+        if (sys_crit) sp = SPEED_FULL;
 
         /* Edge-triggered failsafe logging → journalctl (only on state change, no
          * per-cycle spam): critical-temp trips and missing-sensor fallbacks. */
-        int cpu_crit = (ct >= CPU_CRIT), sys_crit = (st >= SYS_CRIT);
-        int cpu_read = (cts < 0),        sys_read = (sts < 0);
+        int cpu_read = (cts < 0), sys_read = (sts < 0);
         if (cpu_crit != warn_cpu_crit) {
             fprintf(stderr, cpu_crit ? "ug-fand: CPU %dC >= %dC critical — fans forced to 100%%\n"
                                      : "ug-fand: CPU back below critical (now %dC)\n",

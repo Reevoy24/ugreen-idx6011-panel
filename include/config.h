@@ -25,6 +25,10 @@ typedef struct {
     int sleep_brightness;  /* backlight %% while asleep; 0 (default) = full off —
                               the touch chip stays responsive as long as it is
                               polled, so wake-by-tap works even at full off */
+    int clock_24h;         /* panel clock: 1 = 24h (default), 0 = 12h AM/PM */
+    char wallpaper[32];    /* active wallpaper name; "" = auto (custom if present, else none) */
+    int leds_on;           /* front LEDs on (1, default) or off (0) */
+    int led_night;         /* front-LED night mode enabled (0 = default) */
     int api_port;
     char api_password[64]; /* web dashboard password ("" = controls open on LAN; power always needs it) */
     int debug;             /* verbose display probe logging */

@@ -83,6 +83,10 @@ int config_load(config_t *config) {
     config->backlight_timeout = 30;
     snprintf(config->language, sizeof(config->language), "en");
     config->sleep_brightness = 0; /* full off — touch stays awake as long as we poll it */
+    config->clock_24h = 1;
+    config->wallpaper[0] = '\0';
+    config->leds_on = 1;
+    config->led_night = 0;
     config->api_port = 0;
     config->api_password[0] = '\0';
     snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
@@ -126,6 +130,10 @@ int config_load(config_t *config) {
     json_get_int(json, "backlight_timeout", &config->backlight_timeout);
     json_get_str(json, "language", config->language, sizeof(config->language));
     json_get_int(json, "sleep_brightness", &config->sleep_brightness);
+    json_get_int(json, "clock_24h", &config->clock_24h);
+    json_get_str(json, "wallpaper", config->wallpaper, sizeof(config->wallpaper));
+    json_get_int(json, "leds_on", &config->leds_on);
+    json_get_int(json, "led_night", &config->led_night);
     json_get_int(json, "api_port", &config->api_port);
     json_get_str(json, "api_password", config->api_password, sizeof(config->api_password));
     json_get_str(json, "led_night_start", config->led_night_start, sizeof(config->led_night_start));

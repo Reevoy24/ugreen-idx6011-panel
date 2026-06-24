@@ -375,6 +375,10 @@ defaults in `config.json` (and `/etc/ug-fand/config` for the fan curves).
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
 | `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing the language on the panel itself is saved to `state.json` and overrides this; set it here for a reboot-stable default (e.g. on TrueNAS, where `state.json` is not restored after a reboot) |
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` = fully off (tap-to-wake keeps working) |
+| `clock_24h` | `1` | Panel clock format: `1` = 24h, `0` = 12h (AM/PM); editable from the web UI |
+| `wallpaper` | | Active wallpaper: a built-in name, `custom`, `none`, or empty = auto (custom if uploaded, else none); editable from the panel/web |
+| `leds_on` | `1` | Front LEDs on (`1`) or off (`0`) |
+| `led_night` | `0` | Front-LED night mode enabled (`1` = dim/off during the night window) |
 | `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`); editable from the web UI |
 | `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`); editable from the web UI |
 | `timezone` | | Panel time zone, e.g. `Europe/Berlin` (empty = system default); editable from the web UI. Affects the panel clock + night window only, not the system |

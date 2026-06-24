@@ -43,14 +43,14 @@ void settings_load(ui_state_t *st, const config_t *cfg)
     st->brightness = cfg->brightness;
     st->backlight_timeout = cfg->backlight_timeout;
     st->sleep_brightness = cfg->sleep_brightness;
-    st->wallpaper[0] = '\0'; /* "" = legacy auto: custom file if present, else none */
+    snprintf(st->wallpaper, sizeof(st->wallpaper), "%s", cfg->wallpaper); /* "" = auto: custom file if present, else none */
     snprintf(st->language, sizeof(st->language), "%s", cfg->language[0] ? cfg->language : "en");
-    st->leds_on = 1;
-    st->led_night = 0;
+    st->leds_on = !!cfg->leds_on;
+    st->led_night = !!cfg->led_night;
     snprintf(st->led_night_start, sizeof(st->led_night_start), "%s", cfg->led_night_start);
     snprintf(st->led_night_end, sizeof(st->led_night_end), "%s", cfg->led_night_end);
     snprintf(st->timezone, sizeof(st->timezone), "%s", cfg->timezone);
-    st->clock_24h = 1;
+    st->clock_24h = !!cfg->clock_24h;
 
     FILE *fp = fopen(STATE_FILE_PATH, "r");
     if (!fp) return;
