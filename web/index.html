@@ -95,8 +95,8 @@
           <div class="srow" id="night-edit" hidden>
             <div class="tgrid">
               <label class="tfield"><span data-i18n="time_format">Clock</span><select id="set-format"><option value="24">24h</option><option value="12">12h</option></select></label>
-              <label class="tfield"><span data-i18n="start">Start</span><input type="time" id="night-start"></label>
-              <label class="tfield"><span data-i18n="end">End</span><input type="time" id="night-end"></label>
+              <label class="tfield"><span data-i18n="start">Start</span><span class="tpick" id="night-start"><select class="t-h" aria-label="hour"></select><b class="tcolon">:</b><select class="t-m" aria-label="minute"></select><select class="t-ap" aria-label="AM/PM" hidden></select></span></label>
+              <label class="tfield"><span data-i18n="end">End</span><span class="tpick" id="night-end"><select class="t-h" aria-label="hour"></select><b class="tcolon">:</b><select class="t-m" aria-label="minute"></select><select class="t-ap" aria-label="AM/PM" hidden></select></span></label>
               <label class="tfield"><span data-i18n="timezone">Timezone</span><select id="set-tz"></select></label>
             </div>
             <button class="act sm okbtn" id="night-save" data-i18n="save">Save</button>

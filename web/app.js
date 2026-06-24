@@ -184,9 +184,11 @@ function render(s) {
   toggle("row-night", caps.has_leds);
   if (!caps.has_leds) { const ne = $("night-edit"); if (ne) ne.hidden = true; }
   setText("night-window", stx.led_night_window ? "(" + stx.led_night_window + ")" : "");
-  syncVal("night-start", stx.led_night_start);
-  syncVal("night-end", stx.led_night_end);
-  syncSelect("set-format", stx.clock_24h === false ? "12" : "24");
+  const serverIs24 = stx.clock_24h !== false;
+  const fmtEl = $("set-format");
+  if (fmtEl && document.activeElement !== fmtEl) { fmtEl.value = serverIs24 ? "24" : "12"; setClockFormat(serverIs24); }
+  setTimeValue("night-start", stx.led_night_start);
+  setTimeValue("night-end", stx.led_night_end);
   syncTzSelect(stx.timezone);
 
   renderWallpapers(s.wallpapers || { options: [], current: "" });
@@ -227,6 +229,81 @@ function syncTzSelect(v) {
     el.insertBefore(o, el.firstChild);
   }
   el.value = v;
+}
+
+/* ---------- custom 12h/24h time pickers ----------
+   A native <input type=time> can't be forced to AM/PM (it follows the browser
+   locale), so we roll our own hour/minute(/AM-PM) selects that follow the Clock
+   dropdown. The canonical value stored in dataset.val is always 24h "HH:MM". */
+let clock24 = true;
+const TIME_IDS = ["night-start", "night-end"];
+const pad2 = (n) => String(n).padStart(2, "0");
+
+function buildTimePickers() {
+  for (const id of TIME_IDS) {
+    const el = $(id);
+    if (!el) continue;
+    const m = el.querySelector(".t-m");
+    if (m && !m.options.length)
+      m.innerHTML = Array.from({ length: 60 }, (_, i) => `<option value="${pad2(i)}">${pad2(i)}</option>`).join("");
+    const ap = el.querySelector(".t-ap");
+    if (ap && !ap.options.length) ap.innerHTML = `<option value="AM">AM</option><option value="PM">PM</option>`;
+    if (!el.dataset.val) el.dataset.val = "00:00";
+    el.querySelectorAll("select").forEach((s) =>
+      s.addEventListener("change", () => { el.dataset.val = readPicker(el); }));
+  }
+  renderTimePickers();
+}
+
+function renderTimePickers() {
+  const hours = clock24
+    ? Array.from({ length: 24 }, (_, i) => pad2(i))
+    : [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(String);
+  for (const id of TIME_IDS) {
+    const el = $(id);
+    if (!el) continue;
+    el.querySelector(".t-h").innerHTML = hours.map((v) => `<option value="${v}">${v}</option>`).join("");
+    const ap = el.querySelector(".t-ap");
+    if (ap) ap.hidden = clock24;
+    writePicker(el, el.dataset.val || "00:00");
+  }
+}
+
+function readPicker(el) {
+  const mm = el.querySelector(".t-m").value || "00";
+  if (clock24) return `${pad2(parseInt(el.querySelector(".t-h").value, 10) || 0)}:${mm}`;
+  let h = parseInt(el.querySelector(".t-h").value, 10) % 12;
+  if (el.querySelector(".t-ap").value === "PM") h += 12;
+  return `${pad2(h)}:${mm}`;
+}
+
+function writePicker(el, val) {
+  const [hh, mm] = (val || "00:00").split(":");
+  const H = parseInt(hh, 10) || 0;
+  el.querySelector(".t-m").value = pad2(parseInt(mm, 10) || 0);
+  const h = el.querySelector(".t-h"), ap = el.querySelector(".t-ap");
+  if (clock24) { h.value = pad2(H); }
+  else { let h12 = H % 12 || 12; h.value = String(h12); if (ap) ap.value = H < 12 ? "AM" : "PM"; }
+}
+
+function getTimeValue(id) {
+  const el = $(id);
+  return el ? (el.dataset.val = readPicker(el)) : "00:00";
+}
+
+function setTimeValue(id, val) {
+  if (val == null) return;
+  const el = $(id);
+  if (!el || el.contains(document.activeElement)) return;   // don't fight the user mid-edit
+  el.dataset.val = val;
+  writePicker(el, val);
+}
+
+function setClockFormat(is24) {
+  if (is24 === clock24) return;
+  for (const id of TIME_IDS) { const el = $(id); if (el) el.dataset.val = readPicker(el); }  // capture in old mode
+  clock24 = is24;
+  renderTimePickers();
 }
 function renderWallpapers(wp) {
   const box = $("wp-options");
@@ -318,7 +395,11 @@ function wireControls() {
   // clock format + timezone apply immediately on change (like the language
   // dropdown); the poll then confirms the server value instead of reverting it.
   const sf = $("set-format");
-  if (sf) sf.addEventListener("change", (e) => postSettings({ clock_24h: e.target.value === "24" ? 1 : 0 }));
+  if (sf) sf.addEventListener("change", (e) => {
+    const is24 = e.target.value === "24";
+    setClockFormat(is24);                          // reformat the time pickers live
+    postSettings({ clock_24h: is24 ? 1 : 0 });
+  });
   const stz = $("set-tz");
   if (stz) stz.addEventListener("change", (e) => postSettings({ timezone: e.target.value.trim() }));
 
@@ -327,8 +408,8 @@ function wireControls() {
   if (nsv) nsv.addEventListener("click", async () => {
     try {
       await postJSON("/api/settings", {
-        led_night_start: $("night-start").value,
-        led_night_end: $("night-end").value,
+        led_night_start: getTimeValue("night-start"),
+        led_night_end: getTimeValue("night-end"),
       });
       toast(t("saved"), true);
     } catch (err) { toast(err.message); }
@@ -485,6 +566,7 @@ function startPolling() {
 }
 
 buildSelects();
+buildTimePickers();
 applyI18n();
 wireControls();
 wireEditor();

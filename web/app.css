@@ -135,6 +135,9 @@ input[type="time"], .tfield select { background: var(--btn); color: var(--text);
 .tfield select { cursor: pointer; }
 #set-format { width: 84px; }
 #set-tz { max-width: 200px; }
+.tpick { display: inline-flex; align-items: center; gap: 4px; }
+.tpick select { padding: 7px 6px; cursor: pointer; }
+.tcolon { color: var(--muted); font-weight: 600; }
 
 .wps { display: flex; gap: 10px; flex-wrap: wrap; }
 .wps .wp { position: relative; width: 92px; height: 58px; border-radius: 8px; border: 0.5px solid rgba(255,255,255,.12); cursor: pointer; background: var(--btn) center/cover no-repeat; overflow: hidden; }
