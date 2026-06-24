@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <time.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -254,7 +255,21 @@ int display_init(const config_t *config)
 
 void display_render(void)
 {
+    /* Normal path: just pump LVGL. With "debug" on, time the render and log only
+     * frames that overrun the ~15 ms refresh budget — a cheap, opt-in way to
+     * measure swipe smoothness on a device (e.g. eGPU-attached vs removed) that
+     * stays silent on a healthy box. */
+    if (!dbg) {
+        lv_timer_handler();
+        return;
+    }
+    struct timespec a, b;
+    clock_gettime(CLOCK_MONOTONIC, &a);
     lv_timer_handler();
+    clock_gettime(CLOCK_MONOTONIC, &b);
+    double ms = (b.tv_sec - a.tv_sec) * 1000.0 + (b.tv_nsec - a.tv_nsec) / 1e6;
+    if (ms > 10.0)
+        LOGI("perf: frame %.1f ms", ms);
 }
 
 void display_close(void)

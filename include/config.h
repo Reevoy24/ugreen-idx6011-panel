@@ -6,6 +6,9 @@
 /* generous so an early boot start (before the panel connector is ready) waits
  * for it instead of giving up with exit code 2 */
 #define DEFAULT_DRM_PROBE_TIMEOUT 60
+/* the touch I2C bus can enumerate later than the display (e.g. when an external
+ * GPU delays I2C init at boot); wait this long for it before disabling touch */
+#define DEFAULT_TOUCH_PROBE_TIMEOUT 10
 
 typedef struct {
     int poll_rate;
@@ -19,6 +22,8 @@ typedef struct {
     char wan_interface[32];
     int wan_max_mbps;
     char touch_device[64];
+    int touch_probe_timeout; /* seconds to wait for the touch I2C bus to appear
+                                before disabling touch; 0 = one attempt, no wait */
     int brightness;
     int backlight_timeout;
     char language[4];      /* default UI language "de"/"en"; state.json (panel) overrides */

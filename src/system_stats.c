@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <sys/sysinfo.h>
+#include <sys/statvfs.h>
 
 static unsigned long long prev_total = 0;
 static unsigned long long prev_idle = 0;
@@ -67,31 +68,34 @@ static float get_ram_usage(float *used_mb, float *total_mb) {
     return ((float)used_kb / (float)total_kb) * 100.0f;
 }
 
+/* Root-filesystem usage via statvfs() instead of popen("df ...").
+ * df forked a shell every poll (2 s) and on a busy ZFS root that fork+exec+df
+ * could block the single-threaded GUI loop for tens-to-hundreds of ms — a
+ * needless hitch. statvfs reads the same mounted-fs counters directly.
+ * Percentage mirrors df's "used / (used + available-to-unprivileged)". */
 static float get_disk_usage(float *used_gb, float *total_gb) {
-    FILE *fp = popen("df -BG / 2>/dev/null | tail -1", "r");
-    if (!fp) return 0.0f;
-
-    char line[256];
-    if (!fgets(line, sizeof(line), fp)) {
-        pclose(fp);
+    struct statvfs vfs;
+    if (statvfs("/", &vfs) != 0) {
+        if (used_gb) *used_gb = 0.0f;
+        if (total_gb) *total_gb = 0.0f;
         return 0.0f;
     }
-    pclose(fp);
+    unsigned long bs = vfs.f_frsize ? vfs.f_frsize : vfs.f_bsize;
+    double total = (double)vfs.f_blocks * bs;
+    double freeb = (double)vfs.f_bfree  * bs;
+    double avail = (double)vfs.f_bavail * bs;
+    double used  = total - freeb;
 
-    char mount[64], total[32], used[32], avail[32], usepct[32];
-    sscanf(line, "%63s %31s %31s %31s %31s",
-           mount, total, used, avail, usepct);
+    const double GIB = 1073741824.0; /* match df -BG (GiB) */
+    if (used_gb)  *used_gb  = (float)(used  / GIB);
+    if (total_gb) *total_gb = (float)(total / GIB);
 
-    float total_val = 0, used_val = 0;
-    sscanf(total, "%f", &total_val);
-    sscanf(used, "%f", &used_val);
-
-    if (used_gb) *used_gb = used_val;
-    if (total_gb) *total_gb = total_val;
-
-    int pct = 0;
-    sscanf(usepct, "%d%%", &pct);
-    return (float)pct;
+    double denom = used + avail;
+    if (denom <= 0.0) return 0.0f;
+    float pct = (float)(used * 100.0 / denom);
+    if (pct < 0.0f) pct = 0.0f;
+    if (pct > 100.0f) pct = 100.0f;
+    return pct;
 }
 
 /* Hottest temp*_input (millideg -> C) from the first hwmon whose "name"

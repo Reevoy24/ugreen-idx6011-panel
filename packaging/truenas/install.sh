@@ -23,6 +23,8 @@ mkdir -p "$DEST/wallpapers"
 cp -f ug-paneld "$DEST/ug-paneld"
 cp -f start.sh "$DEST/start.sh"
 cp -f wallpapers/*.png "$DEST/wallpapers/" 2>/dev/null || true
+# web dashboard assets (start.sh syncs $DEST/web -> /usr/share/ug-paneld/web)
+[ -d web ] && { mkdir -p "$DEST/web"; cp -f web/* "$DEST/web/" 2>/dev/null || true; }
 chmod 755 "$DEST/ug-paneld" "$DEST/start.sh"
 [ -f "$DEST/config.json" ] || cp -f config.json.example "$DEST/config.json"
 

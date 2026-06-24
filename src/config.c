@@ -79,6 +79,7 @@ int config_load(config_t *config) {
     snprintf(config->wan_interface, sizeof(config->wan_interface), "wan");
     config->wan_max_mbps = 1000;
     snprintf(config->touch_device, sizeof(config->touch_device), "auto");
+    config->touch_probe_timeout = DEFAULT_TOUCH_PROBE_TIMEOUT;
     config->brightness = 100;
     config->backlight_timeout = 30;
     snprintf(config->language, sizeof(config->language), "en");
@@ -127,6 +128,7 @@ int config_load(config_t *config) {
     json_get_str(json, "wan_interface", config->wan_interface, sizeof(config->wan_interface));
     json_get_int(json, "wan_max_mbps", &config->wan_max_mbps);
     json_get_str(json, "touch_device", config->touch_device, sizeof(config->touch_device));
+    json_get_int(json, "touch_probe_timeout", &config->touch_probe_timeout);
     json_get_int(json, "brightness", &config->brightness);
     json_get_int(json, "backlight_timeout", &config->backlight_timeout);
     json_get_str(json, "language", config->language, sizeof(config->language));

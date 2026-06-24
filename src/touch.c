@@ -14,8 +14,12 @@
 
 #define AXS_ADDR 0x3b
 #define AXS_READ_LEN 8
-#define DISP_W 258
-#define DISP_H 960
+/* The touch controller reports coordinates in its own fixed native grid, which
+ * matches the panel's native 258x960 mode. touch_poll() scales these into the
+ * live LVGL resolution (lv_display_get_*_resolution), so this is the SOURCE
+ * coordinate space — not necessarily the current on-screen size. */
+#define TOUCH_NATIVE_W 258
+#define TOUCH_NATIVE_H 960
 
 static const uint8_t read_cmd[8] = {
     0xB5, 0xAB, 0xA5, 0x5A,
@@ -221,6 +225,30 @@ static uint16_t cur_x = 0, cur_y = 0;
 static int cur_pressed = 0;
 static uint32_t last_activity = 0;
 
+/* Live LVGL resolution, used to scale the controller's native coordinates onto
+ * the screen. Initialised to the native grid so the mapping is an exact
+ * identity until the real display size is known, then resolved once from LVGL's
+ * default display on the first accepted contact. The panel normally comes up at
+ * its native 258x960 (identity), but if the DRM connector binds a different
+ * mode — e.g. when an external GPU perturbs connector/mode selection — an
+ * unscaled 1:1 map would confine touches to a sub-rectangle of the screen. */
+static int32_t disp_w = TOUCH_NATIVE_W, disp_h = TOUCH_NATIVE_H;
+static int disp_resolved = 0;
+
+static void touch_resolve_disp_size(void) {
+    if (disp_resolved) return;
+    lv_display_t *d = lv_display_get_default();
+    if (!d) return;
+    int32_t w = lv_display_get_horizontal_resolution(d);
+    int32_t h = lv_display_get_vertical_resolution(d);
+    if (w <= 0 || h <= 0) return;   /* not ready yet — keep the identity default */
+    disp_w = w; disp_h = h; disp_resolved = 1;
+    if (disp_w != TOUCH_NATIVE_W || disp_h != TOUCH_NATIVE_H)
+        fprintf(stderr, "Touch: display %dx%d differs from native %dx%d — "
+                "scaling touch input to match\n",
+                disp_w, disp_h, TOUCH_NATIVE_W, TOUCH_NATIVE_H);
+}
+
 int touch_poll(void) {
     cur_pressed = 0;
     if (i2c_fd < 0) {
@@ -296,20 +324,28 @@ int touch_poll(void) {
     if (num == 0 || (event != 0 && event != 2))
         return 0;
 
-    uint16_t x = ((buf[2] & 0x0F) << 8) | buf[3];
-    uint16_t y = ((buf[4] & 0x0F) << 8) | buf[5];
+    /* raw coordinates in the controller's native grid */
+    uint16_t rx = ((buf[2] & 0x0F) << 8) | buf[3];
+    uint16_t ry = ((buf[4] & 0x0F) << 8) | buf[5];
 
-    // Reject outside bounds
-    if (x >= DISP_W || y >= DISP_H)
+    /* Reject frames outside the controller's native grid (the chip emits
+     * constant garbage when untouched; those values fall outside). */
+    if (rx >= TOUCH_NATIVE_W || ry >= TOUCH_NATIVE_H)
         return 0;
 
-    cur_x = x;
-    cur_y = y;
+    /* Map the chip's native coordinates onto the live LVGL resolution. Identity
+     * in the normal 258x960 case; only diverges if the panel bound a different
+     * mode, which previously left touches stuck in a sub-rectangle (e.g. only
+     * the upper half when the panel came up taller than 960). */
+    touch_resolve_disp_size();
+    cur_x = (uint16_t)((uint32_t)rx * (uint32_t)disp_w / TOUCH_NATIVE_W);
+    cur_y = (uint16_t)((uint32_t)ry * (uint32_t)disp_h / TOUCH_NATIVE_H);
     cur_pressed = 1;
     static int first_logged = 0;
     if (!first_logged) {
         first_logged = 1;
-        fprintf(stderr, "Touch: first contact detected at %u,%u — touch is working\n", x, y);
+        fprintf(stderr, "Touch: first contact at raw %u,%u -> mapped %u,%u — touch is working\n",
+                rx, ry, cur_x, cur_y);
     }
     last_activity = custom_tick_get();
     return 1;

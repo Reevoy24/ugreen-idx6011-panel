@@ -17,6 +17,8 @@ mkdir -p "$PERSIST/wallpapers"
 cp -f ug-paneld "$PERSIST/ug-paneld"
 cp -f start.sh "$PERSIST/start.sh"
 cp -f wallpapers/*.png "$PERSIST/wallpapers/" 2>/dev/null || true
+# web dashboard assets (start.sh syncs $PERSIST/web -> /usr/share/ug-paneld/web)
+[ -d web ] && { mkdir -p "$PERSIST/web"; cp -f web/* "$PERSIST/web/" 2>/dev/null || true; }
 [ -f "$PERSIST/config.json" ] || cp -f config.json.example "$PERSIST/config.json"
 
 # bundled fan control daemon (start.sh copies it off the flash drive and runs it)

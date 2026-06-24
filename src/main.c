@@ -273,6 +273,33 @@ static double system_uptime(void) {
     return up;
 }
 
+/* Touch can enumerate later than the display — notably when an external GPU
+ * delays I2C bus init at boot — so a single attempt at startup can miss it and
+ * permanently disable touch. That also stops the screen from ever sleeping,
+ * since the idle timeout is gated on touch. Mirror display_init's bounded poll:
+ * retry init for up to touch_probe_timeout seconds, re-freeing the controller
+ * from any HID driver that grabbed it in the meantime. */
+static int touch_init_retry(const config_t *config) {
+    if (touch_init(config->touch_device) == 0)
+        return 0;
+    int t = config->touch_probe_timeout;
+    if (t <= 0)
+        return -1;
+    fprintf(stderr, "Touch: not ready yet, waiting up to %d s for the I2C bus to "
+            "appear (delayed enumeration, e.g. with an external GPU)...\n", t);
+    for (int waited = 0; waited < t; waited++) {
+        sleep(1);
+        /* the controller may have only just enumerated; if a HID driver bound
+         * it in the meantime, free it again before retrying direct I2C */
+        touch_unbind_i2c_hid(config->i2c_device);
+        if (touch_init(config->touch_device) == 0) {
+            fprintf(stderr, "Touch: initialised after %d s\n", waited + 1);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
@@ -320,7 +347,7 @@ int main(int argc, char *argv[]) {
     if (config.api_port > 0)
         api_start(config.api_port, config.api_password);
 
-    int has_touch = (touch_init(config.touch_device) == 0);
+    int has_touch = (touch_init_retry(&config) == 0);
     int has_opnsense = (opnsense_init(&config) == 0);
     if (has_opnsense)
         fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
