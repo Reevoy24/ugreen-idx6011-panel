@@ -16,5 +16,7 @@
     "led_night_end": "08:00",
     "timezone": "",
 
+    "state_file": "",
+
     "debug": false
 }

@@ -358,12 +358,15 @@ override:
 }
 ```
 
-Settings changed on the display itself (brightness, timeout, wallpaper,
-language, LED switches) persist separately in `/etc/ug-paneld/state.json` —
-your `config.json` is never rewritten. This survives reboots on
-Proxmox / Debian / Unraid. On **TrueNAS SCALE** `/etc` is rebuilt every boot, so
-panel-side changes (including the fan mode) reset on reboot — set reboot-stable
-defaults in `config.json` (and `/etc/ug-fand/config` for the fan curves).
+Settings changed on the display or in the web UI (brightness, timeout, wallpaper,
+language, LEDs, clock format, timezone …) persist separately in `state.json` —
+your `config.json` is never rewritten. On **Proxmox / Debian** that lives in
+`/etc/ug-paneld/`. On **TrueNAS SCALE / Unraid** `/etc` is rebuilt every boot, so
+the installer points the daemon's state file at the pool/flash (via the
+`state_file` key / `UG_PANELD_STATE` env) — runtime changes survive a reboot
+there too. (The fan **mode** is separate: it lives in `/etc/ug-fand/config`,
+which is ephemeral on those platforms, so set the mode in the pool/flash
+`fand-config` for a reboot-stable default.)
 
 <details>
 <summary><b>All config keys</b></summary>
@@ -385,6 +388,7 @@ defaults in `config.json` (and `/etc/ug-fand/config` for the fan curves).
 | `api_port` | `0` | Web dashboard + control API port (0 = disabled). See [Web UI](#web-ui) |
 | `api_password` | | Web dashboard password (empty = controls open on LAN; restart/shutdown always require it) |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
+| `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
 | `drm_device` | auto | DRM device path, e.g. `/dev/dri/card0`; empty = scan all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: name (`eDP-1`), numeric id, or `auto` |
 | `drm_probe_timeout` | `60` | Seconds to wait at startup for a connected connector (high so the early-boot start waits for the panel instead of giving up) |

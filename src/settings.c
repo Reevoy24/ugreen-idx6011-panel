@@ -4,6 +4,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+/* Where runtime settings are persisted. Default is the read/write rootfs path;
+ * settings_load() repoints it from config.state_file or $UG_PANELD_STATE so
+ * TrueNAS/Unraid can persist on the pool/flash. Both load and save use it. */
+static char g_state_path[256] = STATE_FILE_PATH;
+
 static int json_get_int(const char *json, const char *key, int *value)
 {
     char search[64];
@@ -40,6 +45,10 @@ static int json_get_str(const char *json, const char *key, char *buf, size_t buf
 
 void settings_load(ui_state_t *st, const config_t *cfg)
 {
+    const char *env = getenv("UG_PANELD_STATE");
+    if (cfg->state_file[0])  snprintf(g_state_path, sizeof(g_state_path), "%s", cfg->state_file);
+    else if (env && env[0])  snprintf(g_state_path, sizeof(g_state_path), "%s", env);
+
     st->brightness = cfg->brightness;
     st->backlight_timeout = cfg->backlight_timeout;
     st->sleep_brightness = cfg->sleep_brightness;
@@ -52,7 +61,7 @@ void settings_load(ui_state_t *st, const config_t *cfg)
     snprintf(st->timezone, sizeof(st->timezone), "%s", cfg->timezone);
     st->clock_24h = !!cfg->clock_24h;
 
-    FILE *fp = fopen(STATE_FILE_PATH, "r");
+    FILE *fp = fopen(g_state_path, "r");
     if (!fp) return;
 
     char json[512];
@@ -84,7 +93,8 @@ void settings_load(ui_state_t *st, const config_t *cfg)
 
 int settings_save(const ui_state_t *st)
 {
-    char tmp[] = STATE_FILE_PATH ".tmp";
+    char tmp[300];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", g_state_path);
     FILE *fp = fopen(tmp, "w");
     if (!fp) {
         fprintf(stderr, "settings: cannot write %s\n", tmp);
@@ -109,8 +119,8 @@ int settings_save(const ui_state_t *st)
             st->led_night_start, st->led_night_end, st->timezone, st->clock_24h);
     fclose(fp);
 
-    if (rename(tmp, STATE_FILE_PATH) != 0) {
-        fprintf(stderr, "settings: rename to %s failed\n", STATE_FILE_PATH);
+    if (rename(tmp, g_state_path) != 0) {
+        fprintf(stderr, "settings: rename to %s failed\n", g_state_path);
         unlink(tmp);
         return -1;
     }

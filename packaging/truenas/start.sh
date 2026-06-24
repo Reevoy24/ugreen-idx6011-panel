@@ -13,6 +13,10 @@ mkdir -p /etc/ug-paneld /usr/share/ug-paneld/wallpapers 2>/dev/null
 # the touchscreen needs the i2c-dev character devices
 modprobe i2c-dev 2>/dev/null
 
+# Persist runtime settings (panel/web edits) on the pool, not in ephemeral /etc,
+# so brightness/language/wallpaper/LED/clock/timezone survive a reboot.
+export UG_PANELD_STATE="$DIR/state.json"
+
 pkill -x ug-paneld 2>/dev/null && sleep 1
 nohup "$DIR/ug-paneld" >/var/log/ug-paneld.log 2>&1 &
 echo "ug-paneld started (log: /var/log/ug-paneld.log)"

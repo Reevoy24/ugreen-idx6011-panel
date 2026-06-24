@@ -39,6 +39,11 @@ typedef struct {
                                 hold off the idle timeout until the EC accepts a
                                 write (panel lit), or at most this many seconds
                                 of uptime as a hard cap; 0 = off */
+    char state_file[256];    /* where runtime settings (panel/web edits) are
+                                persisted; "" = default /etc/ug-paneld/state.json.
+                                On TrueNAS/Unraid point this at the pool/flash so
+                                changes survive a reboot (env UG_PANELD_STATE also
+                                works; this key wins if set) */
 } config_t;
 
 int config_load(config_t *config);

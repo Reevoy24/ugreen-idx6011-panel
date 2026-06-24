@@ -93,6 +93,7 @@ int config_load(config_t *config) {
     snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
     config->timezone[0] = '\0';
     config->boot_settle_secs = 120;
+    config->state_file[0] = '\0';
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -140,6 +141,7 @@ int config_load(config_t *config) {
     json_get_str(json, "led_night_end", config->led_night_end, sizeof(config->led_night_end));
     json_get_str(json, "timezone", config->timezone, sizeof(config->timezone));
     json_get_int(json, "boot_settle_secs", &config->boot_settle_secs);
+    json_get_str(json, "state_file", config->state_file, sizeof(config->state_file));
 
     free(json);
     return 0;
