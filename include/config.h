@@ -25,14 +25,25 @@ typedef struct {
     int sleep_brightness;  /* backlight %% while asleep; 0 (default) = full off —
                               the touch chip stays responsive as long as it is
                               polled, so wake-by-tap works even at full off */
+    int clock_24h;         /* panel clock: 1 = 24h (default), 0 = 12h AM/PM */
+    char wallpaper[32];    /* active wallpaper name; "" = auto (custom if present, else none) */
+    int leds_on;           /* front LEDs on (1, default) or off (0) */
+    int led_night;         /* front-LED night mode enabled (0 = default) */
     int api_port;
+    char api_password[64]; /* web dashboard password ("" = controls open on LAN; power always needs it) */
     int debug;             /* verbose display probe logging */
     char led_night_start[8]; /* front LED night window start, "HH:MM" */
     char led_night_end[8];   /* front LED night window end, "HH:MM" */
+    char timezone[40];       /* panel time zone (e.g. "Europe/Berlin"); "" = system default */
     int boot_settle_secs;    /* cold-boot settle: re-assert the backlight and
                                 hold off the idle timeout until the EC accepts a
                                 write (panel lit), or at most this many seconds
                                 of uptime as a hard cap; 0 = off */
+    char state_file[256];    /* where runtime settings (panel/web edits) are
+                                persisted; "" = default /etc/ug-paneld/state.json.
+                                On TrueNAS/Unraid point this at the pool/flash so
+                                changes survive a reboot (env UG_PANELD_STATE also
+                                works; this key wins if set) */
 } config_t;
 
 int config_load(config_t *config);

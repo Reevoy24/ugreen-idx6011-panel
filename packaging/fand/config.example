@@ -16,11 +16,11 @@ interval=3
 # and held flat below the first / above the last point. cpu_* curves follow the
 # CPU temperature, sys_* the disk/NVMe temperature. Edit these freely; delete a
 # line to fall back to the built-in default.
-cpu_silent=0:9,64:9,74:35,82:71,88:100
-cpu_default=0:12,60:12,70:38,78:71,86:100
+cpu_silent=0:14,64:14,74:35,82:71,88:100
+cpu_default=0:15,60:15,70:38,78:71,86:100
 cpu_turbo=0:25,55:25,66:66,75:93,82:100
-sys_silent=0:20,49:20,53:48,57:81,60:100
-sys_default=0:28,48:28,52:56,56:86,60:100
+sys_silent=0:20,54:20,60:45,64:75,68:100
+sys_default=0:28,52:28,58:55,63:80,68:100
 sys_turbo=0:48,47:48,51:76,55:96,58:100
 
-# Safety: above 88 C (CPU) or 60 C (disks) the fans go to 100% regardless.
+# Safety: above 88 C (CPU) or 68 C (disks) the fans go to 100% regardless.

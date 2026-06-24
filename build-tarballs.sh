@@ -25,6 +25,8 @@ build_tarball() {
     chmod 755 "$stage/ug-paneld" "$stage/ug-fand" "$stage"/*.sh
     mkdir -p "$stage/wallpapers"
     cp packaging/wallpapers/*.png "$stage/wallpapers/"
+    mkdir -p "$stage/web"
+    cp web/* "$stage/web/"
 
     tar -C "/tmp/ug-paneld-tarball-$platform" --owner=0 --group=0 \
         -czf "$REPO/ug-paneld_${VERSION}_${platform}_amd64.tar.gz" ug-paneld

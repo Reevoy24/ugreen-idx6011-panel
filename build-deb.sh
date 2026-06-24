@@ -33,6 +33,15 @@ build_deb() {
     cp packaging/wallpapers/*.png "$stage/usr/share/ug-paneld/wallpapers/"
     chmod 644 "$stage/usr/share/ug-paneld/wallpapers/"*.png
 
+    # web dashboard assets (served by ug-paneld when api_port is set)
+    mkdir -p "$stage/usr/share/ug-paneld/web"
+    cp web/* "$stage/usr/share/ug-paneld/web/"
+    chmod 644 "$stage/usr/share/ug-paneld/web/"*
+
+    # reference config (postinst seeds config.json from it on a fresh install)
+    cp packaging/config.json.example "$stage/etc/ug-paneld/config.json.example"
+    chmod 644 "$stage/etc/ug-paneld/config.json.example"
+
     # keep the user's fan config across upgrades
     printf "/etc/ug-fand/config\n" > "$stage/DEBIAN/conffiles"
 
@@ -57,6 +66,8 @@ CTRL
 
     cat > "$stage/DEBIAN/postinst" <<'SCRIPT'
 #!/bin/sh
+# Seed a full, editable config on a fresh install (never overwrite an existing one).
+[ -f /etc/ug-paneld/config.json ] || cp /etc/ug-paneld/config.json.example /etc/ug-paneld/config.json 2>/dev/null || true
 systemctl daemon-reload
 for s in ug-paneld ug-fand; do
     systemctl enable "$s" 2>/dev/null || true

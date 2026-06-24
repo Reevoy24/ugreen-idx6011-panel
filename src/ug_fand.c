@@ -55,9 +55,11 @@
 #define SPEED_FULL   100      /* fan speed is a percent 0..100 */
 #define SPEED_DEADBAND 3      /* % — hold steady for smaller changes (anti-hunt) */
 
-/* Critical temperatures (deg C) that force fans to full regardless of mode */
+/* Critical temperatures (deg C) that force fans to full regardless of mode.
+ * SYS_CRIT is set for spinning HDDs, which run warm (60C is reached fast in
+ * summer); the curve already ramps hard well before this last-resort failsafe. */
 #define CPU_CRIT 88
-#define SYS_CRIT 60
+#define SYS_CRIT 68
 
 /* Shared with ug-paneld's backlight: serialize EC transactions */
 #define EC_LOCK_PATH   "/run/ug-ec.lock"
@@ -241,11 +243,11 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->mode = MODE_DEFAULT;
     cf->interval = 3;
     cf->force = cli_force;
-    static const point_t cs[] = {{0,9}, {64,9}, {74,35},{82,71}, {88,100}};
-    static const point_t cd[] = {{0,12},{60,12},{70,38},{78,71}, {86,100}};
+    static const point_t cs[] = {{0,14},{64,14},{74,35},{82,71}, {88,100}};
+    static const point_t cd[] = {{0,15},{60,15},{70,38},{78,71}, {86,100}};
     static const point_t ct[] = {{0,25},{55,25},{66,66},{75,93}, {82,100}};
-    static const point_t ss[] = {{0,20},{49,20},{53,48},{57,81}, {60,100}};
-    static const point_t sd[] = {{0,28},{48,28},{52,56},{56,86}, {60,100}};
+    static const point_t ss[] = {{0,20},{54,20},{60,45},{64,75}, {68,100}};
+    static const point_t sd[] = {{0,28},{52,28},{58,55},{63,80}, {68,100}};
     static const point_t st[] = {{0,48},{47,48},{51,76},{55,96}, {58,100}};
     set_curve(&cf->cpu[MODE_SILENT], cs, 5);
     set_curve(&cf->cpu[MODE_DEFAULT], cd, 5);
@@ -357,6 +359,8 @@ int main(int argc, char **argv) {
     time_t cfg_mtime = 0;
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
     int applied_cp = -1, applied_sp = -1; /* last applied speed % */
+    int warn_cpu_crit = 0, warn_sys_crit = 0, warn_cpu_read = 0, warn_sys_read = 0;
+    int cpu_crit_streak = 0, sys_crit_streak = 0;
     while (running) {
         /* hot-reload mode/interval/curves when the config file changes */
         struct stat sb;
@@ -379,8 +383,41 @@ int main(int argc, char **argv) {
 
         int cp = cts < 0 ? SPEED_FULL : curve_pct(&cf.cpu[cf.mode], cts);  /* percent */
         int sp = sts < 0 ? SPEED_FULL : curve_pct(&cf.sys[cf.mode], sts);
-        if (ct >= CPU_CRIT) cp = SPEED_FULL;                /* failsafe on RAW temp */
-        if (st >= SYS_CRIT) sp = SPEED_FULL;
+        /* Critical-temp failsafe on the RAW temp, but debounced: a single cycle
+         * over the limit (a brief turbo spike or a one-off bad reading) is
+         * ignored; two in a row (~6s) forces full. A missing reading stays
+         * instant (handled above via cts/sts < 0). */
+        cpu_crit_streak = (ct >= CPU_CRIT) ? cpu_crit_streak + 1 : 0;
+        sys_crit_streak = (st >= SYS_CRIT) ? sys_crit_streak + 1 : 0;
+        int cpu_crit = (cpu_crit_streak >= 2), sys_crit = (sys_crit_streak >= 2);
+        if (cpu_crit) cp = SPEED_FULL;
+        if (sys_crit) sp = SPEED_FULL;
+
+        /* Edge-triggered failsafe logging → journalctl (only on state change, no
+         * per-cycle spam): critical-temp trips and missing-sensor fallbacks. */
+        int cpu_read = (cts < 0), sys_read = (sts < 0);
+        if (cpu_crit != warn_cpu_crit) {
+            fprintf(stderr, cpu_crit ? "ug-fand: CPU %dC >= %dC critical — fans forced to 100%%\n"
+                                     : "ug-fand: CPU back below critical (now %dC)\n",
+                    ct, CPU_CRIT);
+            warn_cpu_crit = cpu_crit;
+        }
+        if (sys_crit != warn_sys_crit) {
+            fprintf(stderr, sys_crit ? "ug-fand: disk %dC >= %dC critical — fans forced to 100%%\n"
+                                     : "ug-fand: disk back below critical (now %dC)\n",
+                    st, SYS_CRIT);
+            warn_sys_crit = sys_crit;
+        }
+        if (cpu_read != warn_cpu_read) {
+            fprintf(stderr, cpu_read ? "ug-fand: no CPU temperature reading — fans forced to 100%% (failsafe)\n"
+                                     : "ug-fand: CPU temperature reading restored\n");
+            warn_cpu_read = cpu_read;
+        }
+        if (sys_read != warn_sys_read) {
+            fprintf(stderr, sys_read ? "ug-fand: no disk temperature reading — fans forced to 100%% (failsafe)\n"
+                                     : "ug-fand: disk temperature reading restored\n");
+            warn_sys_read = sys_read;
+        }
 
         /* Deadband: hold the current speed for small target changes (anti-hunt);
          * always honour a jump to full. */

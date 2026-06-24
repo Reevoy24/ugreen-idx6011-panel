@@ -3,7 +3,7 @@
 Touch dashboard and front-LED control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
 *Community project — not affiliated with or endorsed by UGREEN.*
 
-[![Release](https://img.shields.io/badge/release-v1.5.0-2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.6.0-2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
@@ -31,6 +31,9 @@ complete [front-LED setup](#front-panel-leds).
 - 🌀 **Fan monitoring + control** — swipe **left** from Home for live RPM and
   temps, **Silent / Default / Turbo** modes and the live curve; the bundled
   `ug-fand` daemon drives the ITE EC from userspace (no kernel module)
+- 🌐 **Web dashboard** — opt-in (`api_port`): ug-paneld serves a browser UI on
+  the LAN that mirrors the whole panel — stats, fan control with curve editor,
+  all settings, 12h/24h clock + timezone, wallpaper upload, restart/shutdown
 - 💡 **Front LED control** — stops the rolling animation; disk activity +
   SMART health + network blinking; LED toggle and **night mode**
   (21:00–08:00, configurable) right on the display
@@ -191,15 +194,15 @@ Config — `/etc/ug-fand/config`:
 mode=default       # silent | default | turbo
 interval=3         # seconds between updates
 # optional per-mode curves — comma-separated temp:speed points (°C : 0-100%):
-cpu_default=0:12,60:12,70:38,78:71,86:100
-sys_default=0:28,48:28,52:56,56:86,60:100
+cpu_default=0:15,60:15,70:38,78:71,86:100
+sys_default=0:28,52:28,58:55,63:80,68:100
 ```
 
 The three modes are temperature→speed curves (silent = quietest … turbo =
 coolest). `cpu_*` curves follow the CPU temperature, `sys_*` the disk/NVMe
 temperature. The temperature is smoothed and a speed deadband is applied, so the
 fans hold a steady speed instead of hunting on brief CPU spikes. A thermal
-failsafe forces full speed above the critical thresholds (88 °C CPU, 60 °C
+failsafe forces full speed above the critical thresholds (88 °C CPU, 68 °C
 disks), and a missing temperature reading is treated as "full" — a broken sensor
 never silences the fans.
 
@@ -225,7 +228,7 @@ box; raise them for a cooler one. For example, to keep the system fans at their
 quiet floor until the disks get warmer, widen the flat part of the curve:
 
 ```
-sys_default=0:28,53:28,56:60,58:88,60:100   # quiet up to 53 °C, then ramp
+sys_default=0:28,56:28,60:55,64:80,68:100   # quiet up to 56 °C, then ramp
 ```
 
 Delete a curve line to fall back to the built-in default.
@@ -299,6 +302,37 @@ PY
 
 </details>
 
+## Web UI
+
+Opt-in: set `api_port` in the config and ug-paneld serves a browser dashboard on
+the LAN that **mirrors the whole panel** — live stats (CPU/RAM/temps/uptime,
+network, disks, Proxmox, OPNsense, GPU, fans), the fan **Silent / Default /
+Turbo** switch and curve, and every setting (brightness, screen-off timeout,
+sleep brightness, language, LEDs + night window, wallpaper incl. **custom
+upload**) plus **restart/shutdown**. It's built into ug-paneld — no extra
+service or container.
+
+```json
+{
+    "api_port": 8080,
+    "api_password": "choose-a-password"
+}
+```
+
+Restart ug-paneld, then open `http://<nas-ip>:8080`.
+
+- **Monitoring is open** on the LAN; **changing settings/fan** requires the
+  password when `api_password` is set; **restart/shutdown always require** it
+  (and are refused entirely when no password is set).
+- The legacy `GET/POST /backlight` endpoint still works (Home Assistant — see
+  below).
+
+> [!WARNING]
+> This is a control surface on a daemon running as root, over plain HTTP. **LAN
+> only — never port-forward it to the internet.** Set `api_password` and keep it
+> on a trusted network. (ug-fand's thermal failsafe still forces full speed above
+> the critical thresholds, so a bad curve can't overheat the box.)
+
 ## Configuration
 
 Everything is optional — without a config file ug-paneld auto-detects the
@@ -315,6 +349,7 @@ override:
     "led_night_start": "21:00",
     "led_night_end": "08:00",
     "api_port": 0,
+    "api_password": "",
     "opnsense_url": "https://192.168.1.1:8443",
     "opnsense_key": "your-api-key",
     "opnsense_secret": "your-api-secret",
@@ -323,9 +358,15 @@ override:
 }
 ```
 
-Settings changed on the display itself (brightness, timeout, wallpaper,
-language, LED switches) persist separately in `/etc/ug-paneld/state.json` —
-your `config.json` is never rewritten.
+Settings changed on the display or in the web UI (brightness, timeout, wallpaper,
+language, LEDs, clock format, timezone …) persist separately in `state.json` —
+your `config.json` is never rewritten. On **Proxmox / Debian** that lives in
+`/etc/ug-paneld/`. On **TrueNAS SCALE / Unraid** `/etc` is rebuilt every boot, so
+the installer points the daemon's state file at the pool/flash (via the
+`state_file` key / `UG_PANELD_STATE` env) — runtime changes survive a reboot
+there too. (The fan **mode** is separate: it lives in `/etc/ug-fand/config`,
+which is ephemeral on those platforms, so set the mode in the pool/flash
+`fand-config` for a reboot-stable default.)
 
 <details>
 <summary><b>All config keys</b></summary>
@@ -337,10 +378,17 @@ your `config.json` is never rewritten.
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
 | `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing the language on the panel itself is saved to `state.json` and overrides this; set it here for a reboot-stable default (e.g. on TrueNAS, where `state.json` is not restored after a reboot) |
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` = fully off (tap-to-wake keeps working) |
-| `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`) |
-| `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`) |
-| `api_port` | `0` | HTTP API port for backlight control (0 = disabled) |
+| `clock_24h` | `1` | Panel clock format: `1` = 24h, `0` = 12h (AM/PM); editable from the web UI |
+| `wallpaper` | | Active wallpaper: a built-in name, `custom`, `none`, or empty = auto (custom if uploaded, else none); editable from the panel/web |
+| `leds_on` | `1` | Front LEDs on (`1`) or off (`0`) |
+| `led_night` | `0` | Front-LED night mode enabled (`1` = dim/off during the night window) |
+| `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`); editable from the web UI |
+| `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`); editable from the web UI |
+| `timezone` | | Panel time zone, e.g. `Europe/Berlin` (empty = system default); editable from the web UI. Affects the panel clock + night window only, not the system |
+| `api_port` | `0` | Web dashboard + control API port (0 = disabled). See [Web UI](#web-ui) |
+| `api_password` | | Web dashboard password (empty = controls open on LAN; restart/shutdown always require it) |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
+| `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
 | `drm_device` | auto | DRM device path, e.g. `/dev/dri/card0`; empty = scan all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: name (`eDP-1`), numeric id, or `auto` |
 | `drm_probe_timeout` | `60` | Seconds to wait at startup for a connected connector (high so the early-boot start waits for the panel instead of giving up) |

@@ -195,6 +195,20 @@ void leds_set_night(int enabled)
     apply(effective());
 }
 
+void leds_set_window(const char *start, const char *end)
+{
+    start_min = parse_hhmm(start, start_min);
+    end_min = parse_hhmm(end, end_min);
+    snprintf(window_str, sizeof(window_str), "%02d:%02d-%02d:%02d",
+             start_min / 60, start_min % 60, end_min / 60, end_min % 60);
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    night_active_now = in_window(&tm);
+    night_override = 0;
+    apply(effective());
+}
+
 int leds_tick(time_t now)
 {
     static time_t last = 0;

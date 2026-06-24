@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>iDX6011 Pro</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="bt"><strong data-i18n="title">iDX6011 Pro</strong><small data-i18n="subtitle">Panel · Web</small></span>
+      </div>
+      <div class="tr">
+        <select id="lang" class="langsel" aria-label="Language"></select>
+        <button class="act warn topbtn" id="btn-restart"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span data-i18n="restart">Restart</span></button>
+        <button class="act dng topbtn" id="btn-shutdown"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9"/><path d="M7.8 6.3a8 8 0 1 0 8.4 0"/></svg><span data-i18n="shutdown">Shutdown</span></button>
+      </div>
+    </header>
+
+    <div class="board">
+      <section class="block wide">
+        <div class="sec" data-i18n="sec_overview">Overview</div>
+        <div id="overview" class="grid"></div>
+      </section>
+
+      <section class="block wide">
+        <div class="sec" data-i18n="sec_fan">Fan control</div>
+        <div class="cards">
+          <article class="card cpu">
+            <div class="ch"><span class="dot"></span><h2 data-i18n="cpu">CPU</h2><span class="temp"><span id="fan-cpu-temp">--</span><span class="deg">°</span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 1</span><span class="rpm"><span id="cpufan1">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="cpufan1-bar"></span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 2</span><span class="rpm"><span id="cpufan2">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="cpufan2-bar"></span></span></div>
+            <div class="ap"><span data-i18n="applied">Applied</span> <b id="cpu-pct">--</b>%</div>
+          </article>
+          <article class="card sys">
+            <div class="ch"><span class="dot"></span><h2 data-i18n="system">System</h2><span class="temp"><span id="fan-sys-temp">--</span><span class="deg">°</span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 1</span><span class="rpm"><span id="sysfan1">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="sysfan1-bar"></span></span></div>
+            <div class="fr"><div class="frt"><span class="lbl"><span data-i18n="fan">Fan</span> 2</span><span class="rpm"><span id="sysfan2">--</span><small data-i18n="rpm">rpm</small></span></div><span class="bar"><span class="fill" id="sysfan2-bar"></span></span></div>
+            <div class="ap"><span data-i18n="applied">Applied</span> <b id="sys-pct">--</b>%</div>
+          </article>
+        </div>
+        <div class="modes" id="modes">
+          <button class="seg" data-mode="silent" data-i18n="silent">Silent</button>
+          <button class="seg" data-mode="default" data-i18n="default">Default</button>
+          <button class="seg" data-mode="turbo" data-i18n="turbo">Turbo</button>
+        </div>
+        <div class="cc">
+          <div class="cch">
+            <h3 data-i18n="curve">Curve</h3>
+            <div class="cch-r">
+              <div class="legend"><span><i style="background:#35d1e2"></i><span data-i18n="cpu">CPU</span></span><span><i style="background:#34c759"></i><span data-i18n="system">System</span></span></div>
+              <button class="editbtn" id="curve-edit" data-i18n="edit">Edit</button>
+            </div>
+          </div>
+          <svg id="plot" viewBox="0 0 600 180" role="img" aria-label="Fan curves"></svg>
+          <div id="curve-editor" hidden>
+            <div class="ed-head">
+              <div class="ed-seg"><button class="seg sm on" id="ed-cpu" data-i18n="cpu">CPU</button><button class="seg sm" id="ed-sys" data-i18n="system">System</button></div>
+              <div class="ed-act"><button class="act sm" id="curve-cancel" data-i18n="cancel">Cancel</button><button class="act sm okbtn" id="curve-save" data-i18n="save">Save</button></div>
+            </div>
+            <div id="ed-points"></div>
+            <button class="addpt" id="ed-add" data-i18n="add_point">+ Add point</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="cols">
+      <section class="block">
+        <div class="sec" data-i18n="sec_storage">Storage</div>
+        <div class="panel" id="disks"></div>
+      </section>
+
+      <section class="block">
+        <div class="sec" data-i18n="sec_network">Network</div>
+        <div class="panel" id="net"></div>
+      </section>
+
+      <section class="block" id="block-services" hidden>
+        <div class="sec" data-i18n="sec_services">Services</div>
+        <div class="panel" id="services"></div>
+      </section>
+
+      <section class="block">
+        <div class="sec" data-i18n="sec_settings">Settings</div>
+        <div class="panel">
+          <div class="srow"><div class="sk" data-i18n="brightness">Brightness</div><div class="ctl"><input type="range" id="set-brightness" min="1" max="100" step="1"><span class="rdt" id="set-brightness-v">--</span></div></div>
+          <div class="srow"><div class="sk" data-i18n="timeout">Screen-off timeout</div><select id="set-timeout"></select></div>
+          <div class="srow"><div class="sk" data-i18n="sleep_brightness">Sleep brightness</div><div class="ctl"><input type="range" id="set-sleep" min="0" max="100" step="1"><span class="rdt" id="set-sleep-v">--</span></div></div>
+          <div class="srow"><div class="sk" data-i18n="time_format">Clock</div><select id="set-format"><option value="24">24h</option><option value="12">12h</option></select></div>
+          <div class="srow"><div class="sk" data-i18n="timezone">Timezone</div><select id="set-tz"></select></div>
+          <div class="srow" id="row-leds"><div class="sk" data-i18n="status_leds">Status LEDs</div><input type="checkbox" id="set-leds" class="sw"></div>
+          <div class="srow" id="row-night"><div class="sk"><button class="nx" id="night-x" aria-label="schedule">▸</button> <span data-i18n="night_mode">LED night mode</span> <small id="night-window"></small></div><input type="checkbox" id="set-night" class="sw"></div>
+          <div class="srow" id="night-edit" hidden>
+            <div class="tgrid">
+              <label class="tfield"><span data-i18n="start">Start</span><span class="tpick" id="night-start"><select class="t-h" aria-label="hour"></select><b class="tcolon">:</b><select class="t-m" aria-label="minute"></select><select class="t-ap" aria-label="AM/PM" hidden></select></span></label>
+              <label class="tfield"><span data-i18n="end">End</span><span class="tpick" id="night-end"><select class="t-h" aria-label="hour"></select><b class="tcolon">:</b><select class="t-m" aria-label="minute"></select><select class="t-ap" aria-label="AM/PM" hidden></select></span></label>
+            </div>
+            <button class="act sm okbtn" id="night-save" data-i18n="save">Save</button>
+          </div>
+          <div class="srow col"><div class="sk" data-i18n="wallpaper">Wallpaper</div><div class="wps" id="wp-options"></div><label class="upload"><input type="file" id="wp-upload" accept="image/png" hidden><span data-i18n="upload_image">Upload image</span></label></div>
+        </div>
+      </section>
+
+      </div>
+    </div>
+
+    <footer data-i18n="lan_only">LAN only — do not expose to the internet.</footer>
+  </div>
+
+  <div id="confirm" class="modal" hidden>
+    <div class="dialog">
+      <p id="confirm-text"></p>
+      <div class="dbtns">
+        <button class="act" id="confirm-cancel" data-i18n="cancel">Cancel</button>
+        <button class="act dng" id="confirm-ok" data-i18n="confirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

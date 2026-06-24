@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <pthread.h>
 
 #include "lvgl/lvgl.h"
 #include "include/custom_tick.h"
@@ -29,6 +30,19 @@ static volatile int signal_count = 0;
 
 static ui_state_t ui_state;
 static uint32_t bl_timeout_ms = 30000;
+
+/* Guards ui_state across the GUI thread (settings callbacks) and the web-API
+ * thread. Shared with gui.c via gui_setup_t.settings_lock. */
+static pthread_mutex_t settings_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Latest fan-daemon status, kept for the web-API snapshot (read_fand_status
+ * also feeds the on-device fan page). */
+static int  g_fan_running = 0, g_fan_cpu = -1, g_fan_sys = -1;
+static int  g_fan_cpu_pct = -1, g_fan_sys_pct = -1;
+static long g_fan_rpm[4] = { -1, -1, -1, -1 };
+static char g_fan_mode[16] = "", g_fan_cpu_curve[192] = "", g_fan_sys_curve[192] = "";
+
+static api_snapshot_t g_snap; /* assembled each poll cycle, published to the API */
 
 /* Transition logging, always on (transitions are infrequent — no journal spam).
  * This is the data we lacked when v1.4.2 bricked the display. */
@@ -59,16 +73,24 @@ static void act_poweroff(void) {
         fprintf(stderr, "Warning: poweroff command failed\n");
 }
 
-/* Write ug-fand's mode (from the fan page), preserving the other config lines. */
-static void act_set_fan_mode(const char *mode) {
+/* Set one key in ug-fand's config, preserving every other line. Atomic
+ * (temp + rename, so the daemon's mtime hot-reload never sees a torn file) and
+ * serialized so the panel (GUI thread) and the web API (API thread) can't
+ * corrupt the file by writing at once. */
+static int fand_config_set_key(const char *key, const char *value) {
+    static pthread_mutex_t fand_lock = PTHREAD_MUTEX_INITIALIZER;
     const char *path = "/etc/ug-fand/config";
-    static char lines[64][256];
-    int n = 0, found = 0;
+    const char *tmp  = "/etc/ug-fand/config.tmp";
+    char lines[64][256];
+    int n = 0, found = 0, rc = -1;
+    size_t klen = strlen(key);
+
+    pthread_mutex_lock(&fand_lock);
     FILE *f = fopen(path, "r");
     if (f) {
         while (n < 64 && fgets(lines[n], sizeof(lines[n]), f)) {
-            if (strncmp(lines[n], "mode=", 5) == 0) {
-                snprintf(lines[n], sizeof(lines[n]), "mode=%s\n", mode);
+            if (strncmp(lines[n], key, klen) == 0 && lines[n][klen] == '=') {
+                snprintf(lines[n], sizeof(lines[n]), "%s=%s\n", key, value);
                 found = 1;
             }
             n++;
@@ -76,22 +98,41 @@ static void act_set_fan_mode(const char *mode) {
         fclose(f);
     }
     if (!found && n < 64) {
-        snprintf(lines[n], sizeof(lines[n]), "mode=%s\n", mode);
+        snprintf(lines[n], sizeof(lines[n]), "%s=%s\n", key, value);
         n++;
     }
-    FILE *w = fopen(path, "w");
-    if (!w) { fprintf(stderr, "fan: cannot write %s\n", path); return; }
-    for (int i = 0; i < n; i++) fputs(lines[i], w);
-    fclose(w);
+    FILE *w = fopen(tmp, "w");
+    if (w) {
+        for (int i = 0; i < n; i++) fputs(lines[i], w);
+        fclose(w);
+        if (rename(tmp, path) == 0) rc = 0;
+    }
+    pthread_mutex_unlock(&fand_lock);
+    if (rc) fprintf(stderr, "fan: cannot write %s\n", path);
+    return rc;
 }
 
-/* Pull the fan daemon's live status into the fan page (NULL mode = not running). */
-static void read_fand_status(void) {
-    int cpu_t = -1, sys_t = -1;
+/* Write ug-fand's mode (from the on-device fan page). */
+static void act_set_fan_mode(const char *mode) { fand_config_set_key("mode", mode); }
+
+/* Web-API: write any ug-fand config key (mode or a curve). */
+int api_fand_set(const char *key, const char *value) { return fand_config_set_key(key, value); }
+
+/* Web-API: power off / reboot (response already sent by the api.c handler). */
+void api_action_power(int poweroff) {
+    if (poweroff) act_poweroff();
+    else          act_reboot();
+}
+
+/* Pull the fan daemon's live status into the fan page (NULL mode = not running)
+ * and cache it for the web-API snapshot. */
+static void read_fand_status(int update_gui) {
+    int cpu_t = -1, sys_t = -1, cp = -1, sp = -1, running = 0;
     long rpm[4] = { -1, -1, -1, -1 };
     char mode[16] = "", cpu_curve[192] = "", sys_curve[192] = "";
     FILE *f = fopen("/run/ug-fand/status", "r");
     if (f) {
+        running = 1;
         char line[256];
         while (fgets(line, sizeof(line), f)) {
             if      (sscanf(line, "cpu_temp=%d", &cpu_t) == 1) continue;
@@ -100,13 +141,104 @@ static void read_fand_status(void) {
             else if (sscanf(line, "cpufan2=%ld", &rpm[1]) == 1) continue;
             else if (sscanf(line, "sysfan1=%ld", &rpm[2]) == 1) continue;
             else if (sscanf(line, "sysfan2=%ld", &rpm[3]) == 1) continue;
+            else if (sscanf(line, "cpu_pct=%d", &cp) == 1) continue;
+            else if (sscanf(line, "sys_pct=%d", &sp) == 1) continue;
             else if (sscanf(line, "cpu_curve=%191[^\n]", cpu_curve) == 1) continue;
             else if (sscanf(line, "sys_curve=%191[^\n]", sys_curve) == 1) continue;
             else    sscanf(line, "mode=%15s", mode);
         }
         fclose(f);
     }
-    gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL, cpu_curve, sys_curve);
+    if (update_gui)
+        gui_update_fans(cpu_t, sys_t, rpm, mode[0] ? mode : NULL, cpu_curve, sys_curve);
+
+    g_fan_running = running && mode[0];
+    g_fan_cpu = cpu_t; g_fan_sys = sys_t;
+    g_fan_cpu_pct = cp; g_fan_sys_pct = sp;
+    memcpy(g_fan_rpm, rpm, sizeof(g_fan_rpm));
+    snprintf(g_fan_mode, sizeof(g_fan_mode), "%s", mode);
+    snprintf(g_fan_cpu_curve, sizeof(g_fan_cpu_curve), "%s", cpu_curve);
+    snprintf(g_fan_sys_curve, sizeof(g_fan_sys_curve), "%s", sys_curve);
+}
+
+/* Web-API: apply a partial settings update (already validated by api.c).
+ * Inline-safe fields run here under settings_lock; LVGL-touching changes are
+ * queued for the main loop. Returns 0. */
+int api_apply_settings(const api_settings_patch_t *p) {
+    int changed = 0, lang_changed = 0;
+
+    pthread_mutex_lock(&settings_lock);
+    if (p->has_brightness) { ui_state.brightness = p->brightness; act_set_brightness(p->brightness); changed = 1; }
+    if (p->has_timeout)    { ui_state.backlight_timeout = p->timeout; act_set_timeout(p->timeout); changed = 1; }
+    if (p->has_sleep)      { ui_state.sleep_brightness = p->sleep_brightness; changed = 1; }
+    if (p->has_clock_24h)  { ui_state.clock_24h = p->clock_24h; changed = 1; }
+    if (p->has_language)   { snprintf(ui_state.language, sizeof(ui_state.language), "%.3s", p->language);
+                             i18n_set_language(p->language); lang_changed = 1; changed = 1; }
+    if (changed) settings_save(&ui_state);
+    pthread_mutex_unlock(&settings_lock);
+
+    /* GUI-touching changes → main thread */
+    if (lang_changed)     { api_cmd_t c = { .type = API_CMD_RETRANSLATE }; api_cmd_push(&c); }
+    if (p->has_wallpaper) { api_cmd_t c = { .type = API_CMD_WALLPAPER_SET };
+                            snprintf(c.arg_str, sizeof(c.arg_str), "%s", p->wallpaper); api_cmd_push(&c); }
+    if (p->has_leds_on)   { api_cmd_t c = { .type = API_CMD_LEDS_TOGGLE,   .arg_int = p->leds_on };   api_cmd_push(&c); }
+    if (p->has_led_night) { api_cmd_t c = { .type = API_CMD_LEDS_SET_NIGHT, .arg_int = p->led_night }; api_cmd_push(&c); }
+    if (p->has_night_start && p->has_night_end) {
+        api_cmd_t c = { .type = API_CMD_SET_NIGHT_WINDOW };
+        snprintf(c.arg_str, sizeof(c.arg_str), "%s-%s", p->night_start, p->night_end);
+        api_cmd_push(&c);
+    }
+    if (p->has_timezone) {
+        api_cmd_t c = { .type = API_CMD_SET_TIMEZONE };
+        snprintf(c.arg_str, sizeof(c.arg_str), "%s", p->timezone);
+        api_cmd_push(&c);
+    }
+    return 0;
+}
+
+/* Assemble + publish the web-API snapshot from the latest collected stats. */
+static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
+                             const disk_stats_t *disks, const pve_stats_t *pve,
+                             const opnsense_stats_t *opn, float gpu,
+                             int has_gpu, int has_pve, int has_opn,
+                             int has_leds, int has_touch) {
+    memset(&g_snap, 0, sizeof(g_snap));
+    g_snap.valid = 1;
+    g_snap.sys = *sys;
+    g_snap.has_gpu = has_gpu; g_snap.gpu_usage = gpu;
+    g_snap.net = *net;
+    g_snap.disks = *disks;
+    g_snap.has_pve = has_pve; if (pve) g_snap.pve = *pve;
+    g_snap.has_opnsense = has_opn; if (opn) g_snap.opn = *opn;
+    g_snap.has_leds = has_leds; g_snap.has_touch = has_touch;
+
+    g_snap.fan_running = g_fan_running;
+    g_snap.fan_cpu_temp = g_fan_cpu; g_snap.fan_sys_temp = g_fan_sys;
+    g_snap.fan_cpu_pct = g_fan_cpu_pct; g_snap.fan_sys_pct = g_fan_sys_pct;
+    memcpy(g_snap.fan_rpm, g_fan_rpm, sizeof(g_snap.fan_rpm));
+    snprintf(g_snap.fan_mode, sizeof(g_snap.fan_mode), "%s", g_fan_mode);
+    snprintf(g_snap.fan_cpu_curve, sizeof(g_snap.fan_cpu_curve), "%s", g_fan_cpu_curve);
+    snprintf(g_snap.fan_sys_curve, sizeof(g_snap.fan_sys_curve), "%s", g_fan_sys_curve);
+
+    pthread_mutex_lock(&settings_lock);
+    g_snap.brightness = ui_state.brightness;
+    g_snap.backlight_timeout = ui_state.backlight_timeout;
+    g_snap.sleep_brightness = ui_state.sleep_brightness;
+    g_snap.leds_on = ui_state.leds_on;
+    g_snap.led_night = ui_state.led_night;
+    g_snap.clock_24h = ui_state.clock_24h;
+    snprintf(g_snap.language, sizeof(g_snap.language), "%s", ui_state.language);
+    snprintf(g_snap.wallpaper, sizeof(g_snap.wallpaper), "%s", ui_state.wallpaper);
+    snprintf(g_snap.led_night_start, sizeof(g_snap.led_night_start), "%s", ui_state.led_night_start);
+    snprintf(g_snap.led_night_end, sizeof(g_snap.led_night_end), "%s", ui_state.led_night_end);
+    snprintf(g_snap.timezone, sizeof(g_snap.timezone), "%s", ui_state.timezone);
+    pthread_mutex_unlock(&settings_lock);
+
+    if (has_leds)
+        snprintf(g_snap.led_night_window, sizeof(g_snap.led_night_window), "%s", leds_night_window());
+    g_snap.wp_count = gui_wallpaper_options(g_snap.wp_opts, API_WP_MAX, &g_snap.wp_cur);
+
+    api_publish_stats(&g_snap);
 }
 
 static void signal_handler(int sig) {
@@ -176,16 +308,17 @@ int main(int argc, char *argv[]) {
     }
 
     /* panel-adjustable settings: state.json overrides config defaults */
-    settings_load(&ui_state, config.brightness, config.backlight_timeout, config.language);
+    settings_load(&ui_state, &config);
     i18n_set_language(ui_state.language);
     bl_timeout_ms = (uint32_t)ui_state.backlight_timeout * 1000;
+    if (ui_state.timezone[0]) { setenv("TZ", ui_state.timezone, 1); tzset(); }
 
     backlight_init();
     backlight_set(ui_state.brightness);
     api_set_brightness(ui_state.brightness);
 
     if (config.api_port > 0)
-        api_start(config.api_port);
+        api_start(config.api_port, config.api_password);
 
     int has_touch = (touch_init(config.touch_device) == 0);
     int has_opnsense = (opnsense_init(&config) == 0);
@@ -203,7 +336,7 @@ int main(int argc, char *argv[]) {
 
     /* Front LED rows appear only when the LED setup exists on this host
      * (led-ugreen kernel module or ugreen_leds_cli; tools/setup-ugreen-leds.sh). */
-    int has_leds = leds_init(config.led_night_start, config.led_night_end);
+    int has_leds = leds_init(ui_state.led_night_start, ui_state.led_night_end);
     if (has_leds) {
         leds_startup(ui_state.leds_on, ui_state.led_night);
         fprintf(stderr, "Front LED control enabled (night window %s)\n",
@@ -218,6 +351,7 @@ int main(int argc, char *argv[]) {
         .show_leds = has_leds,
         .wan_max_mbps = config.wan_max_mbps,
         .state = &ui_state,
+        .settings_lock = &settings_lock,
         .set_brightness = act_set_brightness,
         .set_timeout = act_set_timeout,
         .do_reboot = act_reboot,
@@ -241,6 +375,12 @@ int main(int argc, char *argv[]) {
     int ec_ready = 0;              /* set once the EC accepts a backlight write */
     system_stats_t stats;
     opnsense_stats_t opn_stats;
+    /* persistent across cycles so the web-API snapshot keeps the last values
+     * (disks/pve refresh only every 10 s). */
+    net_stats_t net;     memset(&net, 0, sizeof(net));
+    disk_stats_t disks;  memset(&disks, 0, sizeof(disks));
+    pve_stats_t pve;     memset(&pve, 0, sizeof(pve));
+    float gpu_usage = -1.0f;
     struct timespec sleep_ts = { .tv_nsec = 33000000 };
 
     /* While a swipe/panel animation runs (or a finger is on the glass) the
@@ -254,6 +394,79 @@ int main(int argc, char *argv[]) {
     time_t last_led_check = 0;
 
     while (running) {
+        /* Drain queued web-API actions and run them here on the GUI thread
+         * (the API thread never touches LVGL). Runs even while asleep, so a
+         * wallpaper/language change applies and shows on the next wake. */
+        api_cmd_t cmd;
+        while (api_cmd_pop(&cmd)) {
+            switch (cmd.type) {
+            case API_CMD_RETRANSLATE:
+                gui_retranslate();
+                break;
+            case API_CMD_WALLPAPER_SET:
+                pthread_mutex_lock(&settings_lock);
+                snprintf(ui_state.wallpaper, sizeof(ui_state.wallpaper), "%.31s", cmd.arg_str);
+                gui_wallpaper_set(cmd.arg_str);
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                break;
+            case API_CMD_WALLPAPER_RESCAN:
+                pthread_mutex_lock(&settings_lock);
+                snprintf(ui_state.wallpaper, sizeof(ui_state.wallpaper), "custom");
+                gui_wallpaper_rescan();
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                break;
+            case API_CMD_WALLPAPER_DELETE:
+                /* custom file already removed; drop "custom" and fall back if it
+                 * was selected, then re-scan + re-apply. */
+                pthread_mutex_lock(&settings_lock);
+                if (strcmp(ui_state.wallpaper, "custom") == 0)
+                    snprintf(ui_state.wallpaper, sizeof(ui_state.wallpaper), "none");
+                gui_wallpaper_rescan();
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                break;
+            case API_CMD_LEDS_TOGGLE:
+                if (cmd.arg_int != leds_user_on()) leds_toggle();
+                pthread_mutex_lock(&settings_lock);
+                ui_state.leds_on = leds_user_on();
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                gui_leds_refresh();
+                break;
+            case API_CMD_LEDS_SET_NIGHT:
+                leds_set_night(cmd.arg_int);
+                pthread_mutex_lock(&settings_lock);
+                ui_state.led_night = leds_night_enabled();
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                gui_leds_refresh();
+                break;
+            case API_CMD_SET_NIGHT_WINDOW: {
+                char ns[8] = "", ne[8] = "";
+                sscanf(cmd.arg_str, "%7[^-]-%7s", ns, ne);
+                leds_set_window(ns, ne);
+                pthread_mutex_lock(&settings_lock);
+                snprintf(ui_state.led_night_start, sizeof(ui_state.led_night_start), "%s", ns);
+                snprintf(ui_state.led_night_end, sizeof(ui_state.led_night_end), "%s", ne);
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                gui_leds_refresh();
+                break;
+            }
+            case API_CMD_SET_TIMEZONE:
+                if (cmd.arg_str[0]) setenv("TZ", cmd.arg_str, 1);
+                else unsetenv("TZ");
+                tzset();
+                pthread_mutex_lock(&settings_lock);
+                snprintf(ui_state.timezone, sizeof(ui_state.timezone), "%.39s", cmd.arg_str);
+                settings_save(&ui_state);
+                pthread_mutex_unlock(&settings_lock);
+                break;
+            }
+        }
+
         /* LED night window — checked even while the screen sleeps (that is
          * exactly when the 21:00 transition usually happens). */
         if (has_leds) {
@@ -277,6 +490,29 @@ int main(int argc, char *argv[]) {
                 api_set_state(1);
                 last_touch_time = custom_tick_get();
             } else {
+                /* Keep the web dashboard live while the screen is off: refresh
+                 * stats at the normal cadence (sensor reads + publish only — no
+                 * GUI, no EC/backlight). Gated on the web API being enabled so a
+                 * panel without a dashboard still sleeps fully idle. */
+                if (config.api_port > 0) {
+                    uint32_t nowz = custom_tick_get();
+                    if (nowz - last_stats_update >= stats_interval) {
+                        system_stats_collect(&stats);
+                        net_stats_collect(&net);
+                        if (has_gpu) gpu_usage = gpu_stats_usage();
+                        read_fand_status(0);
+                        if (has_opnsense) opnsense_collect(&opn_stats);
+                        if (nowz - last_slow_update >= slow_interval) {
+                            disk_stats_collect(&disks);
+                            if (has_pve) pve_stats_collect(&pve);
+                            last_slow_update = nowz;
+                        }
+                        publish_snapshot(&stats, &net, &disks, &pve,
+                                         has_opnsense ? &opn_stats : NULL, gpu_usage,
+                                         has_gpu, has_pve, has_opnsense, has_leds, has_touch);
+                        last_stats_update = nowz;
+                    }
+                }
                 nanosleep(&sleep_long, NULL);
                 continue;
             }
@@ -324,13 +560,13 @@ int main(int argc, char *argv[]) {
         if (!warming && (idle_hit || !api_get_state())) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
-            if (config.sleep_brightness <= 0)
+            if (ui_state.sleep_brightness <= 0)
                 backlight_off();
             else
-                backlight_set(config.sleep_brightness);
+                backlight_set(ui_state.sleep_brightness);
             screen_asleep = 1;
             api_set_state(0);
-            SLEEPLOG("sleep (backlight %s)", config.sleep_brightness <= 0 ? "off" : "dim");
+            SLEEPLOG("sleep (backlight %s)", ui_state.sleep_brightness <= 0 ? "off" : "dim");
             nanosleep(&sleep_long, NULL);
             continue;
         }
@@ -347,14 +583,15 @@ int main(int argc, char *argv[]) {
             if (system_stats_collect(&stats) == 0)
                 gui_update_dashboard(&stats);
 
-            net_stats_t net;
             if (net_stats_collect(&net) == 0)
                 gui_update_net(&net);
 
-            if (has_gpu)
-                gui_update_gpu(gpu_stats_usage());
+            if (has_gpu) {
+                gpu_usage = gpu_stats_usage();
+                gui_update_gpu(gpu_usage);
+            }
 
-            read_fand_status();
+            read_fand_status(1);
 
             if (has_opnsense && opnsense_collect(&opn_stats) == 0) {
                 gui_update_opnsense(&opn_stats);
@@ -362,16 +599,16 @@ int main(int argc, char *argv[]) {
             }
 
             if (now - last_slow_update >= slow_interval) {
-                disk_stats_t disks;
                 if (disk_stats_collect(&disks) == 0)
                     gui_update_disks(&disks);
-                if (has_pve) {
-                    pve_stats_t pve;
-                    if (pve_stats_collect(&pve) == 0)
-                        gui_update_pve(&pve);
-                }
+                if (has_pve && pve_stats_collect(&pve) == 0)
+                    gui_update_pve(&pve);
                 last_slow_update = now;
             }
+
+            publish_snapshot(&stats, &net, &disks, &pve,
+                             has_opnsense ? &opn_stats : NULL, gpu_usage,
+                             has_gpu, has_pve, has_opnsense, has_leds, has_touch);
             last_stats_update = now;
         }
 

@@ -30,6 +30,7 @@ const char *leds_night_window(void); /* e.g. "21:00-08:00" */
 
 void leds_toggle(void);           /* LED row tapped */
 void leds_set_night(int enabled); /* night mode row tapped */
+void leds_set_window(const char *start, const char *end); /* change the night window times "HH:MM" */
 
 /* Periodic re-evaluation (call ~once per second; cheap). Re-detects a late
  * backend (kernel module registering after daemon start) and applies night

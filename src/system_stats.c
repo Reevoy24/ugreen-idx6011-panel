@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <dirent.h>
 #include <sys/sysinfo.h>
 
 static unsigned long long prev_total = 0;
@@ -93,7 +94,42 @@ static float get_disk_usage(float *used_gb, float *total_gb) {
     return (float)pct;
 }
 
+/* Hottest temp*_input (millideg -> C) from the first hwmon whose "name"
+ * contains `want`; -1 if none. Mirrors ug-fand so the dashboard CPU temp
+ * matches the fan page instead of reading a different (cooler) sensor. */
+static float hwmon_temp_max(const char *want) {
+    DIR *d = opendir("/sys/class/hwmon");
+    if (!d) return -1.0f;
+
+    int best_mc = -1;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (strncmp(e->d_name, "hwmon", 5) != 0) continue;
+        char p[512], name[64] = "";
+        snprintf(p, sizeof(p), "/sys/class/hwmon/%s/name", e->d_name);
+        FILE *nf = fopen(p, "r");
+        if (nf) { if (fscanf(nf, "%63s", name) != 1) name[0] = 0; fclose(nf); }
+        if (!strstr(name, want)) continue;
+        for (int i = 1; i <= 24; i++) {
+            snprintf(p, sizeof(p), "/sys/class/hwmon/%s/temp%d_input", e->d_name, i);
+            FILE *tf = fopen(p, "r");
+            if (!tf) continue;
+            int mc = -1;
+            if (fscanf(tf, "%d", &mc) == 1 && mc > best_mc) best_mc = mc;
+            fclose(tf);
+        }
+    }
+    closedir(d);
+    return best_mc < 0 ? -1.0f : (float)best_mc / 1000.0f;
+}
+
 static float get_cpu_temp(void) {
+    /* Prefer the real CPU package/core sensor (same source as the fan page). */
+    float t = hwmon_temp_max("coretemp");        /* Intel */
+    if (t < 0) t = hwmon_temp_max("k10temp");    /* AMD */
+    if (t >= 0) return t;
+
+    /* Fallback: ACPI thermal zone (may be a cooler board/ambient zone). */
     FILE *fp = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
     if (!fp) return -1.0f;
 

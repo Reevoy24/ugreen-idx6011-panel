@@ -2,6 +2,7 @@
 ug-paneld
 ug-fand
 *.o
+*.d
 *.deb
 *.tar.gz
 build/

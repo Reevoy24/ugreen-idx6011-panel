@@ -8,9 +8,14 @@ mkdir -p /etc/ug-paneld /usr/share/ug-paneld/wallpapers 2>/dev/null
 [ -f "$DIR/config.json" ] && cp -f "$DIR/config.json" /etc/ug-paneld/config.json
 [ -f "$DIR/wallpaper.png" ] && cp -f "$DIR/wallpaper.png" /etc/ug-paneld/wallpaper.png
 [ -d "$DIR/wallpapers" ] && cp -f "$DIR/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
+[ -d "$DIR/web" ] && { mkdir -p /usr/share/ug-paneld/web; cp -f "$DIR/web/"* /usr/share/ug-paneld/web/ 2>/dev/null; }
 
 # the touchscreen needs the i2c-dev character devices
 modprobe i2c-dev 2>/dev/null
+
+# Persist runtime settings (panel/web edits) on the pool, not in ephemeral /etc,
+# so brightness/language/wallpaper/LED/clock/timezone survive a reboot.
+export UG_PANELD_STATE="$DIR/state.json"
 
 pkill -x ug-paneld 2>/dev/null && sleep 1
 nohup "$DIR/ug-paneld" >/var/log/ug-paneld.log 2>&1 &

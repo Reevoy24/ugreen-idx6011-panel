@@ -9,9 +9,12 @@ mkdir -p /usr/local/bin /etc/ug-paneld /usr/share/ug-paneld/wallpapers
 cp -f "$PERSIST/ug-paneld" "$BIN"
 chmod 755 "$BIN"
 [ -f "$PERSIST/config.json" ] && cp -f "$PERSIST/config.json" /etc/ug-paneld/config.json
-[ -f "$PERSIST/state.json" ] && cp -f "$PERSIST/state.json" /etc/ug-paneld/state.json
+# Persist runtime settings (panel/web edits) on the flash drive, not in ephemeral
+# /etc, so they survive a reboot. The daemon reads/writes this path directly.
+export UG_PANELD_STATE="$PERSIST/state.json"
 [ -f "$PERSIST/wallpaper.png" ] && cp -f "$PERSIST/wallpaper.png" /etc/ug-paneld/wallpaper.png
 [ -d "$PERSIST/wallpapers" ] && cp -f "$PERSIST/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
+[ -d "$PERSIST/web" ] && { mkdir -p /usr/share/ug-paneld/web; cp -f "$PERSIST/web/"* /usr/share/ug-paneld/web/ 2>/dev/null; }
 
 # --- touchscreen prerequisites -------------------------------------------
 # Unlike the Proxmox .deb (which ships /etc/modprobe.d/no-i2c-hid.conf), Unraid
