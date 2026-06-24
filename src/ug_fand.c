@@ -359,6 +359,7 @@ int main(int argc, char **argv) {
     time_t cfg_mtime = 0;
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
     int applied_cp = -1, applied_sp = -1; /* last applied speed % */
+    int warn_cpu_crit = 0, warn_sys_crit = 0, warn_cpu_read = 0, warn_sys_read = 0;
     while (running) {
         /* hot-reload mode/interval/curves when the config file changes */
         struct stat sb;
@@ -383,6 +384,33 @@ int main(int argc, char **argv) {
         int sp = sts < 0 ? SPEED_FULL : curve_pct(&cf.sys[cf.mode], sts);
         if (ct >= CPU_CRIT) cp = SPEED_FULL;                /* failsafe on RAW temp */
         if (st >= SYS_CRIT) sp = SPEED_FULL;
+
+        /* Edge-triggered failsafe logging → journalctl (only on state change, no
+         * per-cycle spam): critical-temp trips and missing-sensor fallbacks. */
+        int cpu_crit = (ct >= CPU_CRIT), sys_crit = (st >= SYS_CRIT);
+        int cpu_read = (cts < 0),        sys_read = (sts < 0);
+        if (cpu_crit != warn_cpu_crit) {
+            fprintf(stderr, cpu_crit ? "ug-fand: CPU %dC >= %dC critical — fans forced to 100%%\n"
+                                     : "ug-fand: CPU back below critical (now %dC)\n",
+                    ct, CPU_CRIT);
+            warn_cpu_crit = cpu_crit;
+        }
+        if (sys_crit != warn_sys_crit) {
+            fprintf(stderr, sys_crit ? "ug-fand: disk %dC >= %dC critical — fans forced to 100%%\n"
+                                     : "ug-fand: disk back below critical (now %dC)\n",
+                    st, SYS_CRIT);
+            warn_sys_crit = sys_crit;
+        }
+        if (cpu_read != warn_cpu_read) {
+            fprintf(stderr, cpu_read ? "ug-fand: no CPU temperature reading — fans forced to 100%% (failsafe)\n"
+                                     : "ug-fand: CPU temperature reading restored\n");
+            warn_cpu_read = cpu_read;
+        }
+        if (sys_read != warn_sys_read) {
+            fprintf(stderr, sys_read ? "ug-fand: no disk temperature reading — fans forced to 100%% (failsafe)\n"
+                                     : "ug-fand: disk temperature reading restored\n");
+            warn_sys_read = sys_read;
+        }
 
         /* Deadband: hold the current speed for small target changes (anti-hunt);
          * always honour a jump to full. */

@@ -32,8 +32,8 @@ complete [front-LED setup](#front-panel-leds).
   temps, **Silent / Default / Turbo** modes and the live curve; the bundled
   `ug-fand` daemon drives the ITE EC from userspace (no kernel module)
 - 🌐 **Web dashboard** — opt-in (`api_port`): ug-paneld serves a browser UI on
-  the LAN that mirrors the whole panel — stats, fan control, all settings,
-  wallpaper upload, restart/shutdown
+  the LAN that mirrors the whole panel — stats, fan control with curve editor,
+  all settings, 12h/24h clock + timezone, wallpaper upload, restart/shutdown
 - 💡 **Front LED control** — stops the rolling animation; disk activity +
   SMART health + network blinking; LED toggle and **night mode**
   (21:00–08:00, configurable) right on the display
@@ -360,7 +360,10 @@ override:
 
 Settings changed on the display itself (brightness, timeout, wallpaper,
 language, LED switches) persist separately in `/etc/ug-paneld/state.json` —
-your `config.json` is never rewritten.
+your `config.json` is never rewritten. This survives reboots on
+Proxmox / Debian / Unraid. On **TrueNAS SCALE** `/etc` is rebuilt every boot, so
+panel-side changes (including the fan mode) reset on reboot — set reboot-stable
+defaults in `config.json` (and `/etc/ug-fand/config` for the fan curves).
 
 <details>
 <summary><b>All config keys</b></summary>

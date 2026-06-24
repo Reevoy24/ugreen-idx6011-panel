@@ -90,14 +90,14 @@
           <div class="srow"><div class="sk" data-i18n="brightness">Brightness</div><div class="ctl"><input type="range" id="set-brightness" min="1" max="100" step="1"><span class="rdt" id="set-brightness-v">--</span></div></div>
           <div class="srow"><div class="sk" data-i18n="timeout">Screen-off timeout</div><select id="set-timeout"></select></div>
           <div class="srow"><div class="sk" data-i18n="sleep_brightness">Sleep brightness</div><div class="ctl"><input type="range" id="set-sleep" min="0" max="100" step="1"><span class="rdt" id="set-sleep-v">--</span></div></div>
+          <div class="srow"><div class="sk" data-i18n="time_format">Clock</div><select id="set-format"><option value="24">24h</option><option value="12">12h</option></select></div>
+          <div class="srow"><div class="sk" data-i18n="timezone">Timezone</div><select id="set-tz"></select></div>
           <div class="srow" id="row-leds"><div class="sk" data-i18n="status_leds">Status LEDs</div><input type="checkbox" id="set-leds" class="sw"></div>
           <div class="srow" id="row-night"><div class="sk"><button class="nx" id="night-x" aria-label="schedule">▸</button> <span data-i18n="night_mode">LED night mode</span> <small id="night-window"></small></div><input type="checkbox" id="set-night" class="sw"></div>
           <div class="srow" id="night-edit" hidden>
             <div class="tgrid">
-              <label class="tfield"><span data-i18n="time_format">Clock</span><select id="set-format"><option value="24">24h</option><option value="12">12h</option></select></label>
               <label class="tfield"><span data-i18n="start">Start</span><span class="tpick" id="night-start"><select class="t-h" aria-label="hour"></select><b class="tcolon">:</b><select class="t-m" aria-label="minute"></select><select class="t-ap" aria-label="AM/PM" hidden></select></span></label>
               <label class="tfield"><span data-i18n="end">End</span><span class="tpick" id="night-end"><select class="t-h" aria-label="hour"></select><b class="tcolon">:</b><select class="t-m" aria-label="minute"></select><select class="t-ap" aria-label="AM/PM" hidden></select></span></label>
-              <label class="tfield"><span data-i18n="timezone">Timezone</span><select id="set-tz"></select></label>
             </div>
             <button class="act sm okbtn" id="night-save" data-i18n="save">Save</button>
           </div>
