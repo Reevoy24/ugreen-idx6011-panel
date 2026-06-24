@@ -54,10 +54,16 @@ MAINOBJ = $(MAINSRC:.c=$(OBJEXT))
 SRCS = $(ASRCS) $(CSRCS) $(MAINSRC)
 OBJS = $(AOBJS) $(COBJS) $(MAINOBJ)
 
+# Auto-generated header dependencies (from -MMD): changing a .h rebuilds every
+# .o that includes it. Without this, growing a struct in a header left stale
+# .o files with mismatched layouts (e.g. api_port read at the wrong offset).
+DEPS = $(OBJS:$(OBJEXT)=.d)
+-include $(DEPS)
+
 all: default fand
 
 %.o: %.c
-	@$(CC) $(CFLAGS) -c $< -o $@
+	@$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 	@echo "CC $<"
 
 default: $(AOBJS) $(COBJS) $(MAINOBJ)
@@ -86,7 +92,7 @@ install: default
 	sudo cp $(BIN) /usr/bin/$(BIN)
 
 clean:
-	rm -f $(BIN) $(FAND) render-mock $(AOBJS) $(COBJS) $(MAINOBJ) $(MOCKOBJ)
+	rm -f $(BIN) $(FAND) render-mock $(AOBJS) $(COBJS) $(MAINOBJ) $(MOCKOBJ) $(DEPS) $(MOCKOBJ:$(OBJEXT)=.d)
 
 run: default
 	./$(BIN)
