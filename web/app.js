@@ -315,14 +315,20 @@ function wireControls() {
     const e = $("night-edit");
     if (e) { e.hidden = !e.hidden; nx.classList.toggle("open", !e.hidden); }
   });
+  // clock format + timezone apply immediately on change (like the language
+  // dropdown); the poll then confirms the server value instead of reverting it.
+  const sf = $("set-format");
+  if (sf) sf.addEventListener("change", (e) => postSettings({ clock_24h: e.target.value === "24" ? 1 : 0 }));
+  const stz = $("set-tz");
+  if (stz) stz.addEventListener("change", (e) => postSettings({ timezone: e.target.value.trim() }));
+
+  // the Save button only commits the start/end times (a paired range).
   const nsv = $("night-save");
   if (nsv) nsv.addEventListener("click", async () => {
     try {
       await postJSON("/api/settings", {
         led_night_start: $("night-start").value,
         led_night_end: $("night-end").value,
-        timezone: $("set-tz").value.trim(),
-        clock_24h: $("set-format").value === "24" ? 1 : 0,
       });
       toast(t("saved"), true);
     } catch (err) { toast(err.message); }
