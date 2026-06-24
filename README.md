@@ -335,28 +335,39 @@ Restart ug-paneld, then open `http://<nas-ip>:8080`.
 
 ## Configuration
 
-Everything is optional — without a config file ug-paneld auto-detects the
-display, touch and sensible defaults. Create `/etc/ug-paneld/config.json` to
-override:
+The package installs this default `/etc/ug-paneld/config.json` (a fresh install
+seeds it; existing files are never overwritten on upgrade) — edit it to change
+the defaults:
 
 ```json
 {
     "poll_rate": 2,
     "brightness": 100,
     "backlight_timeout": 30,
-    "language": "en",
     "sleep_brightness": 0,
-    "led_night_start": "21:00",
-    "led_night_end": "08:00",
+    "language": "en",
+    "clock_24h": 1,
+    "wallpaper": "",
+
     "api_port": 0,
     "api_password": "",
-    "opnsense_url": "https://192.168.1.1:8443",
-    "opnsense_key": "your-api-key",
-    "opnsense_secret": "your-api-secret",
-    "wan_interface": "wan",
-    "wan_max_mbps": 1000
+
+    "leds_on": 1,
+    "led_night": 0,
+    "led_night_start": "21:00",
+    "led_night_end": "08:00",
+    "timezone": "",
+
+    "state_file": "",
+
+    "debug": false
 }
 ```
+
+The **web dashboard is off by default** (`api_port: 0`) — set a port to enable
+it (see [Web UI](#web-ui)). To show the OPNsense gauges, add
+`opnsense_url`/`opnsense_key`/`opnsense_secret` (and optionally
+`wan_interface`/`wan_max_mbps`). Every key is in the table below.
 
 Settings changed on the display or in the web UI (brightness, timeout, wallpaper,
 language, LEDs, clock format, timezone …) persist separately in `state.json` —
@@ -394,7 +405,7 @@ which is ephemeral on those platforms, so set the mode in the pool/flash
 | `drm_probe_timeout` | `60` | Seconds to wait at startup for a connected connector (high so the early-boot start waits for the panel instead of giving up) |
 | `i2c_device` | `auto` | Touch ACPI id to unbind from its HID-over-I2C driver (whatever owns it — `i2c_hid_acpi`, `i2c_hid`, …): `auto` (knows `CUST0000:00` + `MSFT8000:00`), `none`, or a specific id |
 | `touch_device` | `auto` | Touch I2C bus: `auto` resolves it from the ACPI link; explicit `/dev/i2c-2` works |
-| `debug` | `false` | Verbose DRM probe logging |
+| `debug` | `false` | Verbose logging (DRM probe + raw touch frames once/sec); leave off in normal use |
 | `opnsense_url` / `_key` / `_secret` | | OPNsense API (empty = page disabled) |
 | `wan_interface` | `wan` | OPNsense interface for the WAN gauges |
 | `wan_max_mbps` | `1000` | Scales the WAN arc gauges |
