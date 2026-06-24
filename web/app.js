@@ -183,7 +183,7 @@ function render(s) {
   toggle("row-leds", caps.has_leds);
   toggle("row-night", caps.has_leds);
   if (!caps.has_leds) { const ne = $("night-edit"); if (ne) ne.hidden = true; }
-  setText("night-window", stx.led_night_window ? "(" + stx.led_night_window + ")" : "");
+  paintNightWindow(stx);
   const serverIs24 = stx.clock_24h !== false;
   const fmtEl = $("set-format");
   if (fmtEl && document.activeElement !== fmtEl) { fmtEl.value = serverIs24 ? "24" : "12"; setClockFormat(serverIs24); }
@@ -305,6 +305,23 @@ function setClockFormat(is24) {
   clock24 = is24;
   renderTimePickers();
 }
+
+/* "HH:MM" → "21:00" (24h) or "9:00 PM" (12h) — follows the Clock dropdown */
+function fmtTime(hhmm) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":");
+  const H = parseInt(h, 10) || 0, M = m || "00";
+  if (clock24) return pad2(H) + ":" + M;
+  return (H % 12 || 12) + ":" + M + " " + (H < 12 ? "AM" : "PM");
+}
+
+/* the "(start–end)" label next to the night-mode toggle, in the current format */
+function paintNightWindow(stx) {
+  const w = stx && stx.led_night_window;
+  if (!w) { setText("night-window", ""); return; }
+  const p = w.split("-");
+  setText("night-window", "(" + fmtTime(p[0]) + "–" + fmtTime(p[1]) + ")");
+}
 function renderWallpapers(wp) {
   const box = $("wp-options");
   if (!box) return;
@@ -398,6 +415,7 @@ function wireControls() {
   if (sf) sf.addEventListener("change", (e) => {
     const is24 = e.target.value === "24";
     setClockFormat(is24);                          // reformat the time pickers live
+    if (last) paintNightWindow(last.settings);     // and the "(start–end)" label
     postSettings({ clock_24h: is24 ? 1 : 0 });
   });
   const stz = $("set-tz");
