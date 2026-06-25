@@ -296,12 +296,27 @@ int touch_poll(void) {
         }
     }
 
-    uint8_t num = buf[1];
-    uint8_t event = (buf[2] >> 6) & 0x03;
+    /* Some controller revisions stream a constant-byte fill as their idle / no-
+     * contact pattern (observed: all-0x00 from a fresh boot, all-0x90 after the
+     * first touch). A genuine contact frame always has distinct header/coord
+     * bytes, so an all-equal frame is never a real touch — reject it outright.
+     * Without this the all-0x90 fill decoded to a phantom contact at (144,144),
+     * which kept the screen awake (never slept, flickered at the idle timeout)
+     * and yanked swipes toward that point (gestures only worked near the top). */
+    int all_equal = 1;
+    for (int i = 1; i < AXS_READ_LEN; i++)
+        if (buf[i] != buf[0]) { all_equal = 0; break; }
+    if (all_equal)
+        return 0;
 
-    /* The chip returns constant 0x22/0x23 garbage whenever it is not physically
-     * touched (num would be ~34) and a valid frame only during a real contact;
-     * the checks below reject the garbage. */
+    /* Byte 1: low nibble = contact/finger count, high nibble = status. This is
+     * exactly what UGREEN's axs_touch (AiXieSheng) kernel driver does — RE of
+     * axs_ts_interrupt shows it parses points = buf[1] & 0x0F. A real contact is
+     * 0x01; the post-touch idle fill 0x90 has low-nibble 0 ("no finger"), which
+     * is why the IRQ-driven vendor driver never reports it. We poll, so we apply
+     * the same mask. (Coords/event below are byte-identical to that driver too.) */
+    uint8_t num = buf[1] & 0x0F;
+    uint8_t event = (buf[2] >> 6) & 0x03;
 
     /* Only accept event 0 (down) or 2 (contact) with valid touch count
     Extracted from i2c bus using
