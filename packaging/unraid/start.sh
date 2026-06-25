@@ -14,7 +14,8 @@ chmod 755 "$BIN"
 export UG_PANELD_STATE="$PERSIST/state.json"
 [ -f "$PERSIST/wallpaper.png" ] && cp -f "$PERSIST/wallpaper.png" /etc/ug-paneld/wallpaper.png
 [ -d "$PERSIST/wallpapers" ] && cp -f "$PERSIST/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
-[ -d "$PERSIST/web" ] && { mkdir -p /usr/share/ug-paneld/web; cp -f "$PERSIST/web/"* /usr/share/ug-paneld/web/ 2>/dev/null; }
+# serve the web dashboard straight from the flash dir (no /usr/share copy needed)
+[ -d "$PERSIST/web" ] && export UG_PANELD_WEB_DIR="$PERSIST/web"
 
 # --- touchscreen prerequisites -------------------------------------------
 # Unlike the Proxmox .deb (which ships /etc/modprobe.d/no-i2c-hid.conf), Unraid

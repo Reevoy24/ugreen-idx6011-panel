@@ -24,7 +24,7 @@
 #include <netinet/in.h>
 #include <errno.h>
 
-#define WEB_DIR        "/usr/share/ug-paneld/web"
+#define WEB_DIR_DEFAULT "/usr/share/ug-paneld/web"
 #define HDR_MAX        8192
 #define BODY_MAX       (4 * 1024 * 1024)   /* generous cap for a wallpaper PNG */
 
@@ -34,6 +34,10 @@ static volatile int api_running = 0;
 static int current_brightness = 100;
 static volatile int current_state = 1;
 static char api_password[64] = "";
+/* Web frontend directory. Overridable via UG_PANELD_WEB_DIR so hosts with a
+ * read-only /usr (TrueNAS SCALE) can serve straight from a writable pool/flash
+ * path instead of /usr/share/ug-paneld/web. Resolved once in api_start(). */
+static char web_dir[256] = WEB_DIR_DEFAULT;
 
 /* ---- published stats snapshot (written by main loop, read by handlers) ---- */
 static api_snapshot_t snap;
@@ -332,7 +336,7 @@ static void serve_file(int fd, const char *path) {
     if (strstr(path, "..")) { send_error(fd, 404, "not found"); return; }
     const char *rel = (strcmp(path, "/") == 0) ? "/index.html" : path;
     char full[512];
-    snprintf(full, sizeof(full), "%s%s", WEB_DIR, rel);
+    snprintf(full, sizeof(full), "%s%s", web_dir, rel);
 
     int ffd = open(full, O_RDONLY);
     if (ffd < 0) { send_error(fd, 404, "not found"); return; }
@@ -906,6 +910,12 @@ void api_set_brightness(int val) {
 int api_start(int port, const char *password) {
     if (port <= 0) return -1;
     snprintf(api_password, sizeof(api_password), "%s", password ? password : "");
+
+    /* TrueNAS/Unraid set this to a writable pool/flash path (their /usr is
+     * read-only / ephemeral); the .deb leaves it unset and uses the default. */
+    const char *wd = getenv("UG_PANELD_WEB_DIR");
+    if (wd && wd[0]) snprintf(web_dir, sizeof(web_dir), "%s", wd);
+    fprintf(stderr, "Web dashboard frontend dir: %s\n", web_dir);
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) return -1;
