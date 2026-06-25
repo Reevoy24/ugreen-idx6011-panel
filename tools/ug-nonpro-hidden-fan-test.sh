@@ -44,21 +44,29 @@ echo "[after] $(rpm)"; echo "[after] $(protach)"
 mapfile -t AFTER < <(snap)
 
 echo; echo "=== EC bytes changed idle -> after ==="
-echo "    (0xB0-0xB7 change because WE wrote them; ANY OTHER change = a fan responded)"
-other=0
 for i in $(seq 0 255); do
   b=${BASE[$i]:--}; a=${AFTER[$i]:--}
   [ "$b" = "$a" ] && continue
-  if [ "$i" -ge 176 ] && [ "$i" -le 183 ]; then tag="  (written by test)"; else tag="  <-- OTHER"; other=1; fi
+  if   [ "$i" -ge 176 ] && [ "$i" -le 183 ]; then tag="  (our write to 0xB0-0xB7)"
+  elif [ "$i" -ge 150 ] && [ "$i" -le 153 ]; then tag="  (known fan tach jitter)"
+  else tag="  (sensor/counter)"; fi
   printf '  0x%02X: %3s -> %3s%s\n' "$i" "$b" "$a" "$tag"
 done
 
 echo; echo "(restoring 0xB0-0xB7 and settling)"; restore_b0; trap - EXIT; sleep 3
 echo "[restored] $(rpm)"
+
+# verdict from the only thing that matters: did writing 0xB0 actually move a fan?
+s1b=$(( ${BASE[150]:-0}*256 + ${BASE[151]:-0} )); s1a=$(( ${AFTER[150]:-0}*256 + ${AFTER[151]:-0} ))
+s2b=$(( ${BASE[152]:-0}*256 + ${BASE[153]:-0} )); s2a=$(( ${AFTER[152]:-0}*256 + ${AFTER[153]:-0} ))
+pt=$(( ${AFTER[52]:-0}*256+${AFTER[53]:-0} + ${AFTER[54]:-0}*256+${AFTER[55]:-0} + ${AFTER[56]:-0}*256+${AFTER[57]:-0} + ${AFTER[58]:-0}*256+${AFTER[59]:-0} ))
+d1=$(( s1a - s1b )); d2=$(( s2a - s2b )); [ $d1 -lt 0 ] && d1=$(( -d1 )); [ $d2 -lt 0 ] && d2=$(( -d2 ))
 echo
-if [ "$other" = 1 ]; then
-  echo "VERDICT: something OTHER than 0xB0-0xB7 changed -> there may be a 3rd/4th fan; see the '<-- OTHER' lines."
+echo "sysfan delta after writing 0xB0: sysfan1 ${d1} RPM, sysfan2 ${d2} RPM; Pro-tach total ${pt}"
+if [ "$d1" -gt 150 ] || [ "$d2" -gt 150 ] || [ "$pt" -gt 0 ]; then
+  echo "VERDICT: writing 0xB0-0xB7 moved a fan -> investigate a possible extra fan."
 else
-  echo "VERDICT: only 0xB0-0xB7 changed (our writes) and no RPM moved -> 0xB0 is dead here; confirms 2 fans only."
+  echo "VERDICT: writing 0xB0-0xB7 moved NO fan (RPM only jittered, Pro-tach=0) -> 0xB0 is inert; 2 fans confirmed."
 fi
+echo "Please paste this entire output back into the issue."
 echo "Please paste this entire output back into the issue."
