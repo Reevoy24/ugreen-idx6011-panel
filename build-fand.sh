@@ -14,6 +14,10 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 FAND=packaging/fand
 
+# Strip CR from staged text files — when built in WSL against a Windows working
+# tree (autocrlf), scripts/config can be CRLF, which breaks #!/bin/sh on Linux.
+norm() { sed -i 's/\r$//' "$@"; }
+
 # Static (libc only) so one binary runs across Proxmox/TrueNAS/Unraid glibc versions.
 gcc -O2 -g0 -static -Wall -Wextra -Iinclude -o ug-fand src/ug_fand.c
 strip ug-fand
@@ -29,6 +33,7 @@ build_deb() {
     cp ug-fand "$stage/usr/bin/ug-fand";                       chmod 755 "$stage/usr/bin/ug-fand"
     cp "$FAND/ug-fand.service" "$stage/lib/systemd/system/";   chmod 644 "$stage/lib/systemd/system/ug-fand.service"
     cp "$FAND/config.example" "$stage/etc/ug-fand/config";     chmod 644 "$stage/etc/ug-fand/config"
+    norm "$stage/lib/systemd/system/ug-fand.service" "$stage/etc/ug-fand/config"
     printf "/etc/ug-fand/config\n" > "$stage/DEBIAN/conffiles"   # keep user's config across upgrades
 
     cat > "$stage/DEBIAN/control" <<CTRL
@@ -71,6 +76,7 @@ build_tarball() {
     cp ug-fand "$stage/ug-fand"
     cp "$FAND/config.example" "$stage/config"     # active config (the source of truth)
     cp "$FAND/install.sh" "$FAND/start.sh" "$FAND/README.txt" "$stage/"
+    norm "$stage/install.sh" "$stage/start.sh" "$stage/config" "$stage/README.txt"
     chmod 755 "$stage/ug-fand" "$stage"/*.sh
     tar -C "$root" --owner=0 --group=0 -czf "$REPO/ug-fand_${VERSION}_${platform}_amd64.tar.gz" ug-fand
     rm -rf "$root"
