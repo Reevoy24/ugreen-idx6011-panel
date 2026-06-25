@@ -150,16 +150,27 @@ and
 
 ## Fan control
 
-The iDX6011 Pro's fans hang off the same **ITE IT55xx embedded controller** as
-the backlight, reachable as a standard ACPI EC (ports `0x62`/`0x66`). UGOS
-drives them through a proprietary kernel module, so a stock Linux (Proxmox,
-TrueNAS, Debian) sees no fan sensors or control at all. **`ug-fand`** restores
-both — monitoring **and** control — entirely from userspace, no kernel module.
+The iDX6011's fans hang off an **ITE IT55xx embedded controller** reachable as a
+standard ACPI EC (ports `0x62`/`0x66`). UGOS drives them through a proprietary
+kernel module, so a stock Linux (Proxmox, TrueNAS, Debian, Unraid) sees no fan
+sensors or control at all. **`ug-fand`** restores both — monitoring **and**
+control — entirely from userspace, no kernel module. It **auto-detects the
+model**: the **iDX6011 Pro** has 4 fans (CPU + system); the **non-Pro
+iDX6011 / iDX6012** have 2 system fans (no separate CPU fan — the system fans
+cool the CPU too) at different EC offsets.
 
-> Reverse-engineered from UGOS' `ug_idx6011pro-sio.ko`. Runs on Proxmox /
-> TrueNAS / Debian — **not** on UGOS itself (its own driver owns the EC there).
-> The bundled curves are conservative starting points; writing fan registers
-> can overheat the box if a curve is wrong, so verify on your hardware.
+> Reverse-engineered from UGOS' `ug_idx6011pro-sio.ko` / `ug_idx6011-sio.ko` and
+> verified on real hardware. Runs on Proxmox / TrueNAS / Unraid / Debian —
+> **not** on UGOS itself (its own driver owns the EC there). The bundled curves
+> are conservative starting points; writing fan registers can overheat the box if
+> a curve is wrong, so verify on your hardware.
+
+> **Non-Pro / no display?** The panel packages in [Install](#install) are for the
+> Pro (they drive the display). The non-Pro iDX6011 / iDX6012 have no panel —
+> install the **display-free fan-only build** instead:
+> [**ug-fand v1.0.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.0.0)
+> — a `.deb` for Proxmox and tarballs for TrueNAS / Unraid, config persists across
+> reboots and OS updates. Everything below applies to it too.
 
 ### Setup
 
@@ -179,7 +190,7 @@ cat /var/log/ug-fand.log          # TrueNAS / Unraid
 Build just the daemon (`make fand` → `ug-fand` at the repo root), then:
 
 ```bash
-# Proxmox / Debian (systemd service)
+# Proxmox / Debian (systemd) or Unraid (/boot/config + go hook) — auto-detected
 sudo sh packaging/fand/install.sh
 
 # TrueNAS SCALE (installs onto a pool + registers a Post-Init script)
@@ -281,7 +292,15 @@ write; OBF = bit `0x01` set before a read).
 | sysfan1 | `0xB4` / `0xB5` |
 | sysfan2 | `0xB6` / `0xB7` |
 
-Read all four RPMs from the shell:
+The above is the **iDX6011 Pro**. The **non-Pro iDX6011 / iDX6012** use the same
+EC and protocol but only 2 system fans, at different offsets (duty still `0..198`):
+
+| Fan | tach hi / lo | enable / duty |
+|-----|--------------|---------------|
+| sysfan1 | `0x96` / `0x97` | `0x9C` / `0x9D` |
+| sysfan2 | `0x98` / `0x99` | `0x9E` / `0x9F` |
+
+Read all four Pro RPMs from the shell:
 
 ```bash
 python3 - <<'PY'
