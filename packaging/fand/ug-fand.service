@@ -1,5 +1,5 @@
 [Unit]
-Description=UGREEN iDX6011 Pro fan control (ug-fand)
+Description=UGREEN iDX6011/iDX6012 fan control (ug-fand)
 After=basic.target
 
 [Service]
