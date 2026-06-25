@@ -159,11 +159,8 @@ model**: the **iDX6011 Pro** has 4 fans (CPU + system); the **non-Pro
 iDX6011 / iDX6012** have 2 system fans (no separate CPU fan — the system fans
 cool the CPU too) at different EC offsets.
 
-> Reverse-engineered from UGOS' `ug_idx6011pro-sio.ko` / `ug_idx6011-sio.ko` and
-> verified on real hardware. Runs on Proxmox / TrueNAS / Unraid / Debian —
-> **not** on UGOS itself (its own driver owns the EC there). The bundled curves
-> are conservative starting points; writing fan registers can overheat the box if
-> a curve is wrong, so verify on your hardware.
+> ⚠️ The bundled curves are conservative starting points; writing fan registers
+> can overheat the box if a curve is wrong, so verify on your hardware.
 
 > **Non-Pro / no display?** The panel packages in [Install](#install) are for the
 > Pro (they drive the display). The non-Pro iDX6011 / iDX6012 have no panel —
