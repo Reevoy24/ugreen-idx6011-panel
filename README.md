@@ -93,9 +93,11 @@ sh install.sh
 > the Intel LPSS / DesignWare I2C driver the touch panel needs, so its I2C bus
 > never appears (display and LEDs are unaffected; the dashboard stays on and
 > readable). See [`packaging/unraid/README.txt`](packaging/unraid/README.txt)
-> for the details and the custom-kernel workaround. The TrueNAS SCALE package
-> ships the identical binaries but has not been run on that platform yet —
-> feedback (good or bad) via the issues is very welcome.
+> for the details and the custom-kernel workaround. The TrueNAS SCALE **panel**
+> package ships the identical binaries, but the display/touch/LED side hasn't been
+> run on that platform yet — feedback (good or bad) via the issues is welcome.
+> **Fan control, though, is verified on TrueNAS SCALE** (non-Pro iDX6011: install,
+> reboot persistence and Silent/Default/Turbo switching all confirmed).
 
 > [!IMPORTANT]
 > **Display stays black?** On newer iDX6011 Pro revisions the panel power is
