@@ -12,7 +12,7 @@ The model is auto-detected by DMI:
                          CPU, so they follow whichever of cpu_*/sys_* demands more.
 
 WARNING: the bundled fan curves are conservative starting points. Writing fan
-registers can overheat the box if a curve is wrong — verify on your hardware.
+registers can overheat the NAS if a curve is wrong — verify on your hardware.
 
 Install
 -------

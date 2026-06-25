@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build the display-free ug-fand (fan control ONLY) release artifacts for the
 # UGREEN iDX6011/iDX6012 (Pro + non-Pro, auto-detected). No ug-paneld, no web,
-# no wallpapers — these boxes (esp. the non-Pro) have no display.
+# no wallpapers — these units (esp. the non-Pro) have no display.
 #
 #   ug-fand_<ver>_amd64.deb            Proxmox / Debian (systemd)
 #   ug-fand_<ver>_truenas_amd64.tar.gz TrueNAS SCALE (pool + Post-Init)

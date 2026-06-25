@@ -45,7 +45,7 @@ complete [front-LED setup](#front-panel-leds).
   entity
 - 📦 Packaged for **Proxmox/Debian** (.deb), **TrueNAS SCALE** and
   **Unraid** (tarballs) — plus a separate **display-free fan-only** build for
-  headless / non-Pro boxes
+  headless / non-Pro units
 
 ## Install
 
@@ -54,7 +54,7 @@ Grab the latest packages from the [releases page](../../releases).
 > [!NOTE]
 > **No display (non-Pro iDX6011 / iDX6012)?** The packages below are the **panel**
 > — they're for the **iDX6011 Pro** and drive the front display. For a headless or
-> **non-Pro** box, install the separate **display-free, fan-only** build instead:
+> **non-Pro** unit, install the separate **display-free, fan-only** build instead:
 > [**ug-fand v1.0.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.0.0)
 > (`.deb` for Proxmox, tarballs for TrueNAS / Unraid). See [Fan control](#fan-control).
 
@@ -170,7 +170,7 @@ iDX6011 / iDX6012** have 2 system fans (no separate CPU fan — the system fans
 cool the CPU too) at different EC offsets.
 
 > ⚠️ The bundled curves are conservative starting points; writing fan registers
-> can overheat the box if a curve is wrong, so verify on your hardware.
+> can overheat the NAS if a curve is wrong, so verify on your hardware.
 
 > **Non-Pro / no display?** The panel packages in [Install](#install) are for the
 > Pro (they drive the display). The non-Pro iDX6011 / iDX6012 have no panel —
@@ -242,7 +242,7 @@ cat /run/ug-fand/status            # mode, temps, RPM, and applied speed %
 ```
 
 Lower the speed numbers (or push the ramp temperatures higher) for a quieter
-box; raise them for a cooler one. For example, to keep the system fans at their
+NAS; raise them for a cooler one. For example, to keep the system fans at their
 quiet floor until the disks get warmer, widen the flat part of the curve:
 
 ```
@@ -357,7 +357,7 @@ Restart ug-paneld, then open `http://<nas-ip>:8080`.
 > This is a control surface on a daemon running as root, over plain HTTP. **LAN
 > only — never port-forward it to the internet.** Set `api_password` and keep it
 > on a trusted network. (ug-fand's thermal failsafe still forces full speed above
-> the critical thresholds, so a bad curve can't overheat the box.)
+> the critical thresholds, so a bad curve can't overheat the NAS.)
 
 ## Configuration
 
