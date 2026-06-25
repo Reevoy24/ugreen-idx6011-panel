@@ -1,6 +1,6 @@
 # ugreen-idx6011-panel
 
-Touch dashboard, front-LED- and Fan control for the UGREEN NASync iDX6011 Pro on Proxmox, Debian, TrueNAS SCALE and Unraid.
+Touch dashboard, front-LED and fan control for the UGREEN NASync iDX6011 Pro — plus standalone fan control for the non-Pro iDX6011 / iDX6012 — on Proxmox, Debian, TrueNAS SCALE and Unraid.
 *Community project — not affiliated with or endorsed by UGREEN.*
 
 [![Release](https://img.shields.io/badge/release-v1.6.0-2ea44f)](../../releases/latest)
@@ -30,7 +30,9 @@ complete [front-LED setup](#front-panel-leds).
   restart/shutdown
 - 🌀 **Fan monitoring + control** — swipe **left** from Home for live RPM and
   temps, **Silent / Default / Turbo** modes and the live curve; the bundled
-  `ug-fand` daemon drives the ITE EC from userspace (no kernel module)
+  `ug-fand` daemon drives the ITE EC from userspace (no kernel module). Also
+  ships as a **standalone, display-free build** that auto-detects the **non-Pro
+  iDX6011 / iDX6012** (2 system fans)
 - 🌐 **Web dashboard** — opt-in (`api_port`): ug-paneld serves a browser UI on
   the LAN that mirrors the whole panel — stats, fan control with curve editor,
   all settings, 12h/24h clock + timezone, wallpaper upload, restart/shutdown
@@ -42,11 +44,19 @@ complete [front-LED setup](#front-panel-leds).
 - 🏠 **Home Assistant** — optional HTTP API exposes the backlight as a light
   entity
 - 📦 Packaged for **Proxmox/Debian** (.deb), **TrueNAS SCALE** and
-  **Unraid** (tarballs)
+  **Unraid** (tarballs) — plus a separate **display-free fan-only** build for
+  headless / non-Pro boxes
 
 ## Install
 
 Grab the latest packages from the [releases page](../../releases).
+
+> [!NOTE]
+> **No display (non-Pro iDX6011 / iDX6012)?** The packages below are the **panel**
+> — they're for the **iDX6011 Pro** and drive the front display. For a headless or
+> **non-Pro** box, install the separate **display-free, fan-only** build instead:
+> [**ug-fand v1.0.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.0.0)
+> (`.deb` for Proxmox, tarballs for TrueNAS / Unraid). See [Fan control](#fan-control).
 
 **Proxmox / Debian** (and other systemd distros):
 
@@ -607,8 +617,10 @@ apt install build-essential libdrm-dev libcurl4-openssl-dev pkg-config
 git clone --recursive https://github.com/Reevoy24/ugreen-idx6011-panel
 cd ugreen-idx6011-panel
 make                 # binary: ./ug-paneld   (requires root to run)
-./build-deb.sh 1.4.0           # .deb packages
-./build-tarballs.sh 1.4.0      # TrueNAS/Unraid tarballs
+make fand                      # fan daemon only: ./ug-fand  (libc only, no display deps)
+./build-deb.sh 1.4.0           # .deb packages (panel)
+./build-tarballs.sh 1.4.0      # TrueNAS/Unraid tarballs (panel)
+./build-fand.sh 1.0.0          # display-free fan-only build: .deb + TrueNAS/Unraid tarballs
 ./build-mockups.sh             # render all pages as PNGs (no hardware needed)
 ```
 
