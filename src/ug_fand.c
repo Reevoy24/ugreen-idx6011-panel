@@ -1,9 +1,11 @@
 /*
- * ug-fand — fan monitor + control daemon for the UGREEN iDX6011 Pro.
+ * ug-fand — fan monitor + control daemon for the UGREEN iDX6011 (Pro + non-Pro).
  *
  * Talks to the ITE IT55xx embedded controller as a standard ACPI EC
  * (ports 0x62 data / 0x66 cmd+status) — the SAME EC the panel uses for the
- * backlight. Reverse-engineered from UGOS' ug_idx6011pro-sio.ko:
+ * backlight. The non-Pro iDX6011/iDX6012 use the same EC and protocol but only
+ * 2 system fans at different offsets (auto-detected by DMI; see REG_NP_* below).
+ * Reverse-engineered from UGOS' ug_idx6011pro-sio.ko / ug_idx6011-sio.ko:
  *
  *   Fan tach (RPM, read, 16-bit big-endian):
  *     cpufan1 EC[0x34:0x35]  cpufan2 EC[0x36:0x37]
@@ -43,13 +45,22 @@
 #define EC_CMD_READ  0x80     /* read EC memory byte   */
 #define EC_CMD_WRITE 0x81     /* write EC memory byte  */
 
-/* Fan registers */
+/* Fan registers — iDX6011 *Pro* (4 fans: cpufan1/2, sysfan1/2) */
 #define REG_CPUFAN1_RPM 0x34  /* hi,lo at 0x34/0x35 */
 #define REG_CPUFAN2_RPM 0x36
 #define REG_SYSFAN1_RPM 0x38
 #define REG_SYSFAN2_RPM 0x3A
 #define REG_CPU_EN1  0xB0     /* enable=1, duty, enable=1, duty */
 #define REG_SYS_EN1  0xB4
+
+/* Fan registers — iDX6011/iDX6012 *non-Pro*. SAME IT55xx EC and 0..198 scale,
+ * but only 2 system fans and different offsets. Reverse-engineered from UGOS
+ * ug_idx6011-sio.ko (set_sys_fan/fan_read) and confirmed against a live EC dump:
+ *   tach (hi,lo): sysfan1 0x96/0x97, sysfan2 0x98/0x99
+ *   duty (enable=1,duty x2):       0x9C/0x9D (sysfan1), 0x9E/0x9F (sysfan2) */
+#define REG_NP_SYSFAN1_RPM 0x96
+#define REG_NP_SYSFAN2_RPM 0x98
+#define REG_NP_SYS_EN1     0x9C  /* writes 0x9C..0x9F = both system fans */
 
 #define EC_DUTY_MAX  198      /* raw EC duty register max (0xC6) = 100% fan */
 #define SPEED_FULL   100      /* fan speed is a percent 0..100 */
@@ -69,6 +80,7 @@
 
 static volatile sig_atomic_t running = 1;
 static int lock_fd = -1;
+static int g_nonpro = 0;   /* iDX6011/iDX6012 non-Pro: 2 sys fans on the IT55xx EC at 0x96/0x9C */
 
 /* ---- low level EC ---- */
 static void ec_lock(void)   { if (lock_fd >= 0) flock(lock_fd, LOCK_EX); }
@@ -317,7 +329,11 @@ static int dmi_is_supported(void) {
     char name[128] = "";
     FILE *f = fopen("/sys/class/dmi/id/product_name", "r");
     if (f) { if (!fgets(name, sizeof(name), f)) name[0] = 0; fclose(f); }
-    return strstr(name, "iDX6011") != NULL;
+    int ok = strstr(name, "iDX6011") || strstr(name, "iDX6012");
+    /* Same IT55xx EC family, but the non-Pro keeps its 2 system fans at
+     * different EC offsets than the Pro's 4 fans (see REG_NP_* above). */
+    g_nonpro = ok && !strstr(name, "Pro");
+    return ok;
 }
 
 static void on_signal(int s) { (void)s; running = 0; }
@@ -353,8 +369,9 @@ int main(int argc, char **argv) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
-    fprintf(stderr, "ug-fand: started, mode=%s, interval=%ds\n",
-            mode_name(cf.mode), cf.interval);
+    fprintf(stderr, "ug-fand: started, mode=%s, interval=%ds, model=%s\n",
+            mode_name(cf.mode), cf.interval,
+            g_nonpro ? "iDX6011 non-Pro (2 sys fans @ 0x9C)" : "iDX6011 Pro (4 fans @ 0xB0)");
 
     time_t cfg_mtime = 0;
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
@@ -426,21 +443,36 @@ int main(int argc, char **argv) {
         if (applied_sp < 0 || sp == SPEED_FULL || abs(sp - applied_sp) >= SPEED_DEADBAND)
             applied_sp = sp;
 
-        set_fan_pair(REG_CPU_EN1, applied_cp);
-        set_fan_pair(REG_SYS_EN1, applied_sp);
-
-        write_status(cf.mode, ct, st,
-                     fan_rpm(REG_CPUFAN1_RPM), fan_rpm(REG_CPUFAN2_RPM),
-                     fan_rpm(REG_SYSFAN1_RPM), fan_rpm(REG_SYSFAN2_RPM),
-                     applied_cp, applied_sp,
-                     &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+        if (g_nonpro) {
+            /* One fan zone (2 system fans) cools both CPU and disks, so drive it
+             * from whichever demand is higher. */
+            int np = applied_cp > applied_sp ? applied_cp : applied_sp;
+            set_fan_pair(REG_NP_SYS_EN1, np);   /* writes 0x9C..0x9F = both fans */
+            write_status(cf.mode, ct, st,
+                         0, 0,
+                         fan_rpm(REG_NP_SYSFAN1_RPM), fan_rpm(REG_NP_SYSFAN2_RPM),
+                         applied_cp, np,
+                         &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+        } else {
+            set_fan_pair(REG_CPU_EN1, applied_cp);
+            set_fan_pair(REG_SYS_EN1, applied_sp);
+            write_status(cf.mode, ct, st,
+                         fan_rpm(REG_CPUFAN1_RPM), fan_rpm(REG_CPUFAN2_RPM),
+                         fan_rpm(REG_SYSFAN1_RPM), fan_rpm(REG_SYSFAN2_RPM),
+                         applied_cp, applied_sp,
+                         &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+        }
 
         for (int slept = 0; slept < cf.interval && running; slept++) sleep(1);
     }
 
     /* failsafe on exit: leave fans at a safe, audible level (70%) */
-    set_fan_pair(REG_CPU_EN1, 70);
-    set_fan_pair(REG_SYS_EN1, 70);
+    if (g_nonpro) {
+        set_fan_pair(REG_NP_SYS_EN1, 70);
+    } else {
+        set_fan_pair(REG_CPU_EN1, 70);
+        set_fan_pair(REG_SYS_EN1, 70);
+    }
     fprintf(stderr, "ug-fand: stopped (fans set to failsafe 70%%)\n");
     return 0;
 }
