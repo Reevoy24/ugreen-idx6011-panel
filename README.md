@@ -10,7 +10,7 @@ Touch dashboard, front-LED and fan control for the UGREEN NASync iDX6011 Pro —
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows
-system stats; under Proxmox, Debian, TrueNAS or Unraid it stays black — and
+system stats; under Proxmox, Debian, TrueNAS or Unraid it stays black and
 the 9 front status LEDs cycle a rolling demo animation forever.
 
 **ug-paneld** fixes both: a UGOS-style touch dashboard driven entirely from
