@@ -88,12 +88,18 @@ sh install.sh
 
 > [!NOTE]
 > The display, dashboard, front LEDs and fan control are **field-tested on
-> Proxmox VE on real hardware** (a newer-revision iDX6011 Pro). On **Unraid** the display and
-> LEDs work too, but the **touchscreen does not**: stock Unraid's kernel omits
-> the Intel LPSS / DesignWare I2C driver the touch panel needs, so its I2C bus
-> never appears (display and LEDs are unaffected; the dashboard stays on and
-> readable). See [`packaging/unraid/README.txt`](packaging/unraid/README.txt)
-> for the details and the custom-kernel workaround. The TrueNAS SCALE **panel**
+> Proxmox VE on real hardware** (a newer-revision iDX6011 Pro). On **Unraid** the display
+> works, but the **touchscreen and the front LEDs likely do not**: stock Unraid's kernel
+> omits the Intel SoC I2C stack this Meteor Lake hardware needs — `intel_lpss` for the
+> touch's DesignWare bus, and the pinctrl/SMBus pieces for the i801 bus the LED MCU sits
+> on — so neither I2C bus comes alive. The display itself is unaffected (it runs over
+> i915/DRM, not I2C) and the dashboard stays on and readable. The dead SMBus was reported
+> on a non-Pro iDX6011 (`i2cdetect` finds nothing, the MCU at `0x3a` stays silent) and
+> matches our own touch diagnosis; we haven't re-confirmed the LED side on Unraid
+> ourselves. The real fix is a custom Unraid kernel with `CONFIG_PINCTRL_METEORLAKE` +
+> `CONFIG_MFD_INTEL_LPSS_*`, not the LED driver. See
+> [`packaging/unraid/README.txt`](packaging/unraid/README.txt) for details and the
+> custom-kernel workaround. The TrueNAS SCALE **panel**
 > package ships the identical binaries, but the display/touch/LED side hasn't been
 > run on that platform yet — feedback (good or bad) via the issues is welcome.
 > **Fan control, though, is verified on TrueNAS SCALE** (non-Pro iDX6011: install,
@@ -131,16 +137,24 @@ on/off row and a night mode row** (LEDs off automatically between
 `led_night_start` and `led_night_end`, default 21:00–08:00 — turning them on
 during the window overrides it until the window ends).
 
-**TrueNAS SCALE / Unraid** — ready-made tarballs (`ugreen-leds_*`) from the
+**TrueNAS SCALE** — ready-made tarballs (`ugreen-leds_*`) from the
 [releases page](../../releases): same one-command install pattern as above.
 They stop the animation at boot, set a calm base state and run a small
 userspace activity monitor (busy = hardware blink, idle = solid; no kernel
-module, survives every platform update). Proper per-I/O triggers need the
-kernel module built for those kernels — tracked upstream in
+module, survives every platform update). Per-I/O triggers with SMART colors
+need the kernel module built for that kernel — tracked upstream in
+[0x556c79/install_ugreen_leds_controller#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23).
+*(LED side not yet confirmed on TrueNAS hardware — feedback welcome.)*
+
+**Unraid** — reported **not working** on the iDX6011: the front-LED MCU lives
+on the i801 SMBus, and stock Unraid's kernel doesn't bring that bus up on this
+Meteor Lake hardware (the same missing Intel SoC I2C/pinctrl stack that disables
+touch — see the note above), so neither the kernel driver nor our userspace tool
+can reach the MCU. The fix is a custom kernel, not the LED driver: the upstream
+plugin issue
 [ich777/unraid-ugreenleds-driver#8](https://github.com/ich777/unraid-ugreenleds-driver/issues/8)
-and
-[0x556c79/install_ugreen_leds_controller#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23)
-(a 👍 there helps).
+is closed (the driver is still compiled, but the plugin won't be updated), so a
+plugin fork won't help here.
 
 <details>
 <summary><b>LED notes: bay order, LAN order, manual control</b></summary>
