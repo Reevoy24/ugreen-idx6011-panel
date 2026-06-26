@@ -1,7 +1,7 @@
-# ug-fand — fan control for the UGREEN iDX6011 / iDX6012 (Pro and non-Pro).
+# ug-fand — fan control for the UGREEN iDX6011 (Pro and non-Pro).
 # The daemon auto-detects the model by DMI:
 #   * iDX6011 Pro      -> 4 fans (CPU + system), EC offsets 0x34 / 0xB0
-#   * iDX6011/iDX6012  -> 2 system fans (no separate CPU fan), EC 0x96 / 0x9C
+#   * iDX6011 non-Pro  -> 2 system fans (no separate CPU fan), EC 0x96 / 0x9C
 # On the non-Pro the two system fans also cool the CPU, so they are driven by
 # whichever curve (cpu_* vs sys_*) demands more at the current temperatures.
 # All settings are hot-reloaded on save (no restart needed).
@@ -12,7 +12,7 @@ mode=default
 # Polling / update interval in seconds (1..60)
 interval=3
 
-# Run even if the DMI product name is not an iDX6011/iDX6012 (NOT recommended —
+# Run even if the DMI product name is not an iDX6011 (NOT recommended —
 # the EC fan registers are specific to these models). Uncomment to force.
 #force=1
 

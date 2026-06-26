@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ug-nonpro-fan-test.sh — controllability test for the non-Pro iDX6011/iDX6012.
+# ug-nonpro-fan-test.sh — controllability test for the non-Pro iDX6011.
 #
 # Unlike the read-only probe, this DOES write fan-duty registers (EC reg 0x9C-0x9F)
 # to prove the fans are actually controllable, then HANDS CONTROL BACK to the EC's

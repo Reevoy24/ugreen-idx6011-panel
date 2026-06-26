@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the display-free ug-fand (fan control ONLY) release artifacts for the
-# UGREEN iDX6011/iDX6012 (Pro + non-Pro, auto-detected). No ug-paneld, no web,
+# UGREEN iDX6011 (Pro + non-Pro, auto-detected). No ug-paneld, no web,
 # no wallpapers — these units (esp. the non-Pro) have no display.
 #
 #   ug-fand_<ver>_amd64.deb            Proxmox / Debian (systemd)
@@ -41,8 +41,8 @@ Package: ug-fand
 Version: ${VERSION}
 Architecture: amd64
 Maintainer: Sebastian Kowski
-Description: Fan monitor + control for UGREEN iDX6011/iDX6012 NAS (no display)
- Userspace fan monitoring and control for the iDX6011/iDX6012 (Pro and non-Pro,
+Description: Fan monitor + control for UGREEN iDX6011 NAS (no display)
+ Userspace fan monitoring and control for the iDX6011 (Pro and non-Pro,
  auto-detected by DMI) via the ITE IT55xx embedded controller. Display-free.
 CTRL
 

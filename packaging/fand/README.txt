@@ -1,14 +1,14 @@
-ug-fand — fan monitor + control for the UGREEN iDX6011 / iDX6012
-================================================================
+ug-fand — fan monitor + control for the UGREEN iDX6011
+======================================================
 
-Fan-only daemon (NO display) for UGREEN iDX6011 / iDX6012 NAS on a stock Linux
+Fan-only daemon (NO display) for UGREEN iDX6011 NAS on a stock Linux
 (Proxmox / TrueNAS SCALE / Unraid / Debian), where UGOS' proprietary driver is
 absent. Pure userspace, talks to the ITE IT55xx embedded controller directly.
 NOT for UGOS (its driver owns the EC).
 
 The model is auto-detected by DMI:
     iDX6011 Pro       -> 4 fans (CPU + system)
-    iDX6011 / iDX6012 -> 2 system fans (no separate CPU fan); they also cool the
+    iDX6011 non-Pro   -> 2 system fans (no separate CPU fan); they also cool the
                          CPU, so they follow whichever of cpu_*/sys_* demands more.
 
 WARNING: the bundled fan curves are conservative starting points. Writing fan

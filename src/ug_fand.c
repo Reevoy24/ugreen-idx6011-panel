@@ -3,7 +3,7 @@
  *
  * Talks to the ITE IT55xx embedded controller as a standard ACPI EC
  * (ports 0x62 data / 0x66 cmd+status) — the SAME EC the panel uses for the
- * backlight. The non-Pro iDX6011/iDX6012 use the same EC and protocol but only
+ * backlight. The non-Pro iDX6011 uses the same EC and protocol but only
  * 2 system fans at different offsets (auto-detected by DMI; see REG_NP_* below).
  * Reverse-engineered from UGOS' ug_idx6011pro-sio.ko / ug_idx6011-sio.ko:
  *
@@ -53,7 +53,7 @@
 #define REG_CPU_EN1  0xB0     /* enable=1, duty, enable=1, duty */
 #define REG_SYS_EN1  0xB4
 
-/* Fan registers — iDX6011/iDX6012 *non-Pro*. SAME IT55xx EC and 0..198 scale,
+/* Fan registers — iDX6011 *non-Pro*. SAME IT55xx EC and 0..198 scale,
  * but only 2 system fans and different offsets. Reverse-engineered from UGOS
  * ug_idx6011-sio.ko (set_sys_fan/fan_read) and confirmed against a live EC dump:
  *   tach (hi,lo): sysfan1 0x96/0x97, sysfan2 0x98/0x99
@@ -80,7 +80,7 @@
 
 static volatile sig_atomic_t running = 1;
 static int lock_fd = -1;
-static int g_nonpro = 0;   /* iDX6011/iDX6012 non-Pro: 2 sys fans on the IT55xx EC at 0x96/0x9C */
+static int g_nonpro = 0;   /* iDX6011 non-Pro: 2 sys fans on the IT55xx EC at 0x96/0x9C */
 
 /* ---- low level EC ---- */
 static void ec_lock(void)   { if (lock_fd >= 0) flock(lock_fd, LOCK_EX); }
@@ -329,7 +329,7 @@ static int dmi_is_supported(void) {
     char name[128] = "";
     FILE *f = fopen("/sys/class/dmi/id/product_name", "r");
     if (f) { if (!fgets(name, sizeof(name), f)) name[0] = 0; fclose(f); }
-    int ok = strstr(name, "iDX6011") || strstr(name, "iDX6012");
+    int ok = strstr(name, "iDX6011") != NULL;
     /* Same IT55xx EC family, but the non-Pro keeps its 2 system fans at
      * different EC offsets than the Pro's 4 fans (see REG_NP_* above). */
     g_nonpro = ok && !strstr(name, "Pro");
