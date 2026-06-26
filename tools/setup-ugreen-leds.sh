@@ -49,6 +49,17 @@ if [[ ! -d "/lib/modules/$(uname -r)/build" ]]; then
     || apt-get install -y -qq pve-headers 2>/dev/null \
     || true
 fi
+# Also pull the header *meta* package so DKMS rebuilds the module AUTOMATICALLY
+# on future kernel upgrades. The version-specific headers above only cover the
+# kernel running right now; without this meta, the next Proxmox/Debian kernel
+# update leaves DKMS with no headers and the LEDs silently stop after that
+# reboot — the #1 cause of "LEDs aren't persistent after a kernel update".
+log "Ensuring the kernel-header meta package (for automatic DKMS rebuilds)"
+if apt-cache show proxmox-default-headers >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq proxmox-default-headers || true  # Proxmox VE
+else
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq linux-headers-amd64 || true       # plain Debian
+fi
 if [[ ! -d "/lib/modules/$(uname -r)/build" ]]; then
     HEADERS_OK=0
     echo "WARNING: No kernel headers found for $(uname -r)."

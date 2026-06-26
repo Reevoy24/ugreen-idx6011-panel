@@ -131,7 +131,11 @@ bash setup-ugreen-leds.sh
 ```
 
 The rolling animation stops immediately; disk LEDs show activity and health,
-LAN LEDs blink on traffic, everything survives reboots and kernel updates.
+LAN LEDs blink on traffic. The script installs the kernel-header meta package
+(`proxmox-default-headers`), so DKMS rebuilds the module on every kernel update
+and the LEDs keep working across reboots and upgrades. (If the LEDs ever drop to
+a plain static state after a kernel update, the matching headers were missing —
+just re-run the script to repair it.)
 With the setup installed, the ug-paneld settings panel gains a **Status LEDs
 on/off row and a night mode row** (LEDs off automatically between
 `led_night_start` and `led_night_end`, default 21:00–08:00 — turning them on
