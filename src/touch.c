@@ -282,20 +282,6 @@ int touch_poll(void) {
 
     fail_count = 0;
 
-    /* With debug enabled, dump the raw frame (throttled) BEFORE the filters.
-     * This is the only way to tell "reads succeed but every frame is rejected"
-     * (wrong bus, or a firmware whose byte layout differs) from "touch never
-     * initialised". Off by default so it never floods a working box. */
-    if (touch_debug) {
-        static uint32_t last_dump = 0;
-        uint32_t tnow = custom_tick_get();
-        if ((int32_t)(tnow - last_dump) >= 1000) {
-            last_dump = tnow;
-            fprintf(stderr, "Touch raw: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
-        }
-    }
-
     /* Some controller revisions stream a constant-byte fill as their idle / no-
      * contact pattern (observed: all-0x00 from a fresh boot, all-0x90 after the
      * first touch). A genuine contact frame always has distinct header/coord
@@ -306,6 +292,21 @@ int touch_poll(void) {
     int all_equal = 1;
     for (int i = 1; i < AXS_READ_LEN; i++)
         if (buf[i] != buf[0]) { all_equal = 0; break; }
+
+    /* With debug enabled, dump the raw frame (throttled) so "reads succeed but
+     * frames are rejected" (wrong bus, or a different byte layout) can be told
+     * apart from "touch never initialised". Skip the constant-fill idle (e.g.
+     * the 90 90.. stream) — it carries no information and would flood the log. */
+    if (touch_debug && !all_equal) {
+        static uint32_t last_dump = 0;
+        uint32_t tnow = custom_tick_get();
+        if ((int32_t)(tnow - last_dump) >= 1000) {
+            last_dump = tnow;
+            fprintf(stderr, "Touch raw: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
+        }
+    }
+
     if (all_equal)
         return 0;
 
