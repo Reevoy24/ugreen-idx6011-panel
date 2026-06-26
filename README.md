@@ -1,6 +1,6 @@
 # ugreen-idx6011-panel
 
-Touch dashboard, front-LED and fan control for the UGREEN NASync iDX6011 Pro — plus standalone fan control for the non-Pro iDX6011 / iDX6012 — on Proxmox, Debian, TrueNAS SCALE and Unraid.
+Touch dashboard, front-LED and fan control for the UGREEN NASync iDX6011 Pro — plus standalone fan control for the non-Pro iDX6011 — on Proxmox, Debian, TrueNAS SCALE and Unraid.
 *Community project — not affiliated with or endorsed by UGREEN.*
 
 [![Release](https://img.shields.io/badge/release-v1.6.1-2ea44f)](../../releases/latest)
@@ -32,7 +32,7 @@ complete [front-LED setup](#front-panel-leds).
   temps, **Silent / Default / Turbo** modes and the live curve; the bundled
   `ug-fand` daemon drives the ITE EC from userspace (no kernel module). Also
   ships as a **standalone, display-free build** that auto-detects the **non-Pro
-  iDX6011 / iDX6012** (2 system fans)
+  iDX6011** (2 system fans)
 - 🌐 **Web dashboard** — opt-in (`api_port`): ug-paneld serves a browser UI on
   the LAN that mirrors the whole panel — stats, fan control with curve editor,
   all settings, 12h/24h clock + timezone, wallpaper upload, restart/shutdown
@@ -52,7 +52,7 @@ complete [front-LED setup](#front-panel-leds).
 Grab the latest packages from the [releases page](../../releases).
 
 > [!NOTE]
-> **No display (non-Pro iDX6011 / iDX6012)?** The packages below are the **panel**
+> **No display (non-Pro iDX6011)?** The packages below are the **panel**
 > — they're for the **iDX6011 Pro** and drive the front display. For a headless or
 > **non-Pro** unit, install the separate **display-free, fan-only** build instead:
 > [**ug-fand v1.0.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.0.0)
@@ -168,14 +168,14 @@ kernel module, so a stock Linux (Proxmox, TrueNAS, Debian, Unraid) sees no fan
 sensors or control at all. **`ug-fand`** restores both — monitoring **and**
 control — entirely from userspace, no kernel module. It **auto-detects the
 model**: the **iDX6011 Pro** has 4 fans (CPU + system); the **non-Pro
-iDX6011 / iDX6012** have 2 system fans (no separate CPU fan — the system fans
+iDX6011** has 2 system fans (no separate CPU fan — the system fans
 cool the CPU too) at different EC offsets.
 
 > ⚠️ The bundled curves are conservative starting points; writing fan registers
 > can overheat the NAS if a curve is wrong, so verify on your hardware.
 
 > **Non-Pro / no display?** The panel packages in [Install](#install) are for the
-> Pro (they drive the display). The non-Pro iDX6011 / iDX6012 have no panel —
+> Pro (they drive the display). The non-Pro iDX6011 has no panel —
 > install the **display-free fan-only build** instead:
 > [**ug-fand v1.0.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.0.0)
 > — a `.deb` for Proxmox and tarballs for TrueNAS / Unraid, config persists across
@@ -301,7 +301,7 @@ write; OBF = bit `0x01` set before a read).
 | sysfan1 | `0xB4` / `0xB5` |
 | sysfan2 | `0xB6` / `0xB7` |
 
-The above is the **iDX6011 Pro**. The **non-Pro iDX6011 / iDX6012** use the same
+The above is the **iDX6011 Pro**. The **non-Pro iDX6011** uses the same
 EC and protocol but only 2 system fans, at different offsets (duty still `0..198`):
 
 | Fan | tach hi / lo | enable / duty |
