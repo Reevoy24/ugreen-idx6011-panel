@@ -9,6 +9,10 @@
 /* the touch I2C bus can enumerate later than the display (e.g. when an external
  * GPU delays I2C init at boot); wait this long for it before disabling touch */
 #define DEFAULT_TOUCH_PROBE_TIMEOUT 10
+/* on Proxmox a hung guest can wedge the host shutdown: ask each running VM/CT to
+ * stop gracefully, then force-stop any still running after this many seconds,
+ * before powering off the host. 0 = skip guest handling (plain host poweroff) */
+#define DEFAULT_GUEST_SHUTDOWN_TIMEOUT 90
 
 typedef struct {
     int poll_rate;
@@ -40,6 +44,17 @@ typedef struct {
     char led_night_start[8]; /* front LED night window start, "HH:MM" */
     char led_night_end[8];   /* front LED night window end, "HH:MM" */
     char timezone[40];       /* panel time zone (e.g. "Europe/Berlin"); "" = system default */
+    int force_shutdown;      /* 0 (default) = panel/web/button shutdown does a
+                                plain host poweroff; 1 = first gracefully stop
+                                Proxmox guests (qm/pct) and FORCE-stop any still
+                                running after guest_shutdown_timeout, then the
+                                host — so a hung VM/CT can't wedge the shutdown */
+    int guest_shutdown_timeout; /* seconds to wait for each Proxmox guest to shut
+                                   down gracefully before force-stopping it (only
+                                   when force_shutdown=1; no-op without qm/pct) */
+    char power_button[16];   /* front power button: "auto" (default, grab the ACPI
+                                Power Button and run the smart shutdown), "off"
+                                (leave the key to logind), or a /dev/input/eventN */
     int boot_settle_secs;    /* cold-boot settle: re-assert the backlight and
                                 hold off the idle timeout until the EC accepts a
                                 write (panel lit), or at most this many seconds

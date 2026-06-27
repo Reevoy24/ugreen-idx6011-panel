@@ -24,12 +24,22 @@
 #include "touch.h"
 #include "api.h"
 #include "leds.h"
+#include "button.h"
 
 static volatile int running = 1;
 static volatile int signal_count = 0;
 
 static ui_state_t ui_state;
 static uint32_t bl_timeout_ms = 30000;
+
+/* Smart shutdown: opt-in force of hung Proxmox guests before the host action.
+ * g_force_shutdown gates it (config.force_shutdown, default off); the timeout is
+ * the per-guest grace period before force. Off → plain host poweroff/reboot. */
+static int g_force_shutdown = 0;
+static int g_guest_shutdown_timeout = DEFAULT_GUEST_SHUTDOWN_TIMEOUT;
+/* Set once a poweroff/reboot is launched so the idle timer can't sleep the
+ * "Shutting down…" screen away while guests are still stopping. */
+static volatile int g_shutting_down = 0;
 
 /* Guards ui_state across the GUI thread (settings callbacks) and the web-API
  * thread. Shared with gui.c via gui_setup_t.settings_lock. */
@@ -58,29 +68,86 @@ static void act_set_timeout(int seconds) {
     bl_timeout_ms = (uint32_t)seconds * 1000;
 }
 
+/* Power helper, run detached (own session) so it outlives ug-paneld being
+ * killed by the very shutdown it starts. With force_shutdown enabled it first
+ * asks each running Proxmox guest to stop gracefully (qm/pct) and force-stops
+ * any that ignore it past the timeout, THEN powers off / reboots the host — so a
+ * hung VM/CT can't wedge the shutdown. force=0 (default) or no qm (TrueNAS /
+ * Unraid / plain Debian) → a plain host action, exactly like before. Args:
+ * $1=action (poweroff|reboot), $2=force (0|1), $3=guest timeout (s). */
+static const char POWER_SCRIPT[] =
+    "#!/bin/sh\n"
+    "ACTION=\"$1\"; FORCE=\"$2\"; TIMEOUT=\"$3\"\n"
+    "log() { echo \"ug-paneld[power]: $*\"; }\n"
+    "if [ \"$FORCE\" = 1 ] && [ \"${TIMEOUT:-0}\" -gt 0 ] 2>/dev/null && command -v qm >/dev/null 2>&1; then\n"
+    "  log \"force shutdown: stopping guests (graceful ${TIMEOUT}s, then force)\"\n"
+    "  for id in $(qm list 2>/dev/null | awk 'NR>1 && $3==\"running\"{print $1}'); do\n"
+    "    log \"qm shutdown $id\"; qm shutdown \"$id\" --timeout \"$TIMEOUT\" --forceStop 1 >/dev/null 2>&1 &\n"
+    "  done\n"
+    "  for id in $(pct list 2>/dev/null | awk 'NR>1 && $2==\"running\"{print $1}'); do\n"
+    "    log \"pct shutdown $id\"; pct shutdown \"$id\" --timeout \"$TIMEOUT\" --forceStop 1 >/dev/null 2>&1 &\n"
+    "  done\n"
+    "  wait; log \"guests stopped\"\n"
+    "fi\n"
+    "if [ \"$ACTION\" = reboot ]; then systemctl reboot 2>/dev/null || reboot\n"
+    "else systemctl poweroff 2>/dev/null || poweroff; fi\n";
+
+static void run_power_action(const char *action) {
+    g_shutting_down = 1;   /* keep the screen lit through the guest stop */
+    const char *path = "/run/ug-paneld-power.sh";
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fputs(POWER_SCRIPT, f);
+        if (fclose(f) == 0) {
+            char cmd[180];
+            snprintf(cmd, sizeof(cmd),
+                     "setsid sh %s %s %d %d </dev/null >>/var/log/ug-paneld.log 2>&1 &",
+                     path, action, g_force_shutdown, g_guest_shutdown_timeout);
+            if (system(cmd) == 0)
+                return;
+        }
+        fprintf(stderr, "ug-paneld: smart %s failed to launch, falling back\n", action);
+    } else {
+        fprintf(stderr, "ug-paneld: cannot write %s; direct %s\n", path, action);
+    }
+    /* Fallback: host action without guest handling. */
+    if (!strcmp(action, "reboot")) {
+        if (system("systemctl reboot 2>/dev/null || reboot") != 0)
+            fprintf(stderr, "Warning: reboot command failed\n");
+    } else {
+        if (system("systemctl poweroff 2>/dev/null || poweroff") != 0)
+            fprintf(stderr, "Warning: poweroff command failed\n");
+    }
+}
+
 static void act_reboot(void) {
     fprintf(stderr, "Reboot requested from settings panel\n");
-    backlight_off();
-    /* systemctl on systemd distros, plain reboot on Unraid/others */
-    if (system("systemctl reboot 2>/dev/null || reboot") != 0)
-        fprintf(stderr, "Warning: reboot command failed\n");
+    run_power_action("reboot");
 }
 
 static void act_poweroff(void) {
     fprintf(stderr, "Poweroff requested from settings panel\n");
-    backlight_off();
-    if (system("systemctl poweroff 2>/dev/null || poweroff") != 0)
-        fprintf(stderr, "Warning: poweroff command failed\n");
+    run_power_action("poweroff");
 }
 
-/* Set one key in ug-fand's config, preserving every other line. Atomic
- * (temp + rename, so the daemon's mtime hot-reload never sees a torn file) and
+/* Atomically write the config lines to path via a sibling temp file + rename,
+ * so the daemon's mtime hot-reload never sees a torn file. */
+static int fand_write_lines(const char *path, char lines[][256], int n) {
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *w = fopen(tmp, "w");
+    if (!w) return -1;
+    for (int i = 0; i < n; i++) fputs(lines[i], w);
+    if (fclose(w) != 0) return -1;
+    return rename(tmp, path) == 0 ? 0 : -1;
+}
+
+/* Set one key in ug-fand's config, preserving every other line. Atomic and
  * serialized so the panel (GUI thread) and the web API (API thread) can't
  * corrupt the file by writing at once. */
 static int fand_config_set_key(const char *key, const char *value) {
     static pthread_mutex_t fand_lock = PTHREAD_MUTEX_INITIALIZER;
     const char *path = "/etc/ug-fand/config";
-    const char *tmp  = "/etc/ug-fand/config.tmp";
     char lines[64][256];
     int n = 0, found = 0, rc = -1;
     size_t klen = strlen(key);
@@ -101,11 +168,18 @@ static int fand_config_set_key(const char *key, const char *value) {
         snprintf(lines[n], sizeof(lines[n]), "%s=%s\n", key, value);
         n++;
     }
-    FILE *w = fopen(tmp, "w");
-    if (w) {
-        for (int i = 0; i < n; i++) fputs(lines[i], w);
-        fclose(w);
-        if (rename(tmp, path) == 0) rc = 0;
+    rc = fand_write_lines(path, lines, n);
+    if (rc == 0) {
+        /* TrueNAS/Unraid: /etc is ephemeral and start.sh restores ug-fand's
+         * config from the pool/flash copy on every boot, so a panel/web edit
+         * written only to /etc would be lost. Mirror it to that persistent copy
+         * (pointed at by UG_FAND_PERSIST). Unset on Proxmox (.deb) -> no-op.
+         * A plain symlink can't replace this: the atomic rename above would
+         * swap the symlink for a regular file in /etc on the first write. */
+        const char *persist = getenv("UG_FAND_PERSIST");
+        if (persist && *persist && fand_write_lines(persist, lines, n) != 0)
+            fprintf(stderr, "fan: cannot mirror config to %s (not reboot-persistent)\n",
+                    persist);
     }
     pthread_mutex_unlock(&fand_lock);
     if (rc) fprintf(stderr, "fan: cannot write %s\n", path);
@@ -253,7 +327,7 @@ static void signal_handler(int sig) {
 static void unbind_vt_console(void) {
     int fd = open("/sys/class/vtconsole/vtcon1/bind", O_WRONLY);
     if (fd >= 0) {
-        write(fd, "0", 1);
+        if (write(fd, "0", 1) < 0) { /* best-effort unbind; ignore failure */ }
         close(fd);
     }
 }
@@ -316,6 +390,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Warning: Failed to load config, using defaults\n");
     if (config.debug)
         fprintf(stderr, "Debug logging enabled\n");
+    g_force_shutdown = config.force_shutdown;
+    g_guest_shutdown_timeout = config.guest_shutdown_timeout;
 
     /* Free the touchscreen from i2c-hid before anything else; harmless if the
      * module is blacklisted or the device id differs (it just logs). */
@@ -348,6 +424,9 @@ int main(int argc, char *argv[]) {
         api_start(config.api_port, config.api_password);
 
     int has_touch = (touch_init_retry(&config) == 0);
+    int has_button = (button_init(config.power_button) > 0);
+    if (has_button)
+        fprintf(stderr, "Front power button -> smart shutdown enabled\n");
     int has_opnsense = (opnsense_init(&config) == 0);
     if (has_opnsense)
         fprintf(stderr, "OPNsense API enabled: %s\n", config.opnsense_url);
@@ -505,6 +584,20 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        /* Front power button -> smart shutdown. Checked every iteration (awake
+         * or asleep); wake the screen first so the "Shutting down…" cover shows.
+         * g_shutting_down latches it so a second press can't re-fire. */
+        if (has_button && !g_shutting_down && button_poll()) {
+            SLEEPLOG("power button pressed — shutting down");
+            if (screen_asleep) {
+                gui_set_sleep(0);
+                backlight_set(api_get_brightness());
+                screen_asleep = 0;
+            }
+            gui_power_overlay(1);
+            act_poweroff();
+        }
+
         /* While awake the LVGL input device polls the touchscreen; while
          * asleep the loop polls it directly and wakes on the poll result. */
         if (screen_asleep) {
@@ -584,7 +677,7 @@ int main(int argc, char *argv[]) {
          * reliably produces a valid frame on contact, so wake works. */
         int idle_hit = has_touch && bl_timeout_ms > 0 &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
-        if (!warming && (idle_hit || !api_get_state())) {
+        if (!warming && !g_shutting_down && (idle_hit || !api_get_state())) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
             if (ui_state.sleep_brightness <= 0)

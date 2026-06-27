@@ -38,6 +38,7 @@ CSRCS += ./src/fonts/lv_font_montserrat_20.c
 CSRCS += ./src/opnsense.c
 CSRCS += ./src/touch.c
 CSRCS += ./src/api.c
+CSRCS += ./src/button.c
 
 # Include LVGL build files (v9 includes drivers)
 include $(LVGL_DIR)/lvgl/lvgl.mk

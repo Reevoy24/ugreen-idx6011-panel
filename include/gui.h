@@ -51,6 +51,7 @@ void gui_settings_open(void);
 void gui_settings_close(void);
 void gui_set_sleep(int on);   /* black overlay while the screen "sleeps" */
 void gui_leds_refresh(void);  /* re-read LED state into the panel rows */
+void gui_power_overlay(int is_shutdown);  /* show the "shutting down…" cover */
 
 /* Entry points the main loop calls (on the GUI thread) to apply web-API
  * changes that touch LVGL. Never call these from the API thread. */

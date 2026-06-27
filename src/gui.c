@@ -24,9 +24,15 @@
 #define EDGE_STRIP_H 32
 #define SWIPE_TRIGGER 55
 
-#define WP_DIR "/usr/share/ug-paneld/wallpapers"
+#define WP_DIR_DEFAULT "/usr/share/ug-paneld/wallpapers"
 #define WP_CUSTOM_PATH "/etc/ug-paneld/wallpaper.png"
 #define WP_MAX_OPTS 7
+
+/* Built-in wallpapers directory. Overridable via UG_PANELD_WP_DIR so hosts with
+ * a read-only /usr (TrueNAS SCALE) can read them from a writable pool/flash path
+ * instead of /usr/share/ug-paneld/wallpapers. Resolved once in
+ * gui_create_dashboard(); the .deb leaves it unset and uses the default. */
+static char wp_dir[256] = WP_DIR_DEFAULT;
 
 /* ---- UGOS-inspired palette ---- */
 #define COL_BG      0x0a0a0c
@@ -195,6 +201,8 @@ static int panel_h = PANEL_H; /* grows when the LED rows are shown */
 static lv_obj_t *confirm_scrim = NULL;
 static lv_obj_t *confirm_text = NULL;
 static int confirm_is_shutdown = 0;
+static lv_obj_t *shutdown_overlay = NULL;  /* full-screen "shutting down…" cover */
+static lv_obj_t *shutdown_label = NULL;
 static lv_point_t press_start;
 static lv_obj_t *sleep_overlay = NULL;
 
@@ -387,7 +395,7 @@ static int file_exists(const char *path)
 /* decode + cover-scale + center-crop into a fresh ARGB8888 buffer */
 static uint8_t *decode_wallpaper(const char *fs_path)
 {
-    char lv_path[256];
+    char lv_path[324];   /* "A:" + up to a 320-char fs path + NUL */
     snprintf(lv_path, sizeof(lv_path), "A:%s", fs_path);
 
     lv_image_header_t header;
@@ -466,11 +474,11 @@ static void apply_wallpaper(const char *name)
         return;
     }
 
-    char path[160];
+    char path[320];
     if (strcmp(name, "custom") == 0)
         snprintf(path, sizeof(path), "%s", WP_CUSTOM_PATH);
     else
-        snprintf(path, sizeof(path), "%s/%.32s.png", WP_DIR, name);
+        snprintf(path, sizeof(path), "%s/%.32s.png", wp_dir, name);
 
     uint8_t *nbuf = decode_wallpaper(path);
     if (!nbuf) {
@@ -518,7 +526,7 @@ static void build_wp_options(void)
     snprintf(wp_opts[wp_opt_count++], sizeof(wp_opts[0]), "none");
 
     struct dirent **list = NULL;
-    int n = scandir(WP_DIR, &list, NULL, alphasort);
+    int n = scandir(wp_dir, &list, NULL, alphasort);
     for (int i = 0; i < n; i++) {
         const char *d = list[i]->d_name;
         size_t len = strlen(d);
@@ -544,7 +552,10 @@ static void build_wp_options(void)
     wp_cur = 0;
     for (int i = 0; i < wp_opt_count; i++)
         if (strcmp(wp_opts[i], want) == 0) { wp_cur = i; break; }
-    snprintf(setup.state->wallpaper, sizeof(setup.state->wallpaper), "%s",
+    /* %.31s: wp_opts entries are <=19 chars so this never truncates a real
+     * value; the explicit bound just silences a gcc -Wformat-truncation
+     * false positive (it can't prove wp_cur indexes a single 20-byte row). */
+    snprintf(setup.state->wallpaper, sizeof(setup.state->wallpaper), "%.31s",
              wp_opts[wp_cur]);
 }
 
@@ -1045,6 +1056,20 @@ static void panel_animate(int open)
 void gui_settings_open(void) { if (!panel_is_open) panel_animate(1); }
 void gui_settings_close(void) { if (panel_is_open) panel_animate(0); }
 
+/* Cover the screen with a "Shutting down…/Restart…" message so the panel
+ * doesn't look frozen while the (detached) shutdown runs — the host stays up
+ * for up to guest_shutdown_timeout while guests stop. Shown from the settings
+ * confirm dialog and from the physical power button (via the main loop). */
+void gui_power_overlay(int is_shutdown)
+{
+    if (!shutdown_overlay || !shutdown_label) return;
+    char msg[48];
+    snprintf(msg, sizeof(msg), "%s...", tr(is_shutdown ? TR_SHUTDOWN : TR_RESTART));
+    lv_label_set_text(shutdown_label, msg);
+    lv_obj_remove_flag(shutdown_overlay, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(shutdown_overlay);
+}
+
 static void confirm_show(int shutdown)
 {
     confirm_is_shutdown = shutdown;
@@ -1060,6 +1085,7 @@ static void confirm_yes_cb(lv_event_t *e)
     lv_obj_add_flag(confirm_scrim, LV_OBJ_FLAG_HIDDEN);
     fprintf(stderr, "panel: %s confirmed\n",
             confirm_is_shutdown ? "shutdown" : "reboot");
+    gui_power_overlay(confirm_is_shutdown);
     if (confirm_is_shutdown) {
         if (setup.do_poweroff) setup.do_poweroff();
     } else {
@@ -1481,6 +1507,24 @@ static void build_settings_panel(lv_obj_t *screen)
     lv_obj_add_event_cb(no, confirm_cancel_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *no_lbl = label_tr(no, TR_CANCEL, &lv_font_montserrat_16, COL_TEXT);
     lv_obj_center(no_lbl);
+
+    /* full-screen cover shown once a shutdown/restart is confirmed */
+    shutdown_overlay = lv_obj_create(screen);
+    lv_obj_set_size(shutdown_overlay, DISP_W, DISP_H);
+    lv_obj_set_pos(shutdown_overlay, 0, 0);
+    lv_obj_set_style_bg_color(shutdown_overlay, lv_color_hex(COL_BG), 0);
+    lv_obj_set_style_bg_opa(shutdown_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(shutdown_overlay, 0, 0);
+    lv_obj_add_flag(shutdown_overlay, LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(shutdown_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *sd_icon = label_new(shutdown_overlay, LV_SYMBOL_POWER,
+                                  &lv_font_montserrat_20, COL_SUB);
+    lv_obj_align(sd_icon, LV_ALIGN_CENTER, 0, -28);
+    shutdown_label = label_new(shutdown_overlay, "", &lv_font_montserrat_18, COL_TEXT);
+    lv_obj_set_width(shutdown_label, LV_PCT(90));
+    lv_obj_set_style_text_align(shutdown_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(shutdown_label, LV_ALIGN_CENTER, 0, 8);
 }
 
 /* ================= public API ================= */
@@ -1676,6 +1720,11 @@ lv_obj_t *gui_create_dashboard(const gui_setup_t *s)
         snprintf(fallback_state.language, sizeof(fallback_state.language), "en");
         setup.state = &fallback_state;
     }
+
+    /* TrueNAS/Unraid point this at a writable pool/flash dir (their /usr is
+     * read-only / ephemeral); the .deb leaves it unset and uses the default. */
+    const char *wpd = getenv("UG_PANELD_WP_DIR");
+    if (wpd && wpd[0]) snprintf(wp_dir, sizeof(wp_dir), "%s", wpd);
 
     lv_obj_t *screen = lv_screen_active();
     lv_obj_set_style_bg_color(screen, lv_color_hex(COL_BG), 0);
@@ -2089,6 +2138,8 @@ void gui_cleanup(void)
     wp_bg_img = NULL;
     tileview = NULL;
     dots_box = NULL;
+    confirm_scrim = confirm_text = NULL;
+    shutdown_overlay = shutdown_label = NULL;
     page_count = 0;
     tr_reg_count = 0;
     home_tile = NULL;

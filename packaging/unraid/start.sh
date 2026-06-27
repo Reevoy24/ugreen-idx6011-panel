@@ -5,16 +5,20 @@
 PERSIST=/boot/config/ug-paneld
 BIN=/usr/local/bin/ug-paneld
 
-mkdir -p /usr/local/bin /etc/ug-paneld /usr/share/ug-paneld/wallpapers
+mkdir -p /usr/local/bin /etc/ug-paneld
 cp -f "$PERSIST/ug-paneld" "$BIN"
 chmod 755 "$BIN"
 [ -f "$PERSIST/config.json" ] && cp -f "$PERSIST/config.json" /etc/ug-paneld/config.json
 # Persist runtime settings (panel/web edits) on the flash drive, not in ephemeral
 # /etc, so they survive a reboot. The daemon reads/writes this path directly.
 export UG_PANELD_STATE="$PERSIST/state.json"
+# Mirror panel/web fan-mode + curve edits to the flash copy too, so they survive
+# a reboot (start.sh restores /etc/ug-fand/config from $PERSIST/fand-config below).
+[ -f "$PERSIST/ug-fand" ] && export UG_FAND_PERSIST="$PERSIST/fand-config"
 [ -f "$PERSIST/wallpaper.png" ] && cp -f "$PERSIST/wallpaper.png" /etc/ug-paneld/wallpaper.png
-[ -d "$PERSIST/wallpapers" ] && cp -f "$PERSIST/wallpapers/"*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null
-# serve the web dashboard straight from the flash dir (no /usr/share copy needed)
+# serve the built-in wallpapers + web dashboard straight from the flash dir
+# (no /usr/share copy needed)
+[ -d "$PERSIST/wallpapers" ] && export UG_PANELD_WP_DIR="$PERSIST/wallpapers"
 [ -d "$PERSIST/web" ] && export UG_PANELD_WEB_DIR="$PERSIST/web"
 
 # --- touchscreen prerequisites -------------------------------------------

@@ -271,11 +271,12 @@ sys_default=0:28,56:28,60:55,64:80,68:100   # quiet up to 56 °C, then ramp
 
 Delete a curve line to fall back to the built-in default.
 
-> On TrueNAS the rootfs is rebuilt every boot, so `/etc/ug-fand/config` (and a
-> mode set on the panel) is **not** reboot-persistent — it is re-synced at boot
-> from the copy on your pool. Edit the pool copy for changes that survive a
-> reboot: `<install-dir>/fand-config` (bundled install) or
-> `/mnt/<pool>/ug-fand/config` (standalone daemon).
+> On TrueNAS / Unraid the rootfs is rebuilt every boot, so `/etc/ug-fand/config`
+> is re-synced at boot from the copy on your pool/flash. With the **bundled
+> install**, a mode or curve change made on the panel or in the web UI is mirrored
+> back to that copy (`<install-dir>/fand-config`), so it survives a reboot. For the
+> **standalone fan-only daemon** (no panel), edit the pool copy directly —
+> `/mnt/<pool>/ug-fand/config` — and re-run its `start.sh`.
 
 ### Monitoring
 
@@ -421,9 +422,9 @@ your `config.json` is never rewritten. On **Proxmox / Debian** that lives in
 `/etc/ug-paneld/`. On **TrueNAS SCALE / Unraid** `/etc` is rebuilt every boot, so
 the installer points the daemon's state file at the pool/flash (via the
 `state_file` key / `UG_PANELD_STATE` env) — runtime changes survive a reboot
-there too. (The fan **mode** is separate: it lives in `/etc/ug-fand/config`,
-which is ephemeral on those platforms, so set the mode in the pool/flash
-`fand-config` for a reboot-stable default.)
+there too. (The fan **mode** lives in `/etc/ug-fand/config`, which is ephemeral on
+those platforms; with the bundled install a mode/curve change on the panel or web
+UI is mirrored to the pool/flash `fand-config`, so it survives a reboot too.)
 
 <details>
 <summary><b>All config keys</b></summary>
@@ -444,6 +445,9 @@ which is ephemeral on those platforms, so set the mode in the pool/flash
 | `timezone` | | Panel time zone, e.g. `Europe/Berlin` (empty = system default); editable from the web UI. Affects the panel clock + night window only, not the system |
 | `api_port` | `0` | Web dashboard + control API port (0 = disabled). See [Web UI](#web-ui) |
 | `api_password` | | Web dashboard password (empty = controls open on LAN; restart/shutdown always require it) |
+| `force_shutdown` | `false` | **Proxmox only.** `false` (default) = a panel/web/button shutdown or reboot does a plain host poweroff. `true` = first gracefully stop each running VM/CT (`qm`/`pct`) and **force-stop** any still running after `guest_shutdown_timeout`, *before* powering off the host — so a hung guest can't wedge the shutdown. On TrueNAS/Unraid/Debian (no `qm`/`pct`) it has no effect, just a normal poweroff |
+| `guest_shutdown_timeout` | `90` | **Proxmox only.** Grace period (seconds) per guest before it is force-stopped — only used when `force_shutdown` is `true` |
+| `power_button` | `auto` | The chassis **power button** triggers the shutdown above. `auto` grabs the ACPI Power Button (so systemd-logind doesn't also act; if ug-paneld exits, logind's default poweroff resumes); `off` leaves the key to logind; or a specific `/dev/input/eventN` |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
 | `drm_device` | auto | DRM device path, e.g. `/dev/dri/card0`; empty = scan all (legacy key `drm_card` works) |

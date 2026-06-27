@@ -93,6 +93,9 @@ int config_load(config_t *config) {
     snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
     snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
     config->timezone[0] = '\0';
+    config->force_shutdown = 0;
+    config->guest_shutdown_timeout = DEFAULT_GUEST_SHUTDOWN_TIMEOUT;
+    snprintf(config->power_button, sizeof(config->power_button), "auto");
     config->boot_settle_secs = 120;
     config->state_file[0] = '\0';
 
@@ -142,6 +145,9 @@ int config_load(config_t *config) {
     json_get_str(json, "led_night_start", config->led_night_start, sizeof(config->led_night_start));
     json_get_str(json, "led_night_end", config->led_night_end, sizeof(config->led_night_end));
     json_get_str(json, "timezone", config->timezone, sizeof(config->timezone));
+    json_get_bool(json, "force_shutdown", &config->force_shutdown);
+    json_get_int(json, "guest_shutdown_timeout", &config->guest_shutdown_timeout);
+    json_get_str(json, "power_button", config->power_button, sizeof(config->power_button));
     json_get_int(json, "boot_settle_secs", &config->boot_settle_secs);
     json_get_str(json, "state_file", config->state_file, sizeof(config->state_file));
 

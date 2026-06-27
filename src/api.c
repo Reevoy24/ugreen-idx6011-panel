@@ -25,6 +25,7 @@
 #include <errno.h>
 
 #define WEB_DIR_DEFAULT "/usr/share/ug-paneld/web"
+#define WP_DIR_DEFAULT  "/usr/share/ug-paneld/wallpapers"
 #define HDR_MAX        8192
 #define BODY_MAX       (4 * 1024 * 1024)   /* generous cap for a wallpaper PNG */
 
@@ -38,6 +39,9 @@ static char api_password[64] = "";
  * read-only /usr (TrueNAS SCALE) can serve straight from a writable pool/flash
  * path instead of /usr/share/ug-paneld/web. Resolved once in api_start(). */
 static char web_dir[256] = WEB_DIR_DEFAULT;
+/* Built-in wallpapers directory, same rationale as web_dir. Overridable via
+ * UG_PANELD_WP_DIR; resolved once in api_start(). */
+static char wp_dir[256] = WP_DIR_DEFAULT;
 
 /* ---- published stats snapshot (written by main loop, read by handlers) ---- */
 static api_snapshot_t snap;
@@ -360,14 +364,14 @@ static void serve_file(int fd, const char *path) {
 
 /* Serve a wallpaper PNG for the settings picker preview. name is the option
  * name: "custom" -> /etc/ug-paneld/wallpaper.png, otherwise a built-in under
- * /usr/share/ug-paneld/wallpapers. ("none" has no image.) */
+ * wp_dir (UG_PANELD_WP_DIR or the default). ("none" has no image.) */
 static void handle_wp_image(int fd, const char *name) {
     if (!name[0] || strchr(name, '/') || strstr(name, "..")) { send_error(fd, 404, "not found"); return; }
     char full[512];
     if (strcmp(name, "custom") == 0)
         snprintf(full, sizeof(full), "/etc/ug-paneld/wallpaper.png");
     else
-        snprintf(full, sizeof(full), "/usr/share/ug-paneld/wallpapers/%s.png", name);
+        snprintf(full, sizeof(full), "%s/%s.png", wp_dir, name);
 
     int ffd = open(full, O_RDONLY);
     if (ffd < 0) { send_error(fd, 404, "not found"); return; }
@@ -916,6 +920,9 @@ int api_start(int port, const char *password) {
     const char *wd = getenv("UG_PANELD_WEB_DIR");
     if (wd && wd[0]) snprintf(web_dir, sizeof(web_dir), "%s", wd);
     fprintf(stderr, "Web dashboard frontend dir: %s\n", web_dir);
+    const char *wpd = getenv("UG_PANELD_WP_DIR");
+    if (wpd && wpd[0]) snprintf(wp_dir, sizeof(wp_dir), "%s", wpd);
+    fprintf(stderr, "Built-in wallpapers dir: %s\n", wp_dir);
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) return -1;
