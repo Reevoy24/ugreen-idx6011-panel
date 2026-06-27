@@ -9,6 +9,7 @@
 #include "api.h"
 #include "backlight.h"
 #include "i18n.h"
+#include "version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -480,7 +481,8 @@ static void handle_stats(int fd) {
 
     char out[8192];
     jbuf_t b = { out, sizeof(out), 0 };
-    jappend(&b, "{\"valid\":true,\"uptime_seconds\":%llu,", (unsigned long long)s.sys.uptime_seconds);
+    jappend(&b, "{\"valid\":true,\"version\":\"%s\",\"uptime_seconds\":%llu,",
+            UG_VERSION, (unsigned long long)s.sys.uptime_seconds);
 
     jappend(&b, "\"system\":{\"cpu_usage\":%.1f,\"ram_usage\":%.1f,\"ram_used_mb\":%.0f,"
                 "\"ram_total_mb\":%.0f,\"disk_usage\":%.1f,\"disk_used_gb\":%.1f,\"disk_total_gb\":%.1f,",

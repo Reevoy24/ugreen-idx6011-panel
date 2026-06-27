@@ -3,9 +3,17 @@
 # Usage: ./build-tarballs.sh [version]   (run on Linux/WSL after `make`)
 set -e
 
-VERSION="${1:-1.0.2}"
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
+# Version: explicit arg wins; else derive from include/version.h (single source,
+# shown in the web UI), turning "-betaN" into "~betaN" for dpkg ordering.
+if [ -n "$1" ]; then
+    VERSION="$1"
+else
+    DISP="$(sed -n 's/.*UG_VERSION "\(.*\)".*/\1/p' include/version.h)"
+    VERSION="${DISP/-/\~}"
+fi
+echo "Building version: $VERSION"
 
 [ -f ug-paneld ] || { echo "ug-paneld binary missing — run 'make' first" >&2; exit 1; }
 gcc -O2 -Wall -o ug-fand src/ug_fand.c || { echo "ug-fand build failed" >&2; exit 1; }

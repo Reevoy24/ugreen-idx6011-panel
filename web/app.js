@@ -98,6 +98,8 @@ function render(s) {
   last = s;
   if (s.valid === false) return; // daemon up but no snapshot yet
 
+  if (s.version) { const v = $("appver"); if (v) v.textContent = " · v" + s.version; }
+
   /* dashboard follows the device's language setting */
   const stx = s.settings || {};
   if (stx.language && STRINGS[stx.language] && stx.language !== lang) {
