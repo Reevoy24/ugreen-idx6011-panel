@@ -83,7 +83,7 @@ sh install.sh
 After installing, the dashboard appears on the display and the Fan control page works right away. To run the daemon as a different user or build it yourself, see [Build from source](#build-from-source). Set up the [front LEDs](#front-panel-leds) next if you want them.
 
 > [!IMPORTANT]
-> **Display stays black on a Pro unit?** On newer iDX6011 Pro revisions the internal eDP panel does not answer the graphics driver until UGOS has initialized it once, so on a cold Linux boot i915 drops the panel and the screen stays black. One-time fix: boot UGOS, let the front display light up, then reboot into your Linux drive (firmware boot menu, F11/F12). That initialization is non-volatile, so it holds across later reboots and full power-offs; you only do it once per unit. Full background in [Troubleshooting](#troubleshooting).
+> **Display stays black on a Pro unit?** On newer iDX6011 Pro revisions the internal eDP panel does not answer the graphics driver until UGOS has initialized it once, so on a cold Linux boot i915 drops the panel and the screen stays black. One-time fix: boot UGOS, let the front display light up, then reboot into your Linux drive (firmware boot menu, Ctrl+F12). That initialization is non-volatile, so it holds across later reboots and full power-offs; you only do it once per unit. Full background in [Troubleshooting](#troubleshooting).
 
 ## Front panel LEDs
 
