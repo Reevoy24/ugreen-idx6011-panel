@@ -9,6 +9,7 @@ mkdir -p /usr/share/ug-paneld/wallpapers
 cp -f packaging/wallpapers/*.png /usr/share/ug-paneld/wallpapers/ 2>/dev/null || true
 
 make mock 2>&1 | grep -vE "^CC |^cc " | tail -5
+rm -f mockups/page_*.raw mockups/page_*.png mockups/overview.png   # drop stale pages first
 ./render-mock
 python3 tools/raw2png.py mockups
 rm -f mockups/page_*.raw

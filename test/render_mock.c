@@ -48,7 +48,7 @@ int main(void)
         .language = "en", /* the README montage is rendered from this */
     };
     gui_setup_t setup = {
-        .show_opnsense = 1,
+        .show_opnsense = 0, /* keep the README montage to the core pages (Fans on the left) */
         .show_pve = 1,
         .show_leds = 1, /* render the LED rows even without hardware */
         .wan_max_mbps = 1000,
