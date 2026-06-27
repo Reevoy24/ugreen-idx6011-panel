@@ -39,7 +39,7 @@ The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows s
 | **Unraid** | display ✅ / touch ❌ | ✅ | ❌ |
 
 - **Proxmox / Debian** is the reference platform. Everything is tested on real hardware (a newer-revision iDX6011 Pro).
-- **TrueNAS SCALE** ships the identical binaries. The display, touch and fan control are confirmed on real TrueNAS hardware (a user reported smooth swiping, full touch coverage, idle sleep and working web stats; fan install, reboot persistence and mode switching all work). Only the front LEDs are not yet confirmed there, so feedback through the [issues](../../issues) is welcome. TrueNAS CORE is not supported, because it is not Linux.
+- **TrueNAS SCALE** ships the identical binaries. The display, touch and fan control are confirmed on real TrueNAS hardware (a user reported smooth swiping, full touch coverage, idle sleep and working web stats; fan install, reboot persistence and mode switching all work). Only the front LEDs are not yet confirmed there, so feedback through the [issues](../../issues) is welcome.
 - **Unraid** runs the display fine, since it goes over i915/DRM rather than I2C, but touch and the front LEDs do not work on the stock kernel. Unraid omits the Intel SoC I2C stack this Meteor Lake board needs (`intel_lpss` for the touch bus, and the pinctrl/SMBus pieces for the LED bus), so neither I2C bus comes up. The fix is a custom Unraid kernel with `CONFIG_PINCTRL_METEORLAKE` and `CONFIG_MFD_INTEL_LPSS_*`, not a different LED driver. See [`packaging/unraid/README.txt`](packaging/unraid/README.txt) for the custom-kernel notes.
 
 ## Install
@@ -83,7 +83,7 @@ sh install.sh
 After installing, the dashboard appears on the display and the Fan control page works right away. To run the daemon as a different user or build it yourself, see [Build from source](#build-from-source). Set up the [front LEDs](#front-panel-leds) next if you want them.
 
 > [!IMPORTANT]
-> **Display stays black on a Pro unit?** On newer iDX6011 Pro revisions the panel power is switched by the embedded controller, and vanilla Linux does not know how to turn it on. The one-time fix: boot UGOS once, then **reboot** (do not power off) into your Linux drive from the firmware boot menu (F11/F12). The EC then keeps the panel powered across reboots, shutdowns and mains cuts. Full background in [Troubleshooting](#troubleshooting).
+> **Display stays black on a Pro unit?** On newer iDX6011 Pro revisions the internal eDP panel does not answer the graphics driver until UGOS has initialized it once, so on a cold Linux boot i915 drops the panel and the screen stays black. One-time fix: boot UGOS, let the front display light up, then reboot into your Linux drive (firmware boot menu, F11/F12). That initialization is non-volatile, so it holds across later reboots and full power-offs; you only do it once per unit. Full background in [Troubleshooting](#troubleshooting).
 
 ## Front panel LEDs
 
@@ -429,6 +429,7 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 | `power_button` | `auto` | Chassis power button handling. `auto` grabs the ACPI power button so the daemon owns it (logind resumes if ug-paneld exits); `off` leaves it to logind; or a specific `/dev/input/eventN` |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
+| `storage_path` | `/` | Mountpoint the Storage widget reports usage for. On TrueNAS the root is the read-only boot pool, so set this to a data pool (for example `/mnt/tank`) for useful numbers. `statvfs` of a pool mountpoint covers the whole pool, regardless of how many drives back it |
 | `drm_device` | auto | DRM device path, for example `/dev/dri/card0`; empty scans all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: a name (`eDP-1`), numeric id, or `auto` |
 | `drm_probe_timeout` | `60` | Seconds to wait at startup for a connected connector (high so the early-boot start waits for the panel instead of giving up) |
@@ -447,18 +448,23 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 > [!WARNING]
 > **Never diagnose the touch controller with ug-paneld stopped.** The chip auto-sleeps when nobody polls it and then answers every I2C transaction with constant `0x23` bytes, which is indistinguishable from a broken chip. The running daemon's 33 to 50 ms polling keeps it awake (that is also why tap-to-wake works with the backlight fully off).
 
-**Display black, service exits with code 2** ("No connected DRM connector found"): the kernel never brought up the panel. On newer revisions the panel power rail is switched by the EC, so apply the UGOS warm-boot fix from the [Install](#install) section. Useful checks:
+**Display black, service exits with code 2** ("No connected DRM connector found"): the kernel never brought up the internal panel. On newer revisions i915 cannot read the eDP panel over the AUX channel on a cold boot and disables it, so apply the one-time UGOS init from the [Install](#install) section. The tell-tale is the `eDP-1` connector being absent entirely (only the external `DP-*` outputs remain). Useful checks:
 
 ```bash
-for x in /sys/class/drm/card*-*/status; do echo "$x: $(cat $x)"; done   # any "connected"?
+dmesg | grep -iE 'eDP|DDI A|link'   # look for "failed to retrieve link info, disabling eDP"
+ls /sys/class/drm/                  # is there an eDP-1 at all? (newer Pro: often only DP-* until UGOS init)
 ls /sys/bus/i2c/devices/            # CUST0000 or MSFT8000 revision?
-journalctl -u ug-paneld -n 100      # the full DRM probe inventory is logged
+journalctl -u ug-paneld -n 100      # ug-paneld's own connector/probe inventory
 ```
 
 <details>
 <summary><b>Background: why newer revisions boot with a dead panel</b></summary>
 
-The BIOS declares the panel correctly (a healthy VBT: eDP on DDI-A/AUX-A, 1 lane, 258×960), but the panel's power rail is controlled by the ITE EC, not the Intel PCH. While it is unpowered, the panel never answers on the AUX channel, so i915 logs `failed to retrieve link info, disabling eDP` and gives up. UGOS powers the rail through its proprietary EC driver, while vanilla Linux does not know it has to. The EC stores the power flag persistently, which is why the one-time UGOS warm-boot fix sticks (verified across reboots, shutdowns and a multi-minute mains cut; repeat it only after an EC reset or firmware update).
+The BIOS declares the panel correctly (a healthy VBT: eDP on DDI-A/AUX-A, 1 lane, 258×960), and it is a standard Intel eDP display that i915 drives directly through the PCH panel power sequencer. The catch is the panel's sink (its TCON): on a cold Linux boot it does not answer the first DPCD read over the AUX channel, so i915 concludes the port is a ghost, logs `failed to retrieve link info, disabling eDP`, and removes the connector entirely. That is why the panel appears as no `eDP-1` connector at all (only the external `DP-*` outputs are listed), rather than a connected-but-black screen.
+
+Booting UGOS once initializes the panel's sink so it answers on AUX. That initialization is non-volatile: it has been verified to survive later reboots and a full mains-off power cut, so a Linux/Proxmox boot afterwards inherits a panel that responds and i915 keeps the `eDP-1` connector. It is genuinely a one-time step per unit; repeat it only after a firmware update or if the panel is ever reset. (An earlier theory that an EC power rail was switched off turned out to be wrong: the panel's VDD pins read identically on a working and a dark unit, so the only difference is whether the eDP sink has been initialized.)
+
+There is also an in-flight Intel kernel patch for exactly this Meteor Lake case, which wakes the eDP sink with a DP power-on write before the first DPCD read. It is not in released kernels yet, but a future kernel may let the panel come up under Linux without the UGOS step.
 
 Newer revisions also enumerate the touchscreen as `MSFT8000:00` instead of `CUST0000:00`, and ug-paneld knows both ids. The DRM card number can change between boots (`card0` or `card1`), so ug-paneld scans all of them.
 
