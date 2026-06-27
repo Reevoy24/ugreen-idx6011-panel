@@ -36,6 +36,9 @@
 #include <sys/io.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <pthread.h>
+#include "version.h"
+#include "fand_api.h"     /* optional web dashboard (pulls in the stat collectors) */
 
 /* ---- EC interface ---- */
 #define EC_SC   0x66          /* command / status port */
@@ -202,6 +205,8 @@ typedef struct {
     fan_mode_t mode;
     int interval;
     int force;
+    int api_port;              /* >0 enables the web dashboard (opt-in) */
+    char api_password[64];     /* "" = fan control open on the LAN */
     curve_t cpu[MODE_COUNT];
     curve_t sys[MODE_COUNT];
 } fanconf_t;
@@ -255,6 +260,8 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->mode = MODE_DEFAULT;
     cf->interval = 3;
     cf->force = cli_force;
+    cf->api_port = 0;
+    cf->api_password[0] = '\0';
     static const point_t cs[] = {{0,14},{64,14},{74,35},{82,71}, {88,100}};
     static const point_t cd[] = {{0,15},{60,15},{70,38},{78,71}, {86,100}};
     static const point_t ct[] = {{0,25},{55,25},{66,66},{75,93}, {82,100}};
@@ -289,6 +296,10 @@ static void load_config(fanconf_t *cf, int cli_force) {
             int v = atoi(val); if (v >= 1 && v <= 60) cf->interval = v;
         } else if (!strcmp(key, "force")) {
             cf->force = atoi(val);
+        } else if (!strcmp(key, "api_port")) {
+            int v = atoi(val); if (v >= 0 && v <= 65535) cf->api_port = v;
+        } else if (!strcmp(key, "api_password")) {
+            snprintf(cf->api_password, sizeof(cf->api_password), "%s", val);
         }
         else if (!strcmp(key, "cpu_silent"))  parse_curve(val, &cf->cpu[MODE_SILENT]);
         else if (!strcmp(key, "cpu_default")) parse_curve(val, &cf->cpu[MODE_DEFAULT]);
@@ -322,6 +333,65 @@ static void write_status(fan_mode_t mode, int ct, int st,
     fprint_curve(f, "sys_curve", sys_c);
     fclose(f);
     rename(tmp, STATUS_PATH);
+}
+
+/* Render a curve as "t:p,t:p,..." into buf (for the web snapshot). */
+static void curve_to_str(char *buf, size_t sz, const curve_t *c) {
+    int off = 0;
+    buf[0] = '\0';
+    for (int i = 0; i < c->n && (size_t)off < sz; i++)
+        off += snprintf(buf + off, sz - (size_t)off, "%s%d:%d",
+                        i ? "," : "", c->pts[i].temp, c->pts[i].pct);
+}
+
+/* ---- config write-back (for the web dashboard's fan-mode/curve POST) ----
+ * Only the web API thread writes the config; the main loop only reads it (and
+ * hot-reloads on mtime change). Atomic temp+rename so the reader never sees a
+ * torn file; a mutex guards against a (theoretical) concurrent writer. */
+static int fand_write_lines(const char *path, char lines[][256], int n) {
+    char tmp[256];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *w = fopen(tmp, "w");
+    if (!w) return -1;
+    for (int i = 0; i < n; i++) fputs(lines[i], w);
+    if (fclose(w) != 0) return -1;
+    return rename(tmp, path) == 0 ? 0 : -1;
+}
+
+int fand_config_set(const char *key, const char *value) {
+    static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
+    char lines[64][256];
+    int n = 0, found = 0, rc;
+    size_t klen = strlen(key);
+
+    pthread_mutex_lock(&cfg_lock);
+    FILE *f = fopen(CONFIG_PATH, "r");
+    if (f) {
+        while (n < 64 && fgets(lines[n], sizeof(lines[n]), f)) {
+            if (strncmp(lines[n], key, klen) == 0 && lines[n][klen] == '=') {
+                snprintf(lines[n], sizeof(lines[n]), "%s=%s\n", key, value);
+                found = 1;
+            }
+            n++;
+        }
+        fclose(f);
+    }
+    if (!found && n < 64) {
+        snprintf(lines[n], sizeof(lines[n]), "%s=%s\n", key, value);
+        n++;
+    }
+    rc = fand_write_lines(CONFIG_PATH, lines, n);
+    if (rc == 0) {
+        /* TrueNAS/Unraid: /etc is ephemeral and start.sh restores the config from
+         * the persistent pool/flash copy on boot, so mirror web edits there too
+         * (UG_FAND_PERSIST). Unset on Proxmox (.deb) -> no-op. */
+        const char *persist = getenv("UG_FAND_PERSIST");
+        if (persist && *persist && fand_write_lines(persist, lines, n) != 0)
+            fprintf(stderr, "ug-fand: cannot mirror config to %s (not reboot-persistent)\n", persist);
+    }
+    pthread_mutex_unlock(&cfg_lock);
+    if (rc) fprintf(stderr, "ug-fand: cannot write %s\n", CONFIG_PATH);
+    return rc;
 }
 
 /* ---- safety ---- */
@@ -369,9 +439,17 @@ int main(int argc, char **argv) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
-    fprintf(stderr, "ug-fand: started, mode=%s, interval=%ds, model=%s\n",
-            mode_name(cf.mode), cf.interval,
+    fprintf(stderr, "ug-fand %s: started, mode=%s, interval=%ds, model=%s\n",
+            UG_FAND_VERSION, mode_name(cf.mode), cf.interval,
             g_nonpro ? "iDX6011 non-Pro (2 sys fans @ 0x9C)" : "iDX6011 Pro (4 fans @ 0xB0)");
+
+    /* Optional web dashboard (opt-in via api_port in the config). Started once
+     * here — changing api_port needs a daemon restart (curves/mode hot-reload).
+     * web_on gates the per-loop stat collection so the EC-only path stays cheap
+     * when no dashboard is configured. */
+    int web_on = 0;
+    if (cf.api_port > 0)
+        web_on = (fand_api_start(cf.api_port, cf.api_password) == 0);
 
     time_t cfg_mtime = 0;
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
@@ -443,28 +521,57 @@ int main(int argc, char **argv) {
         if (applied_sp < 0 || sp == SPEED_FULL || abs(sp - applied_sp) >= SPEED_DEADBAND)
             applied_sp = sp;
 
+        long rpm[4];        /* cpufan1, cpufan2, sysfan1, sysfan2 (-1 = no such fan) */
+        int disp_sp;        /* system-fan speed % actually applied (= np on non-Pro) */
         if (g_nonpro) {
             /* One fan zone (2 system fans) cools both CPU and disks, so drive it
              * from whichever demand is higher. */
             int np = applied_cp > applied_sp ? applied_cp : applied_sp;
             set_fan_pair(REG_NP_SYS_EN1, np);   /* writes 0x9C..0x9F = both fans */
-            write_status(cf.mode, ct, st,
-                         0, 0,
-                         fan_rpm(REG_NP_SYSFAN1_RPM), fan_rpm(REG_NP_SYSFAN2_RPM),
-                         applied_cp, np,
-                         &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+            rpm[0] = -1; rpm[1] = -1;           /* no separate CPU fans on the non-Pro */
+            rpm[2] = fan_rpm(REG_NP_SYSFAN1_RPM);
+            rpm[3] = fan_rpm(REG_NP_SYSFAN2_RPM);
+            disp_sp = np;
+            write_status(cf.mode, ct, st, 0, 0, rpm[2], rpm[3],
+                         applied_cp, np, &cf.cpu[cf.mode], &cf.sys[cf.mode]);
         } else {
             set_fan_pair(REG_CPU_EN1, applied_cp);
             set_fan_pair(REG_SYS_EN1, applied_sp);
-            write_status(cf.mode, ct, st,
-                         fan_rpm(REG_CPUFAN1_RPM), fan_rpm(REG_CPUFAN2_RPM),
-                         fan_rpm(REG_SYSFAN1_RPM), fan_rpm(REG_SYSFAN2_RPM),
-                         applied_cp, applied_sp,
-                         &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+            rpm[0] = fan_rpm(REG_CPUFAN1_RPM); rpm[1] = fan_rpm(REG_CPUFAN2_RPM);
+            rpm[2] = fan_rpm(REG_SYSFAN1_RPM); rpm[3] = fan_rpm(REG_SYSFAN2_RPM);
+            disp_sp = applied_sp;
+            write_status(cf.mode, ct, st, rpm[0], rpm[1], rpm[2], rpm[3],
+                         applied_cp, applied_sp, &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+        }
+
+        /* Publish a snapshot for the web dashboard: the system/net/disk stats
+         * (collected here, in the main thread) plus the fan state we just
+         * applied. The API thread only ever reads the published copy. */
+        if (web_on) {
+            fand_snapshot_t fs;
+            memset(&fs, 0, sizeof(fs));
+            system_stats_collect(&fs.sys);
+            net_stats_collect(&fs.net);
+            disk_stats_collect(&fs.disks);
+            fs.fan_running = 1;
+            snprintf(fs.fan_mode, sizeof(fs.fan_mode), "%s", mode_name(cf.mode));
+            fs.fan_cpu_temp = ct;
+            fs.fan_sys_temp = st;
+            fs.fan_cpu_pct  = applied_cp;
+            fs.fan_sys_pct  = disp_sp;
+            for (int i = 0; i < 4; i++) fs.fan_rpm[i] = rpm[i];
+            curve_to_str(fs.fan_cpu_curve, sizeof(fs.fan_cpu_curve), &cf.cpu[cf.mode]);
+            curve_to_str(fs.fan_sys_curve, sizeof(fs.fan_sys_curve), &cf.sys[cf.mode]);
+            fs.fan_crit_cpu = CPU_CRIT;
+            fs.fan_crit_sys = SYS_CRIT;
+            fs.valid = 1;
+            fand_api_publish(&fs);
         }
 
         for (int slept = 0; slept < cf.interval && running; slept++) sleep(1);
     }
+
+    if (web_on) fand_api_stop();
 
     /* failsafe on exit: leave fans at a safe, audible level (70%) */
     if (g_nonpro) {

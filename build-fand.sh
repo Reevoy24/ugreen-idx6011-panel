@@ -9,17 +9,30 @@
 #
 # Usage: ./build-fand.sh [version]   (run on Linux/WSL)
 set -e
-VERSION="${1:-1.0.0}"
 REPO="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO"
 FAND=packaging/fand
+
+# Version: an explicit arg wins; otherwise derive it from include/version.h
+# (UG_FAND_VERSION — the single source shown in the web footer), turning a
+# "-betaN" suffix into "~betaN" so dpkg orders the beta before the release.
+if [ -n "$1" ]; then
+    VERSION="$1"
+else
+    DISP="$(sed -n 's/.*UG_FAND_VERSION "\(.*\)".*/\1/p' include/version.h)"
+    VERSION="${DISP/-/\~}"
+fi
+echo "Building ug-fand version: $VERSION"
 
 # Strip CR from staged text files — when built in WSL against a Windows working
 # tree (autocrlf), scripts/config can be CRLF, which breaks #!/bin/sh on Linux.
 norm() { sed -i 's/\r$//' "$@"; }
 
 # Static (libc only) so one binary runs across Proxmox/TrueNAS/Unraid glibc versions.
-gcc -O2 -g0 -static -Wall -Wextra -Iinclude -o ug-fand src/ug_fand.c
+# fand_api.c + the shared stat collectors add the optional web dashboard; pthread
+# for the API thread. No external libs, so the static link stays clean.
+gcc -O2 -g0 -static -Wall -Wextra -Iinclude -pthread -o ug-fand \
+    src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c
 strip ug-fand
 echo "Built static ug-fand ($(du -h ug-fand | cut -f1))"
 
@@ -28,11 +41,14 @@ build_deb() {
     local pkg="ug-fand_${VERSION}_amd64"
     local stage="/tmp/$pkg"
     rm -rf "$stage"
-    mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/lib/systemd/system" "$stage/etc/ug-fand"
+    mkdir -p "$stage/DEBIAN" "$stage/usr/bin" "$stage/lib/systemd/system" \
+             "$stage/etc/ug-fand" "$stage/usr/share/ug-fand/web"
 
     cp ug-fand "$stage/usr/bin/ug-fand";                       chmod 755 "$stage/usr/bin/ug-fand"
     cp "$FAND/ug-fand.service" "$stage/lib/systemd/system/";   chmod 644 "$stage/lib/systemd/system/ug-fand.service"
     cp "$FAND/config.example" "$stage/etc/ug-fand/config";     chmod 644 "$stage/etc/ug-fand/config"
+    # Web dashboard frontend (served when api_port is set; default UG_FAND_WEB_DIR).
+    cp web/* "$stage/usr/share/ug-fand/web/";                  chmod 644 "$stage/usr/share/ug-fand/web/"*
     norm "$stage/lib/systemd/system/ug-fand.service" "$stage/etc/ug-fand/config"
     printf "/etc/ug-fand/config\n" > "$stage/DEBIAN/conffiles"   # keep user's config across upgrades
 
@@ -76,6 +92,8 @@ build_tarball() {
     cp ug-fand "$stage/ug-fand"
     cp "$FAND/config.example" "$stage/config"     # active config (the source of truth)
     cp "$FAND/install.sh" "$FAND/start.sh" "$FAND/README.txt" "$stage/"
+    mkdir -p "$stage/web"                          # web dashboard (start.sh points UG_FAND_WEB_DIR here)
+    cp web/* "$stage/web/"
     norm "$stage/install.sh" "$stage/start.sh" "$stage/config" "$stage/README.txt"
     chmod 755 "$stage/ug-fand" "$stage"/*.sh
     tar -C "$root" --owner=0 --group=0 -czf "$REPO/ug-fand_${VERSION}_${platform}_amd64.tar.gz" ug-fand

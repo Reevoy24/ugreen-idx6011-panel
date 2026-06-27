@@ -45,6 +45,19 @@ Monitoring
     cat /run/ug-fand/status     # RPM, temps, mode, duty
     (model line is logged at start: "model=iDX6011 non-Pro ..." / "... Pro ...")
 
+Web dashboard (optional)
+------------------------
+A browser dashboard (system stats + fan mode/curve control) is bundled but OFF
+by default. Enable it by setting a port in the config, then restart the daemon:
+
+    api_port=8765           # then open http://<nas-ip>:8765/
+    #api_password=secret    # optional, protects the fan-control actions only
+
+Especially handy on the non-Pro (no display). LAN only — do NOT expose it to the
+internet. Changing api_port needs a restart; mode/curve edits hot-reload. The
+frontend is served from /usr/share/ug-fand/web (Proxmox) or the web/ folder next
+to start.sh (TrueNAS/Unraid) — override with UG_FAND_WEB_DIR if needed.
+
 Logs
 ----
     Proxmox:  journalctl -u ug-fand

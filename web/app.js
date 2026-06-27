@@ -24,6 +24,8 @@ let authHeader = sessionStorage.getItem("ugpaneld_auth") || "";
 let toastTimer = null;
 let pendingPower = null;
 let pveOpen = false; // remember the Proxmox expand state across polls
+let hasPanel = true; // false when served by ug-fand (no display): hide display-only controls
+let brandFixed = false;
 let editing = false, editDomain = "cpu", editMode = "default", editPoints = [];
 
 const t = (k) => (STRINGS[lang] || STRINGS.en)[k] ?? STRINGS.en[k] ?? k;
@@ -36,6 +38,19 @@ const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;
 function applyI18n() {
   document.documentElement.lang = lang;
   document.querySelectorAll("[data-i18n]").forEach((e) => { e.textContent = t(e.dataset.i18n); });
+}
+
+/* One-time rebrand when served by ug-fand (no display): the shared markup reads
+ * "iDX6011 Pro · Panel · Web", which is wrong on a fan-only non-Pro unit. Strip
+ * the i18n bindings so applyI18n() won't revert it when the language changes. */
+function fixBrandForFand() {
+  if (brandFixed) return;
+  brandFixed = true;
+  const strong = document.querySelector(".brand .bt strong");
+  const small = document.querySelector(".brand .bt small");
+  if (strong) { strong.removeAttribute("data-i18n"); strong.textContent = "UGREEN iDX6011"; }
+  if (small) { small.removeAttribute("data-i18n"); small.textContent = "Fan control"; }
+  document.title = "iDX6011 — Fan control";
 }
 
 /* ---------- fetch ---------- */
@@ -100,9 +115,21 @@ function render(s) {
 
   if (s.version) { const v = $("appver"); if (v) v.textContent = " · v" + s.version; }
 
-  /* dashboard follows the device's language setting */
+  /* capability gating — ug-fand (non-Pro, no display) sets has_panel:false, so
+   * hide every display-only control (the settings panel + the power buttons) and
+   * keep just the monitoring + fan-control sections. */
+  const caps = s.caps || {};
+  hasPanel = caps.has_panel !== false;
+  toggle("block-settings", hasPanel);
+  toggle("btn-restart", hasPanel);
+  toggle("btn-shutdown", hasPanel);
+  if (!hasPanel) fixBrandForFand();
+
+  /* dashboard follows the device's language setting — but only when there IS one
+   * to follow. ug-fand has no persisted language, so its picker stays purely
+   * client-side and the server's default "en" must not clobber the user choice. */
   const stx = s.settings || {};
-  if (stx.language && STRINGS[stx.language] && stx.language !== lang) {
+  if (hasPanel && stx.language && STRINGS[stx.language] && stx.language !== lang) {
     lang = stx.language;
     localStorage.setItem("ugpaneld_lang", lang);
     applyI18n();
@@ -149,7 +176,6 @@ function render(s) {
   ).join("") || `<div class="row"><span class="l">—</span></div>`;
 
   /* services */
-  const caps = s.caps || {};
   const showSvc = caps.has_pve || caps.has_opnsense;
   toggle("block-services", showSvc);
   if (showSvc) {
@@ -399,7 +425,7 @@ function wireControls() {
     const a = $("lang"), b = $("set-language");
     if (a) a.value = v;
     if (b) b.value = v;
-    postSettings({ language: v });
+    if (hasPanel) postSettings({ language: v }); // ug-fand has no settings endpoint
   };
   const sl2 = $("set-language"); if (sl2) sl2.addEventListener("change", (e) => changeLanguage(e.target.value));
   const tl2 = $("lang"); if (tl2) tl2.addEventListener("change", (e) => changeLanguage(e.target.value));

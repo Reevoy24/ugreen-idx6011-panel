@@ -20,6 +20,13 @@ esac
 # drivetemp exposes SATA disk temperatures via hwmon (the system-fan input)
 modprobe drivetemp 2>/dev/null
 
+# Web dashboard (only active if api_port is set in the config). Serve the bundled
+# frontend from here (the rootfs /usr/share is ephemeral on TrueNAS/Unraid), and
+# mirror web config edits back to this persistent config so they survive reboots
+# (the daemon writes /etc/ug-fand/config, which start.sh overwrites on boot).
+[ -d "$DIR/web" ] && export UG_FAND_WEB_DIR="$DIR/web"
+export UG_FAND_PERSIST="$DIR/config"
+
 pkill -x ug-fand 2>/dev/null && sleep 1
 nohup "$BIN" >/var/log/ug-fand.log 2>&1 &
 echo "ug-fand started (log: /var/log/ug-fand.log)"

@@ -16,6 +16,15 @@ interval=3
 # the EC fan registers are specific to these models). Uncomment to force.
 #force=1
 
+# Web dashboard (opt-in). Set a port to serve a browser dashboard with system
+# stats + fan control on http://<nas-ip>:<port>/ — handy on the non-Pro (no
+# display). LAN only; do NOT expose to the internet. Changing the port needs a
+# daemon restart (mode/curve edits hot-reload). Leave unset to disable.
+#api_port=8765
+# Optional password protecting only the fan-control actions (monitoring stays
+# open on the LAN). Leave unset for no password.
+#api_password=changeme
+
 # Fan curves: comma-separated  TEMP:SPEED  points — TEMP in degrees C, SPEED in
 # percent (0-100; 100 = full speed). The speed is interpolated between points
 # and held flat below the first / above the last point. cpu_* curves follow the

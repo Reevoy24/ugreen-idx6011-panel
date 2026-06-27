@@ -17,11 +17,18 @@ find_file() {
     done
     return 1
 }
+find_dir() {
+    for c in "./$1" "$HERE/$1" "$HERE/../../$1"; do
+        [ -d "$c" ] && { echo "$c"; return 0; }
+    done
+    return 1
+}
 
 BIN="$(find_file ug-fand)"         || { echo "ug-fand binary not found — run 'make fand' first." >&2; exit 1; }
 CFG="$(find_file config.example)"  || CFG="$(find_file config)" || CFG="$HERE/config.example"
 SVC="$(find_file ug-fand.service)" || SVC="$HERE/ug-fand.service"
 START="$(find_file start.sh)"      || START="$HERE/start.sh"
+WEB="$(find_dir web)"              || WEB=""   # optional web dashboard frontend
 
 # ---------- Unraid (flash boot; /boot/config persists, rootfs is rebuilt) ----------
 if [ -d /boot/config ]; then
@@ -33,6 +40,7 @@ if [ -d /boot/config ]; then
     cp -f "$BIN"   "$PERSIST/ug-fand"
     cp -f "$START" "$PERSIST/start.sh"
     [ -f "$PERSIST/config" ] || cp -f "$CFG" "$PERSIST/config"
+    [ -n "$WEB" ] && { rm -rf "$PERSIST/web"; cp -rf "$WEB" "$PERSIST/web"; }
     if ! grep -q "$MARK_BEGIN" "$GO" 2>/dev/null; then
         { echo ""; echo "$MARK_BEGIN"; echo "sh $PERSIST/start.sh"; echo "$MARK_END"; } >> "$GO"
         echo "Added start hook to $GO"
@@ -51,6 +59,7 @@ if [ -n "$DEST" ] || command -v midclt >/dev/null 2>&1; then
     cp -f "$BIN" "$DEST/ug-fand";          chmod 755 "$DEST/ug-fand"
     cp -f "$START" "$DEST/start.sh";       chmod 755 "$DEST/start.sh"
     [ -f "$DEST/config" ] || cp -f "$CFG" "$DEST/config"
+    [ -n "$WEB" ] && { rm -rf "$DEST/web"; cp -rf "$WEB" "$DEST/web"; }
 
     COMMENT="ug-fand fan control"
     if command -v midclt >/dev/null 2>&1; then
@@ -76,6 +85,8 @@ install -m 755 "$BIN" /usr/bin/ug-fand
 mkdir -p /etc/ug-fand
 [ -f /etc/ug-fand/config ] || install -m 644 "$CFG" /etc/ug-fand/config
 install -m 644 "$SVC" /lib/systemd/system/ug-fand.service
+# Web dashboard frontend at the default UG_FAND_WEB_DIR (served only if api_port is set)
+[ -n "$WEB" ] && { mkdir -p /usr/share/ug-fand/web; install -m 644 "$WEB"/* /usr/share/ug-fand/web/; }
 systemctl daemon-reload
 systemctl enable ug-fand
 systemctl restart ug-fand   # restart so a reinstall always loads the new binary

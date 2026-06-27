@@ -72,10 +72,13 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 	@echo "Built $(BIN)"
 
 # Standalone fan monitor/control daemon (libc only — no LVGL/DRM/curl).
+# Bundles an optional web dashboard (fand_api.c + the shared stat collectors);
+# pthread for the API thread. Still no external libs, so it stays static-link-safe.
 FAND = ug-fand
+FAND_SRC = src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c
 fand: $(FAND)
-$(FAND): src/ug_fand.c
-	$(CC) -O2 -g0 -Wall -Wextra -Iinclude -o $(FAND) src/ug_fand.c
+$(FAND): $(FAND_SRC) include/fand_api.h include/version.h
+	$(CC) -O2 -g0 -Wall -Wextra -Iinclude -pthread -o $(FAND) $(FAND_SRC)
 	@echo "Built $(FAND)"
 
 # Host-only mockup renderer: GUI + LVGL with fake data, no DRM/curl needed.
