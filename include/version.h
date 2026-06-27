@@ -5,6 +5,6 @@
  * (and exposed via /api/stats). Bump this on every release alongside the README
  * badge. The .deb/tarball build scripts derive their package version from it
  * (turning a "-betaN" suffix into "~betaN" for dpkg ordering). */
-#define UG_VERSION "1.7.0-beta2"
+#define UG_VERSION "1.7.0"
 
 #endif
