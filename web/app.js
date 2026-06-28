@@ -223,6 +223,7 @@ function render(s) {
   setTimeValue("night-end", stx.led_night_end);
   syncTzSelect(stx.timezone);
   syncStorageSelect(s.storage);
+  toggle("storage-pick", !!(s.storage && (s.storage.options || []).length));
 
   renderWallpapers(s.wallpapers || { options: [], current: "" });
 }

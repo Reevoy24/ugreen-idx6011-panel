@@ -4,7 +4,7 @@
 export const STRINGS = {
   en: {
     title: "iDX6011 Pro", subtitle: "Panel · Web", online: "Online", offline: "Panel offline",
-    sec_overview: "Overview", sec_fan: "Fan control", sec_storage: "Storage",
+    sec_overview: "Overview", sec_fan: "Fan control", sec_storage: "Storage", storage_mount: "Mountpoint",
     sec_network: "Network", sec_services: "Services", sec_settings: "Settings", sec_power: "Power",
     cpu: "CPU", system: "System", ram: "RAM", temp: "CPU temp", storage: "Storage",
     uptime: "Uptime", gpu: "GPU", applied: "Applied", fan: "Fan", rpm: "rpm", curve: "Curve",
@@ -24,7 +24,7 @@ export const STRINGS = {
   },
   de: {
     title: "iDX6011 Pro", subtitle: "Panel · Web", online: "Online", offline: "Panel offline",
-    sec_overview: "Übersicht", sec_fan: "Lüftersteuerung", sec_storage: "Speicher",
+    sec_overview: "Übersicht", sec_fan: "Lüftersteuerung", sec_storage: "Speicher", storage_mount: "Mountpoint",
     sec_network: "Netzwerk", sec_services: "Dienste", sec_settings: "Einstellungen", sec_power: "Energie",
     cpu: "CPU", system: "System", ram: "RAM", temp: "CPU-Temp", storage: "Speicher",
     uptime: "Laufzeit", gpu: "GPU", applied: "Anliegend", fan: "Lüfter", rpm: "rpm", curve: "Kurve",
@@ -43,7 +43,7 @@ export const STRINGS = {
     daemon_offline: "Lüfter-Daemon läuft nicht",
   },
   es: {
-    title: "iDX6011 Pro", sec_overview: "Resumen", sec_fan: "Ventiladores", sec_storage: "Almacenamiento",
+    title: "iDX6011 Pro", sec_overview: "Resumen", sec_fan: "Ventiladores", sec_storage: "Almacenamiento", storage_mount: "Punto de montaje",
     sec_network: "Red", sec_services: "Servicios", sec_settings: "Ajustes", sec_power: "Energía",
     online: "En línea", offline: "Panel desconectado", system: "Sistema", applied: "Aplicado",
     fan: "Ventilador", curve: "Curva", silent: "Silencioso", default: "Normal", turbo: "Turbo",
@@ -56,7 +56,7 @@ export const STRINGS = {
     daemon_offline: "El daemon de ventiladores no está activo",
   },
   fr: {
-    title: "iDX6011 Pro", sec_overview: "Aperçu", sec_fan: "Ventilateurs", sec_storage: "Stockage",
+    title: "iDX6011 Pro", sec_overview: "Aperçu", sec_fan: "Ventilateurs", sec_storage: "Stockage", storage_mount: "Point de montage",
     sec_network: "Réseau", sec_services: "Services", sec_settings: "Réglages", sec_power: "Alimentation",
     online: "En ligne", offline: "Panneau hors ligne", system: "Système", applied: "Appliqué",
     fan: "Ventilateur", curve: "Courbe", silent: "Silencieux", default: "Normal", turbo: "Turbo",
@@ -69,7 +69,7 @@ export const STRINGS = {
     daemon_offline: "Le démon des ventilateurs n'est pas actif",
   },
   pt: {
-    title: "iDX6011 Pro", sec_overview: "Visão geral", sec_fan: "Ventoinhas", sec_storage: "Armazenamento",
+    title: "iDX6011 Pro", sec_overview: "Visão geral", sec_fan: "Ventoinhas", sec_storage: "Armazenamento", storage_mount: "Ponto de montagem",
     sec_network: "Rede", sec_services: "Serviços", sec_settings: "Definições", sec_power: "Energia",
     online: "Online", offline: "Painel offline", system: "Sistema", applied: "Aplicado",
     fan: "Ventoinha", curve: "Curva", silent: "Silencioso", default: "Padrão", turbo: "Turbo",
@@ -82,7 +82,7 @@ export const STRINGS = {
     daemon_offline: "O daemon das ventoinhas não está em execução",
   },
   id: {
-    title: "iDX6011 Pro", sec_overview: "Ringkasan", sec_fan: "Kontrol Kipas", sec_storage: "Penyimpanan",
+    title: "iDX6011 Pro", sec_overview: "Ringkasan", sec_fan: "Kontrol Kipas", sec_storage: "Penyimpanan", storage_mount: "Titik mount",
     sec_network: "Jaringan", sec_services: "Layanan", sec_settings: "Pengaturan", sec_power: "Daya",
     online: "Online", offline: "Panel offline", system: "Sistem", applied: "Diterapkan",
     fan: "Kipas", curve: "Kurva", silent: "Senyap", default: "Standar", turbo: "Turbo",

@@ -570,6 +570,10 @@ int main(int argc, char **argv) {
             curve_to_str(fs.fan_sys_curve, sizeof(fs.fan_sys_curve), &cf.sys[cf.mode]);
             fs.fan_crit_cpu = CPU_CRIT;
             fs.fan_crit_sys = SYS_CRIT;
+            int sidx;
+            snprintf(fs.storage_path, sizeof(fs.storage_path), "%s", cf.storage_path);
+            fs.storage_count = system_stats_list_mounts(fs.storage_opts, STORAGE_OPT_MAX,
+                                                        cf.storage_path, &sidx);
             fs.valid = 1;
             fand_api_publish(&fs);
         }

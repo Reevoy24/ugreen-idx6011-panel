@@ -382,7 +382,7 @@ static void handle_stats(int fd) {
 
     if (!s.valid) { send_json(fd, 200, "{\"valid\":false}"); return; }
 
-    char out[8192];
+    char out[16384];
     jbuf_t b = { out, sizeof(out), 0 };
     jappend(&b, "{\"valid\":true,\"version\":\"%s\",\"uptime_seconds\":%llu,",
             UG_FAND_VERSION, (unsigned long long)s.sys.uptime_seconds);
@@ -450,6 +450,11 @@ static void handle_stats(int fd) {
                 "\"wallpaper\":\"\",\"led_night_window\":\"\",\"led_night_start\":\"\","
                 "\"led_night_end\":\"\",\"timezone\":\"\"},");
     jappend(&b, "\"wallpapers\":{\"current\":\"\",\"options\":[]},");
+
+    jappend(&b, "\"storage\":{\"current\":"); jstr(&b, s.storage_path);
+    jappend(&b, ",\"options\":[");
+    for (int i = 0; i < s.storage_count; i++) { jappend(&b, "%s", i ? "," : ""); jstr(&b, s.storage_opts[i]); }
+    jappend(&b, "]},");
 
     jappend(&b, "\"caps\":{\"has_panel\":false,\"has_pve\":false,\"has_opnsense\":false,"
                 "\"has_leds\":false,\"has_gpu\":false,\"has_touch\":false,\"has_power\":true}}");
@@ -548,6 +553,26 @@ static void handle_power(int fd, const http_req_t *req) {
         fprintf(stderr, "ug-fand: power command failed\n");
 }
 
+/* storage_path must be an absolute path to an existing directory (so the
+ * Storage widget's statvfs on it succeeds). */
+static int valid_storage(const char *path) {
+    if (!path[0] || path[0] != '/' || strstr(path, "..")) return 0;
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+/* The one settable setting on the non-Pro: which mountpoint the Storage widget
+ * reports. Written to the config; the main loop's mtime watch hot-reloads and
+ * applies it (and mirrors it to UG_FAND_PERSIST on TrueNAS/Unraid). */
+static void handle_settings(int fd, const http_req_t *req) {
+    const char *j = req->body ? req->body : "";
+    char sp[256];
+    if (json_get_str(j, "storage_path", sp, sizeof(sp)) != 0) { send_error(fd, 400, "no changes"); return; }
+    if (!valid_storage(sp)) { send_error(fd, 400, "storage_path must be an existing directory"); return; }
+    if (fand_config_set("storage_path", sp) != 0) { send_error(fd, 500, "write failed"); return; }
+    send_json(fd, 200, "{\"ok\":true}");
+}
+
 /* ---- router ---- */
 static void handle_request(int fd) {
     http_req_t req;
@@ -570,6 +595,10 @@ static void handle_request(int fd) {
         else if (!password_set()) send_error(fd, 403, "set api_password to enable remote power control");
         else if (!password_ok(&req)) send_auth_required(fd);
         else handle_power(fd, &req);
+    } else if (strcmp(req.path, "/api/settings") == 0) {
+        if (!is_post) send_error(fd, 405, NULL);
+        else if (password_set() && !password_ok(&req)) send_auth_required(fd);
+        else handle_settings(fd, &req);
     } else if (is_get) {
         serve_file(fd, req.path);
     } else {

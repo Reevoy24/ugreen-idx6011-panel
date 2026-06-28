@@ -37,6 +37,11 @@ typedef struct {
     char fan_sys_curve[128];
     int  fan_crit_cpu;          /* critical-temp thresholds (for the gauges) */
     int  fan_crit_sys;
+
+    /* Storage widget mountpoint + the picker options ("/" plus top-level /mnt pools) */
+    char storage_path[256];
+    int  storage_count;
+    char storage_opts[STORAGE_OPT_MAX][STORAGE_OPT_LEN];
 } fand_snapshot_t;
 
 /* Start/stop the server thread. port<=0 disables it (returns -1). password may
