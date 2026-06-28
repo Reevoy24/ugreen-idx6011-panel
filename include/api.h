@@ -37,6 +37,11 @@ typedef struct {
     /* wallpaper options */
     int  wp_count, wp_cur;
     char wp_opts[API_WP_MAX][20];
+
+    /* Storage-widget mountpoint + the picker options ("/" plus top-level /mnt pools) */
+    char storage_path[256];
+    int  storage_count, storage_cur;
+    char storage_opts[STORAGE_OPT_MAX][STORAGE_OPT_LEN];
 } api_snapshot_t;
 
 /* A partial settings update parsed from POST /api/settings (present-flags). */
@@ -52,6 +57,7 @@ typedef struct {
     int has_night_end;   char night_end[8];
     int has_timezone;    char timezone[40];
     int has_clock_24h,   clock_24h;
+    int has_storage_path; char storage_path[256];
 } api_settings_patch_t;
 
 /* GUI-affecting commands the API enqueues; the main loop drains + runs them on
@@ -64,7 +70,8 @@ typedef enum {
     API_CMD_LEDS_TOGGLE,
     API_CMD_LEDS_SET_NIGHT,
     API_CMD_SET_NIGHT_WINDOW,
-    API_CMD_SET_TIMEZONE
+    API_CMD_SET_TIMEZONE,
+    API_CMD_SET_STORAGE
 } api_cmd_type_t;
 
 typedef struct {

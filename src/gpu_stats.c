@@ -8,11 +8,20 @@
 #include <linux/perf_event.h>
 #include <i915_drm.h>
 
-/* Sample several i915 engine-busy counters and report the busiest. On a NAS the
- * iGPU is used mostly for video transcoding (VIDEO / VIDEO_ENHANCE engines), so
- * watching only the RENDER engine would read 0% even while Jellyfin etc. are
- * transcoding. We open render + video(0,1) + video-enhance and return the max. */
-#define MAX_ENG 6
+/* Older libdrm headers (pre-6.2) lack the compute engine class. Meteor Lake /
+ * Arc run compute workloads (OpenCL, oneVPL, AI inference) on a dedicated CCS
+ * engine that is separate from RENDER (RCS), so a pure compute load reads 0% on
+ * RENDER. Define the constant if the build header is too old to know it. */
+#ifndef I915_ENGINE_CLASS_COMPUTE
+#define I915_ENGINE_CLASS_COMPUTE 4
+#endif
+
+/* Sample EVERY i915 engine-busy counter and report the busiest, so any workload
+ * shows up: RENDER (3D), COPY/blitter (BCS, DMA), VIDEO (VCS, transcode), VIDEO
+ * ENHANCE (VECS, post-processing) and COMPUTE (CCS: AI/OpenCL/oneVPL). We try a
+ * generous (class, instance) grid below and keep whichever the GPU actually has
+ * (perf_event_open fails for the rest), so it adapts to any Intel generation. */
+#define MAX_ENG 16
 
 static int eng_fd[MAX_ENG];
 static unsigned long long eng_prev[MAX_ENG];
@@ -44,9 +53,17 @@ int gpu_stats_init(void)
 
     static const struct { unsigned cls, inst; } want[] = {
         { I915_ENGINE_CLASS_RENDER, 0 },
+        { I915_ENGINE_CLASS_COPY, 0 },
         { I915_ENGINE_CLASS_VIDEO, 0 },
         { I915_ENGINE_CLASS_VIDEO, 1 },
+        { I915_ENGINE_CLASS_VIDEO, 2 },
+        { I915_ENGINE_CLASS_VIDEO, 3 },
         { I915_ENGINE_CLASS_VIDEO_ENHANCE, 0 },
+        { I915_ENGINE_CLASS_VIDEO_ENHANCE, 1 },
+        { I915_ENGINE_CLASS_COMPUTE, 0 },
+        { I915_ENGINE_CLASS_COMPUTE, 1 },
+        { I915_ENGINE_CLASS_COMPUTE, 2 },
+        { I915_ENGINE_CLASS_COMPUTE, 3 },
     };
     eng_count = 0;
     for (unsigned i = 0; i < sizeof(want) / sizeof(want[0]) && eng_count < MAX_ENG; i++) {
@@ -57,7 +74,7 @@ int gpu_stats_init(void)
         fprintf(stderr, "gpu: perf_event_open failed (%s) — GPU usage unavailable\n", strerror(errno));
         return -1;
     }
-    fprintf(stderr, "gpu: i915 PMU active (%d engine counters: render/video)\n", eng_count);
+    fprintf(stderr, "gpu: i915 PMU active (%d engine counters: render/copy/video/compute)\n", eng_count);
     return 0;
 }
 

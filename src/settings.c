@@ -60,6 +60,8 @@ void settings_load(ui_state_t *st, const config_t *cfg)
     snprintf(st->led_night_end, sizeof(st->led_night_end), "%s", cfg->led_night_end);
     snprintf(st->timezone, sizeof(st->timezone), "%s", cfg->timezone);
     st->clock_24h = !!cfg->clock_24h;
+    snprintf(st->storage_path, sizeof(st->storage_path), "%s",
+             cfg->storage_path[0] ? cfg->storage_path : "/");
 
     FILE *fp = fopen(g_state_path, "r");
     if (!fp) return;
@@ -81,6 +83,8 @@ void settings_load(ui_state_t *st, const config_t *cfg)
     json_get_str(json, "timezone", st->timezone, sizeof(st->timezone));
     json_get_int(json, "clock_24h", &st->clock_24h);
     st->clock_24h = !!st->clock_24h;
+    json_get_str(json, "storage_path", st->storage_path, sizeof(st->storage_path));
+    if (!st->storage_path[0]) snprintf(st->storage_path, sizeof(st->storage_path), "/");
 
     if (st->brightness < 1) st->brightness = 1;
     if (st->brightness > 100) st->brightness = 100;
@@ -112,11 +116,13 @@ int settings_save(const ui_state_t *st)
             "    \"led_night_start\": \"%s\",\n"
             "    \"led_night_end\": \"%s\",\n"
             "    \"timezone\": \"%s\",\n"
-            "    \"clock_24h\": %d\n"
+            "    \"clock_24h\": %d,\n"
+            "    \"storage_path\": \"%s\"\n"
             "}\n",
             st->brightness, st->backlight_timeout, st->sleep_brightness,
             st->wallpaper, st->language, st->leds_on, st->led_night,
-            st->led_night_start, st->led_night_end, st->timezone, st->clock_24h);
+            st->led_night_start, st->led_night_end, st->timezone, st->clock_24h,
+            st->storage_path);
     fclose(fp);
 
     if (rename(tmp, g_state_path) != 0) {

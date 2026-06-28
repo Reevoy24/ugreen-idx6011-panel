@@ -88,8 +88,8 @@ MOCKOBJ = ./test/render_mock.o
 FONTOBJS = ./src/fonts/lv_font_montserrat_14.o ./src/fonts/lv_font_montserrat_16.o \
            ./src/fonts/lv_font_montserrat_18.o ./src/fonts/lv_font_montserrat_20.o
 
-mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(FONTOBJS) $(MOCKOBJ)
-	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o $(FONTOBJS) $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
+mock: $(LVGL_OBJS) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o ./src/system_stats.o $(FONTOBJS) $(MOCKOBJ)
+	$(CC) -o render-mock $(MOCKOBJ) ./src/gui.o ./src/i18n.o ./src/settings.o ./src/leds.o ./src/system_stats.o $(FONTOBJS) $(LVGL_OBJS) -lm -lpthread $(shell pkg-config --libs libdrm)
 	@echo "Built render-mock"
 
 install: default

@@ -20,7 +20,7 @@
 #define CARD_W (DISP_W - 2 * PAGE_PAD)
 #define BAR_HEIGHT 6
 #define SPARK_POINTS 36
-#define PANEL_H 484
+#define PANEL_H 540   /* fits the Display section's 4 rows (incl. Storage) + the rest */
 #define EDGE_STRIP_H 32
 #define SWIPE_TRIGGER 55
 
@@ -195,6 +195,7 @@ static lv_obj_t *bri_slider = NULL;
 static lv_obj_t *timeout_sub = NULL;
 static lv_obj_t *wp_sub = NULL;
 static lv_obj_t *lang_sub = NULL;
+static lv_obj_t *storage_sub = NULL;
 static lv_obj_t *led_sub = NULL;
 static lv_obj_t *led_night_sub = NULL;
 static int panel_h = PANEL_H; /* grows when the LED rows are shown */
@@ -209,6 +210,10 @@ static lv_obj_t *sleep_overlay = NULL;
 static char wp_opts[WP_MAX_OPTS][20];
 static int wp_opt_count = 0;
 static int wp_cur = 0;
+
+static char storage_opts[STORAGE_OPT_MAX][STORAGE_OPT_LEN];
+static int storage_opt_count = 0;
+static int storage_cur = 0;
 
 static const int timeout_presets[] = { 60, 300, 900, 1800, 0 };
 #define TIMEOUT_PRESET_COUNT 5
@@ -557,6 +562,18 @@ static void build_wp_options(void)
      * false positive (it can't prove wp_cur indexes a single 20-byte row). */
     snprintf(setup.state->wallpaper, sizeof(setup.state->wallpaper), "%.31s",
              wp_opts[wp_cur]);
+}
+
+/* Refresh the Storage picker options ("/" plus the top-level /mnt pools) and
+ * resolve the selected index from the current setup.state->storage_path. */
+static void build_storage_options(void)
+{
+    storage_opt_count = system_stats_list_mounts(storage_opts, STORAGE_OPT_MAX,
+                                                 setup.state->storage_path, &storage_cur);
+    if (storage_opt_count == 0) {       /* /proc/mounts unreadable: always offer "/" */
+        snprintf(storage_opts[0], STORAGE_OPT_LEN, "/");
+        storage_opt_count = 1; storage_cur = 0;
+    }
 }
 
 /* ================= pages ================= */
@@ -1157,6 +1174,21 @@ static void wp_btn_cb(lv_event_t *e)
     state_unlock();
 }
 
+/* Tap the Storage row to cycle through the mountpoints ("/" and the /mnt pools). */
+static void storage_btn_cb(lv_event_t *e)
+{
+    LV_UNUSED(e);
+    if (storage_opt_count == 0) return;
+    state_lock();
+    storage_cur = (storage_cur + 1) % storage_opt_count;
+    snprintf(setup.state->storage_path, sizeof(setup.state->storage_path), "%s",
+             storage_opts[storage_cur]);
+    system_stats_set_root(setup.state->storage_path);
+    lv_label_set_text(storage_sub, storage_opts[storage_cur]);
+    settings_save(setup.state);
+    state_unlock();
+}
+
 static void lang_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
@@ -1231,6 +1263,16 @@ int gui_wallpaper_options(char out[][20], int max, int *cur)
         snprintf(out[i], 20, "%.19s", wp_opts[i]);
     if (cur) *cur = wp_cur;
     return n;
+}
+
+/* The web UI changed storage_path (ui_state is already updated): re-resolve the
+ * picker selection from it and refresh the on-device row label. */
+void gui_storage_set(const char *path)
+{
+    (void)path;
+    build_storage_options();
+    if (storage_sub)
+        lv_label_set_text(storage_sub, storage_opt_count ? storage_opts[storage_cur] : "/");
 }
 
 static void edge_strip_cb(lv_event_t *e)
@@ -1443,10 +1485,13 @@ static void build_settings_panel(lv_obj_t *screen)
     lv_obj_t *lc = list_card_new(panel);
     list_row(lc, TR_SCREEN_OFF, &timeout_sub, timeout_btn_cb, 0);
     list_row(lc, TR_WALLPAPER, &wp_sub, wp_btn_cb, 0);
-    list_row(lc, TR_LANGUAGE, &lang_sub, lang_btn_cb, 1);
+    list_row(lc, TR_LANGUAGE, &lang_sub, lang_btn_cb, 0);
+    list_row(lc, TR_STORAGE, &storage_sub, storage_btn_cb, 1);
     timeout_sub_refresh();
     lv_label_set_text(wp_sub, wp_display_name(wp_opts[wp_cur]));
     lv_label_set_text(lang_sub, i18n_language_name(i18n_language_index()));
+    build_storage_options();
+    lv_label_set_text(storage_sub, storage_opt_count ? storage_opts[storage_cur] : "/");
 
     if (setup.show_leds) {
         section_label(panel, TR_SEC_LEDS);

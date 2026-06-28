@@ -9,12 +9,58 @@
 static unsigned long long prev_total = 0;
 static unsigned long long prev_idle = 0;
 
+/* Mountpoint the Storage widget reports usage for. Default "/" (root fs); on
+ * TrueNAS the installer/config points it at a data pool so the widget is useful
+ * instead of showing the read-only boot pool. Set via system_stats_set_root(). */
+static char g_root[256] = "/";
+
+void system_stats_set_root(const char *path) {
+    if (path && path[0]) snprintf(g_root, sizeof(g_root), "%s", path);
+    else                 snprintf(g_root, sizeof(g_root), "/");
+}
+
+/* Offer "/" plus each top-level /mnt/<name> mount (the data pools on TrueNAS;
+ * "/" is the only useful one on a plain rootfs). Pseudo filesystems are skipped.
+ * `current` is force-included so a config-set custom path stays selectable. */
+int system_stats_list_mounts(char out[][STORAGE_OPT_LEN], int max,
+                             const char *current, int *cur_idx) {
+    int n = 0;
+    if (n < max) snprintf(out[n++], STORAGE_OPT_LEN, "/");
+
+    FILE *f = fopen("/proc/mounts", "r");
+    if (f) {
+        char dev[128], mnt[256], fstype[64];
+        while (n < max && fscanf(f, "%127s %255s %63s %*[^\n]", dev, mnt, fstype) == 3) {
+            if (strncmp(mnt, "/mnt/", 5) != 0) continue;     /* only /mnt/<name> ... */
+            const char *name = mnt + 5;
+            if (!name[0] || strchr(name, '/')) continue;     /* ... with no further '/' */
+            if (!strcmp(fstype, "tmpfs") || !strcmp(fstype, "overlay") ||
+                !strcmp(fstype, "squashfs") || !strcmp(fstype, "devtmpfs") ||
+                !strcmp(fstype, "proc") || !strcmp(fstype, "sysfs")) continue;
+            int dup = 0;
+            for (int i = 0; i < n; i++) if (!strcmp(out[i], mnt)) { dup = 1; break; }
+            if (dup) continue;
+            snprintf(out[n++], STORAGE_OPT_LEN, "%s", mnt);
+        }
+        fclose(f);
+    }
+
+    int idx = 0;
+    if (current && current[0]) {
+        int found = 0;
+        for (int i = 0; i < n; i++) if (!strcmp(out[i], current)) { idx = i; found = 1; break; }
+        if (!found && n < max) { snprintf(out[n], STORAGE_OPT_LEN, "%.*s", STORAGE_OPT_LEN - 1, current); idx = n; n++; }
+    }
+    if (cur_idx) *cur_idx = idx;
+    return n;
+}
+
 static float get_cpu_usage(void) {
     FILE *fp = fopen("/proc/stat", "r");
     if (!fp) return 0.0f;
 
     char line[256];
-    unsigned long long user, nice, sys, idle, iowait = 0, irq = 0, softirq = 0;
+    unsigned long long user, nice, sys, idle, iowait = 0, irq = 0, softirq = 0, steal = 0;
 
     if (!fgets(line, sizeof(line), fp) || strncmp(line, "cpu ", 4) != 0) {
         fclose(fp);
@@ -22,10 +68,16 @@ static float get_cpu_usage(void) {
     }
     fclose(fp);
 
-    sscanf(line, "cpu %llu %llu %llu %llu %llu %llu %llu",
-           &user, &nice, &sys, &idle, &iowait, &irq, &softirq);
+    /* /proc/stat aggregate line. We read through 'steal' (time the hypervisor
+     * ran someone else): 0 on bare metal, but real non-idle time inside a VM or
+     * under host contention, so counting it keeps the number honest (matches
+     * top). guest / guest_nice are intentionally omitted, the kernel already
+     * folds them into user / nice (adding them would double-count). iowait is
+     * grouped with idle (the CPU is waiting, not working), as is conventional. */
+    sscanf(line, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
+           &user, &nice, &sys, &idle, &iowait, &irq, &softirq, &steal);
 
-    unsigned long long total = user + nice + sys + idle + iowait + irq + softirq;
+    unsigned long long total = user + nice + sys + idle + iowait + irq + softirq + steal;
     unsigned long long idle_total = idle + iowait;
 
     unsigned long long total_diff = total - prev_total;
@@ -68,14 +120,15 @@ static float get_ram_usage(float *used_mb, float *total_mb) {
     return ((float)used_kb / (float)total_kb) * 100.0f;
 }
 
-/* Root-filesystem usage via statvfs() instead of popen("df ...").
+/* Usage of g_root (default "/") via statvfs() instead of popen("df ...").
  * df forked a shell every poll (2 s) and on a busy ZFS root that fork+exec+df
  * could block the single-threaded GUI loop for tens-to-hundreds of ms — a
- * needless hitch. statvfs reads the same mounted-fs counters directly.
+ * needless hitch. statvfs reads the same mounted-fs counters directly, and on a
+ * pool mountpoint it reports the whole pool regardless of how many drives back it.
  * Percentage mirrors df's "used / (used + available-to-unprivileged)". */
 static float get_disk_usage(float *used_gb, float *total_gb) {
     struct statvfs vfs;
-    if (statvfs("/", &vfs) != 0) {
+    if (statvfs(g_root, &vfs) != 0) {
         if (used_gb) *used_gb = 0.0f;
         if (total_gb) *total_gb = 0.0f;
         return 0.0f;

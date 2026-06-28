@@ -470,6 +470,14 @@ static int valid_timezone(const char *tz) {
     return access(p, F_OK) == 0;
 }
 
+/* Storage widget mountpoint: an absolute path to an existing directory (so the
+ * statvfs the widget runs on it succeeds). */
+static int valid_storage(const char *path) {
+    if (!path[0] || path[0] != '/' || strstr(path, "..")) return 0;
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
 /* ---- handlers ---- */
 static void handle_stats(int fd) {
     api_snapshot_t s;
@@ -579,6 +587,11 @@ static void handle_stats(int fd) {
     for (int i = 0; i < s.wp_count; i++) { jappend(&b, "%s", i ? "," : ""); jstr(&b, s.wp_opts[i]); }
     jappend(&b, "]},");
 
+    jappend(&b, "\"storage\":{\"current\":"); jstr(&b, s.storage_path);
+    jappend(&b, ",\"options\":[");
+    for (int i = 0; i < s.storage_count; i++) { jappend(&b, "%s", i ? "," : ""); jstr(&b, s.storage_opts[i]); }
+    jappend(&b, "]},");
+
     jappend(&b, "\"caps\":{\"has_pve\":%s,\"has_opnsense\":%s,\"has_leds\":%s,\"has_gpu\":%s,\"has_touch\":%s}}",
             s.has_pve ? "true" : "false", s.has_opnsense ? "true" : "false",
             s.has_leds ? "true" : "false", s.has_gpu ? "true" : "false", s.has_touch ? "true" : "false");
@@ -591,7 +604,7 @@ static void handle_settings_get(int fd) {
     pthread_mutex_lock(&snap_lock);
     s = snap;
     pthread_mutex_unlock(&snap_lock);
-    char out[512];
+    char out[1024];
     jbuf_t b = { out, sizeof(out), 0 };
     jappend(&b, "{\"brightness\":%d,\"backlight_timeout\":%d,\"sleep_brightness\":%d,"
                 "\"leds_on\":%s,\"led_night\":%s,\"clock_24h\":%s,\"has_leds\":%s,\"language\":",
@@ -604,6 +617,7 @@ static void handle_settings_get(int fd) {
     jappend(&b, ",\"led_night_start\":"); jstr(&b, s.led_night_start);
     jappend(&b, ",\"led_night_end\":"); jstr(&b, s.led_night_end);
     jappend(&b, ",\"timezone\":"); jstr(&b, s.timezone);
+    jappend(&b, ",\"storage_path\":"); jstr(&b, s.storage_path);
     jappend(&b, "}");
     send_json(fd, 200, out);
 }
@@ -670,10 +684,16 @@ static void handle_settings_post(int fd, const http_req_t *req) {
         if (!valid_timezone(s)) { send_error(fd, 400, "unknown timezone"); return; }
         p.has_timezone = 1; snprintf(p.timezone, sizeof(p.timezone), "%.39s", s);
     }
+    char sp[256];
+    if (json_get_str(j, "storage_path", sp, sizeof(sp)) == 0) {
+        if (!valid_storage(sp)) { send_error(fd, 400, "storage_path must be an existing directory"); return; }
+        p.has_storage_path = 1; snprintf(p.storage_path, sizeof(p.storage_path), "%.255s", sp);
+    }
 
     if (!(p.has_brightness || p.has_timeout || p.has_sleep || p.has_language ||
           p.has_leds_on || p.has_led_night || p.has_wallpaper ||
-          p.has_night_start || p.has_night_end || p.has_timezone || p.has_clock_24h)) {
+          p.has_night_start || p.has_night_end || p.has_timezone || p.has_clock_24h ||
+          p.has_storage_path)) {
         send_error(fd, 400, "no changes");
         return;
     }

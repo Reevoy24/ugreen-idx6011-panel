@@ -24,6 +24,10 @@ interval=3
 # Optional password protecting only the fan-control actions (monitoring stays
 # open on the LAN). Leave unset for no password.
 #api_password=changeme
+# Mountpoint the web dashboard's Storage widget reports usage for (default "/").
+# On TrueNAS the root is the read-only boot pool, so point this at a data pool
+# for useful numbers. statvfs of a pool mountpoint covers the whole pool.
+#storage_path=/mnt/tank
 
 # Fan curves: comma-separated  TEMP:SPEED  points — TEMP in degrees C, SPEED in
 # percent (0-100; 100 = full speed). The speed is interpolated between points

@@ -61,6 +61,7 @@ void gui_wallpaper_rescan(void);             /* re-scan options + re-apply curre
 /* Copy the current wallpaper option names (each <20 chars) for the web API.
  * Returns the count; *cur = selected index. */
 int  gui_wallpaper_options(char out[][20], int max, int *cur);
+void gui_storage_set(const char *path);      /* re-sync the Storage row after a web change */
 
 void gui_cleanup(void);
 

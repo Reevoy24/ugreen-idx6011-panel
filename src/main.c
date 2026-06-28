@@ -246,6 +246,7 @@ int api_apply_settings(const api_settings_patch_t *p) {
     if (p->has_timeout)    { ui_state.backlight_timeout = p->timeout; act_set_timeout(p->timeout); changed = 1; }
     if (p->has_sleep)      { ui_state.sleep_brightness = p->sleep_brightness; changed = 1; }
     if (p->has_clock_24h)  { ui_state.clock_24h = p->clock_24h; changed = 1; }
+    if (p->has_storage_path) { snprintf(ui_state.storage_path, sizeof(ui_state.storage_path), "%.255s", p->storage_path); changed = 1; }
     if (p->has_language)   { snprintf(ui_state.language, sizeof(ui_state.language), "%.3s", p->language);
                              i18n_set_language(p->language); lang_changed = 1; changed = 1; }
     if (changed) settings_save(&ui_state);
@@ -267,6 +268,10 @@ int api_apply_settings(const api_settings_patch_t *p) {
         snprintf(c.arg_str, sizeof(c.arg_str), "%s", p->timezone);
         api_cmd_push(&c);
     }
+    /* storage_path is already in ui_state (set + saved above); the main thread
+     * applies it to g_root + the display label (value lives in ui_state, not
+     * arg_str, which is too small for a full mountpoint). */
+    if (p->has_storage_path) { api_cmd_t c = { .type = API_CMD_SET_STORAGE }; api_cmd_push(&c); }
     return 0;
 }
 
@@ -306,11 +311,14 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
     snprintf(g_snap.led_night_start, sizeof(g_snap.led_night_start), "%s", ui_state.led_night_start);
     snprintf(g_snap.led_night_end, sizeof(g_snap.led_night_end), "%s", ui_state.led_night_end);
     snprintf(g_snap.timezone, sizeof(g_snap.timezone), "%s", ui_state.timezone);
+    snprintf(g_snap.storage_path, sizeof(g_snap.storage_path), "%s", ui_state.storage_path);
     pthread_mutex_unlock(&settings_lock);
 
     if (has_leds)
         snprintf(g_snap.led_night_window, sizeof(g_snap.led_night_window), "%s", leds_night_window());
     g_snap.wp_count = gui_wallpaper_options(g_snap.wp_opts, API_WP_MAX, &g_snap.wp_cur);
+    g_snap.storage_count = system_stats_list_mounts(g_snap.storage_opts, STORAGE_OPT_MAX,
+                                                    g_snap.storage_path, &g_snap.storage_cur);
 
     api_publish_stats(&g_snap);
 }
@@ -415,6 +423,7 @@ int main(int argc, char *argv[]) {
     i18n_set_language(ui_state.language);
     bl_timeout_ms = (uint32_t)ui_state.backlight_timeout * 1000;
     if (ui_state.timezone[0]) { setenv("TZ", ui_state.timezone, 1); tzset(); }
+    system_stats_set_root(ui_state.storage_path);  /* Storage widget mountpoint (state.json overrides config) */
 
     backlight_init();
     backlight_set(ui_state.brightness);
@@ -570,6 +579,15 @@ int main(int argc, char *argv[]) {
                 settings_save(&ui_state);
                 pthread_mutex_unlock(&settings_lock);
                 break;
+            case API_CMD_SET_STORAGE: {
+                char path[256];
+                pthread_mutex_lock(&settings_lock);
+                snprintf(path, sizeof(path), "%s", ui_state.storage_path);
+                pthread_mutex_unlock(&settings_lock);
+                system_stats_set_root(path);   /* the collector's mountpoint */
+                gui_storage_set(path);         /* refresh the display row label */
+                break;
+            }
             }
         }
 

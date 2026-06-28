@@ -64,6 +64,11 @@ typedef struct {
                                 On TrueNAS/Unraid point this at the pool/flash so
                                 changes survive a reboot (env UG_PANELD_STATE also
                                 works; this key wins if set) */
+    char storage_path[256];  /* mountpoint whose usage the Storage widget shows;
+                                "/" (default) = the root filesystem. On TrueNAS the
+                                root is the read-only boot pool, so point this at a
+                                data pool, e.g. "/mnt/tank". statvfs of a pool's
+                                mountpoint reports the whole pool (any drive count) */
 } config_t;
 
 int config_load(config_t *config);

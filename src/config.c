@@ -98,6 +98,7 @@ int config_load(config_t *config) {
     snprintf(config->power_button, sizeof(config->power_button), "auto");
     config->boot_settle_secs = 120;
     config->state_file[0] = '\0';
+    snprintf(config->storage_path, sizeof(config->storage_path), "/");
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
     if (!fp)
@@ -150,6 +151,7 @@ int config_load(config_t *config) {
     json_get_str(json, "power_button", config->power_button, sizeof(config->power_button));
     json_get_int(json, "boot_settle_secs", &config->boot_settle_secs);
     json_get_str(json, "state_file", config->state_file, sizeof(config->state_file));
+    json_get_str(json, "storage_path", config->storage_path, sizeof(config->storage_path));
 
     free(json);
     return 0;

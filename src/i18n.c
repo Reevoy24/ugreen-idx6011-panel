@@ -40,6 +40,7 @@ static const char *strings[TR_COUNT][LANG_COUNT] = {
     [TR_SCREEN_OFF]    = { "Bildschirm aus",           "Screen off",            "Apagar pantalla",          "Écran éteint",          "Desligar tela",            "Matikan layar" },
     [TR_WALLPAPER]     = { "Hintergrundbild",          "Wallpaper",             "Fondo",                    "Fond d'écran",          "Papel de parede",          "Wallpaper" },
     [TR_LANGUAGE]      = { "Sprache",                  "Language",              "Idioma",                   "Langue",                "Idioma",                   "Bahasa" },
+    [TR_STORAGE]       = { "Speicher",                 "Storage",               "Almacenamiento",           "Stockage",              "Armazenamento",            "Penyimpanan" },
     [TR_RESTART]       = { "Neu starten",              "Restart",               "Reiniciar",                "Redémarrer",            "Reiniciar",                "Mulai ulang" },
     [TR_SHUTDOWN]      = { "Herunterfahren",           "Shut down",             "Apagar",                   "Éteindre",              "Desligar",                 "Matikan" },
     [TR_NEVER]         = { "Nie",                      "Never",                 "Nunca",                    "Jamais",                "Nunca",                    "Tidak pernah" },

@@ -52,6 +52,7 @@ by default. Enable it by setting a port in the config, then restart the daemon:
 
     api_port=8765           # then open http://<nas-ip>:8765/
     #api_password=secret    # optional, protects the fan-control actions only
+    #storage_path=/mnt/tank # which mountpoint the Storage widget shows (default /)
 
 Especially handy on the non-Pro (no display). LAN only — do NOT expose it to the
 internet. Changing api_port needs a restart; mode/curve edits hot-reload. The

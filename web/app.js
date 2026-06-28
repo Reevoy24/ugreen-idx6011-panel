@@ -3,7 +3,7 @@ import { STRINGS, pickLang } from "./i18n.js";
 const POLL_MS = 2500;
 const MODE_GRACE_MS = 6000;          // optimistic-highlight grace, mirrors the panel
 const RPM_MAX = { cpu: 2400, sys: 2200 };
-const TIMEOUTS = [60, 300, 900, 1800, 0];
+const TIMEOUTS = [15, 30, 60, 300, 900, 1800, 0];
 const LANG_NAMES = { en: "English", de: "Deutsch", es: "Español", fr: "Français", pt: "Português", id: "Indonesia" };
 const TIMEZONES = [
   "UTC",
@@ -202,7 +202,7 @@ function render(s) {
 
   /* settings (skip controls the user is interacting with) */
   syncRange("set-brightness", stx.brightness);
-  syncSelect("set-timeout", stx.backlight_timeout);
+  syncTimeoutSelect(stx.backlight_timeout);
   syncRange("set-sleep", stx.sleep_brightness);
   syncSelect("set-language", stx.language);
   syncSelect("lang", stx.language);
@@ -218,6 +218,7 @@ function render(s) {
   setTimeValue("night-start", stx.led_night_start);
   setTimeValue("night-end", stx.led_night_end);
   syncTzSelect(stx.timezone);
+  syncStorageSelect(s.storage);
 
   renderWallpapers(s.wallpapers || { options: [], current: "" });
 }
@@ -257,6 +258,44 @@ function syncTzSelect(v) {
     el.insertBefore(o, el.firstChild);
   }
   el.value = v;
+}
+
+const timeoutLabel = (s) => (s === 0 ? t("never") : s % 60 === 0 ? s / 60 + " min" : s + " s");
+
+/* Like syncTzSelect: show the configured screen-off timeout even when it is not
+ * one of the presets (e.g. a sub-minute value set in config.json), inserted in
+ * numeric order with "Never" (0) kept last, so the dropdown never reads blank. */
+function syncTimeoutSelect(v) {
+  if (v == null) return;
+  const el = $("set-timeout");
+  if (!el || document.activeElement === el) return;
+  const val = String(v);
+  if (![...el.options].some((o) => o.value === val)) {
+    const o = document.createElement("option");
+    o.value = val;
+    o.textContent = timeoutLabel(v);
+    const ref = [...el.options].find((x) => x.value !== "0" && Number(x.value) > v) ||
+                [...el.options].find((x) => x.value === "0") || null;
+    el.insertBefore(o, ref);
+  }
+  el.value = val;
+}
+
+/* Storage mountpoint picker: options + current come from the snapshot's storage
+ * block (the server always includes the current value). Rebuild only when the
+ * option set changes, so a non-focused select is not reset every poll. */
+function syncStorageSelect(st) {
+  const el = $("set-storage");
+  if (!el || document.activeElement === el || !st) return;
+  const opts = st.options || [];
+  const cur = st.current || "/";
+  const list = opts.includes(cur) ? opts : [cur, ...opts];
+  const sig = list.join("\n");
+  if (el.dataset.sig !== sig) {
+    el.innerHTML = list.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+    el.dataset.sig = sig;
+  }
+  el.value = cur;
 }
 
 /* ---------- custom 12h/24h time pickers ----------
@@ -403,10 +442,7 @@ function drawPlot(fan) {
 /* ---------- wiring ---------- */
 function buildSelects() {
   const ts = $("set-timeout");
-  ts.innerHTML = TIMEOUTS.map((s) => {
-    const label = s === 0 ? t("never") : (s % 60 === 0 ? (s / 60) + " min" : s + " s");
-    return `<option value="${s}">${label}</option>`;
-  }).join("");
+  ts.innerHTML = TIMEOUTS.map((s) => `<option value="${s}">${timeoutLabel(s)}</option>`).join("");
   const langOpts = Object.keys(STRINGS).map((c) => `<option value="${c}">${LANG_NAMES[c] || c}</option>`).join("");
   const sl = $("set-language"); if (sl) sl.innerHTML = langOpts;
   const tl = $("lang"); if (tl) tl.innerHTML = langOpts;
@@ -448,6 +484,8 @@ function wireControls() {
   });
   const stz = $("set-tz");
   if (stz) stz.addEventListener("change", (e) => postSettings({ timezone: e.target.value.trim() }));
+  const sstor = $("set-storage");
+  if (sstor) sstor.addEventListener("change", (e) => postSettings({ storage_path: e.target.value }));
 
   // the Save button only commits the start/end times (a paired range).
   const nsv = $("night-save");

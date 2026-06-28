@@ -207,6 +207,8 @@ typedef struct {
     int force;
     int api_port;              /* >0 enables the web dashboard (opt-in) */
     char api_password[64];     /* "" = fan control open on the LAN */
+    char storage_path[256];    /* mountpoint the web Storage widget reports (default "/";
+                                  on TrueNAS point at a data pool, e.g. /mnt/tank) */
     curve_t cpu[MODE_COUNT];
     curve_t sys[MODE_COUNT];
 } fanconf_t;
@@ -262,6 +264,7 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->force = cli_force;
     cf->api_port = 0;
     cf->api_password[0] = '\0';
+    snprintf(cf->storage_path, sizeof(cf->storage_path), "/");
     static const point_t cs[] = {{0,14},{64,14},{74,35},{82,71}, {88,100}};
     static const point_t cd[] = {{0,15},{60,15},{70,38},{78,71}, {86,100}};
     static const point_t ct[] = {{0,25},{55,25},{66,66},{75,93}, {82,100}};
@@ -300,6 +303,8 @@ static void load_config(fanconf_t *cf, int cli_force) {
             int v = atoi(val); if (v >= 0 && v <= 65535) cf->api_port = v;
         } else if (!strcmp(key, "api_password")) {
             snprintf(cf->api_password, sizeof(cf->api_password), "%s", val);
+        } else if (!strcmp(key, "storage_path")) {
+            snprintf(cf->storage_path, sizeof(cf->storage_path), "%s", val);
         }
         else if (!strcmp(key, "cpu_silent"))  parse_curve(val, &cf->cpu[MODE_SILENT]);
         else if (!strcmp(key, "cpu_default")) parse_curve(val, &cf->cpu[MODE_DEFAULT]);
@@ -550,6 +555,7 @@ int main(int argc, char **argv) {
         if (web_on) {
             fand_snapshot_t fs;
             memset(&fs, 0, sizeof(fs));
+            system_stats_set_root(cf.storage_path);  /* honours storage_path (hot-reloaded) */
             system_stats_collect(&fs.sys);
             net_stats_collect(&fs.net);
             disk_stats_collect(&fs.disks);
