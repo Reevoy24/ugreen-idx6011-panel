@@ -97,9 +97,12 @@ export const STRINGS = {
 };
 
 export function pickLang() {
+  /* English is the project default; do NOT auto-pick the browser language
+   * (the panel follows its device setting, and the non-Pro fan dashboard has no
+   * device setting, so without this it would silently come up in the browser
+   * locale instead of English). A ?lang= query or the user's saved choice win. */
   const q = new URLSearchParams(location.search).get("lang");
   const stored = localStorage.getItem("ugpaneld_lang");
-  const nav = (navigator.language || "en").slice(0, 2);
-  const cand = q || stored || nav || "en";
+  const cand = q || stored || "en";
   return STRINGS[cand] ? cand : "en";
 }

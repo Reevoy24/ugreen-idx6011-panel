@@ -11,6 +11,6 @@
  * of the panel (it ships on the non-Pro iDX6011, which has no display). Shown in
  * the ug-fand web dashboard footer and exposed via its /api/stats. The
  * build-fand.sh script derives the package version from this. */
-#define UG_FAND_VERSION "1.1.0-beta2"
+#define UG_FAND_VERSION "1.1.0-beta3"
 
 #endif

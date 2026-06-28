@@ -47,7 +47,25 @@ void fand_api_publish(const fand_snapshot_t *s) {
     pthread_mutex_unlock(&snap_lock);
 }
 
-/* ---- tiny JSON string extractor (hand-rolled, like config.c) ---- */
+/* ---- tiny JSON value extractors (hand-rolled, like config.c) ---- */
+static int json_get_int(const char *json, const char *key, int *value) {
+    char search[64];
+    snprintf(search, sizeof(search), "\"%s\"", key);
+    const char *f = strstr(json, search);
+    if (!f) return -1;
+    f = strchr(f + strlen(search), ':');
+    if (!f) return -1;
+    f++;
+    while (*f == ' ' || *f == '\t') f++;
+    if (strncmp(f, "true", 4) == 0)  { *value = 1; return 0; }
+    if (strncmp(f, "false", 5) == 0) { *value = 0; return 0; }
+    char *end;
+    long v = strtol(f, &end, 10);
+    if (end == f) return -1;
+    *value = (int)v;
+    return 0;
+}
+
 static int json_get_str(const char *json, const char *key, char *buf, size_t bufsz) {
     char search[64];
     snprintf(search, sizeof(search), "\"%s\"", key);
@@ -434,7 +452,7 @@ static void handle_stats(int fd) {
     jappend(&b, "\"wallpapers\":{\"current\":\"\",\"options\":[]},");
 
     jappend(&b, "\"caps\":{\"has_panel\":false,\"has_pve\":false,\"has_opnsense\":false,"
-                "\"has_leds\":false,\"has_gpu\":false,\"has_touch\":false}}");
+                "\"has_leds\":false,\"has_gpu\":false,\"has_touch\":false,\"has_power\":true}}");
 
     send_json(fd, 200, out);
 }
@@ -508,6 +526,28 @@ static void handle_fan_mode(int fd, const http_req_t *req) {
     send_json(fd, 200, "{\"ok\":true}");
 }
 
+/* Plain host power action (reboot/poweroff). NO Proxmox guest-stop — that smart
+ * shutdown is the panel's job; on the non-Pro this is a normal, immediate host
+ * action. Password-gated by the router (power is never open on the LAN). */
+static void handle_power(int fd, const http_req_t *req) {
+    const char *j = req->body ? req->body : "";
+    char action[16];
+    int confirm = 0;
+    json_get_int(j, "confirm", &confirm);
+    if (json_get_str(j, "action", action, sizeof(action)) != 0) { send_error(fd, 400, "action required"); return; }
+    int poweroff;
+    if (!strcmp(action, "poweroff")) poweroff = 1;
+    else if (!strcmp(action, "reboot")) poweroff = 0;
+    else { send_error(fd, 400, "invalid action"); return; }
+    if (!confirm) { send_error(fd, 400, "confirm required"); return; }
+
+    send_json(fd, 200, "{\"ok\":true}");   /* answer before the box goes down */
+    fprintf(stderr, "ug-fand: web %s requested\n", poweroff ? "poweroff" : "reboot");
+    if (system(poweroff ? "systemctl poweroff 2>/dev/null || poweroff"
+                        : "systemctl reboot 2>/dev/null || reboot") != 0)
+        fprintf(stderr, "ug-fand: power command failed\n");
+}
+
 /* ---- router ---- */
 static void handle_request(int fd) {
     http_req_t req;
@@ -525,6 +565,11 @@ static void handle_request(int fd) {
         if (!is_post) send_error(fd, 405, NULL);
         else if (password_set() && !password_ok(&req)) send_auth_required(fd);
         else handle_fan_mode(fd, &req);
+    } else if (strcmp(req.path, "/api/power") == 0) {
+        if (!is_post) send_error(fd, 405, NULL);
+        else if (!password_set()) send_error(fd, 403, "set api_password to enable remote power control");
+        else if (!password_ok(&req)) send_auth_required(fd);
+        else handle_power(fd, &req);
     } else if (is_get) {
         serve_file(fd, req.path);
     } else {

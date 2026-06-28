@@ -120,9 +120,10 @@ function render(s) {
    * keep just the monitoring + fan-control sections. */
   const caps = s.caps || {};
   hasPanel = caps.has_panel !== false;
+  const hasPower = caps.has_power !== false;   /* both the panel and ug-fand expose /api/power */
   toggle("block-settings", hasPanel);
-  toggle("btn-restart", hasPanel);
-  toggle("btn-shutdown", hasPanel);
+  toggle("btn-restart", hasPower);
+  toggle("btn-shutdown", hasPower);
   if (!hasPanel) fixBrandForFand();
 
   /* dashboard follows the device's language setting — but only when there IS one
@@ -204,8 +205,11 @@ function render(s) {
   syncRange("set-brightness", stx.brightness);
   syncTimeoutSelect(stx.backlight_timeout);
   syncRange("set-sleep", stx.sleep_brightness);
-  syncSelect("set-language", stx.language);
-  syncSelect("lang", stx.language);
+  /* the panel follows its device language; the non-Pro fan dashboard has none,
+   * so its picker reflects the client choice (default English) instead. */
+  const uiLang = hasPanel ? stx.language : lang;
+  syncSelect("set-language", uiLang);
+  syncSelect("lang", uiLang);
   syncCheck("set-leds", stx.leds_on);
   syncCheck("set-night", stx.led_night);
   toggle("row-leds", caps.has_leds);
