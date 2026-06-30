@@ -184,6 +184,40 @@ static int probe_devices(const char *forced, const char *want, probe_result_t *o
     return found;
 }
 
+/* One-time snapshot of the device's connector->encoder->CRTC bindings and which
+ * CRTCs are already active. Makes a multi-display conflict visible in the
+ * journal: if an external screen (HDMI) holds a CRTC the panel then needs, the
+ * panel could otherwise pull that screen to its tiny mode. Read-only; safe
+ * without DRM master. */
+static void log_topology(const char *path)
+{
+    int fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0) return;
+
+    drmModeRes *res = drmModeGetResources(fd);
+    if (!res) { close(fd); return; }
+
+    for (int i = 0; i < res->count_connectors; i++) {
+        drmModeConnector *conn = drmModeGetConnector(fd, res->connectors[i]);
+        if (!conn) continue;
+        char name[40];
+        connector_name(conn, name, sizeof(name));
+        LOGI("topology: connector %s (id %u) %s, bound encoder_id %u",
+             name, conn->connector_id, connection_str(conn->connection), conn->encoder_id);
+        drmModeFreeConnector(conn);
+    }
+    for (int i = 0; i < res->count_crtcs; i++) {
+        drmModeCrtc *c = drmModeGetCrtc(fd, res->crtcs[i]);
+        if (!c) continue;
+        LOGI("topology: crtc id %u %s %ux%u", c->crtc_id,
+             c->mode_valid ? "ACTIVE (driving an output)" : "free", c->width, c->height);
+        drmModeFreeCrtc(c);
+    }
+
+    drmModeFreeResources(res);
+    close(fd);
+}
+
 int display_init(const config_t *config)
 {
     dbg = config->debug;
@@ -225,6 +259,10 @@ int display_init(const config_t *config)
 
     LOGI("using DRM device %s, connector %s (id %u), mode %ux%u@%u",
          pr.device, pr.connector_name, pr.connector_id, pr.width, pr.height, pr.refresh);
+
+    /* Multi-display diagnostic: log who holds which CRTC before we hand off to
+     * LVGL, so an HDMI-console-vs-panel pipe conflict is visible. */
+    log_topology(pr.device);
 
     lv_init();
     lv_tick_set_cb(custom_tick_get);
