@@ -476,6 +476,8 @@ If a connector **is** connected but the screen stays black, set `"debug": true`,
 
 </details>
 
+**Text console on an external monitor is tiny (front panel and big screen together).** With the front panel and an external HDMI/DP monitor both connected, the Linux text console sizes itself to the smallest display, so the big monitor only shows a tiny 258×960 console in the corner. This is not ug-paneld: the two screens sit on separate display pipes, and it is simply how the in-kernel framebuffer console clones. The opt-in `tools/setup-nondesktop-console.sh` marks the front panel as a "non-desktop" display (the same flag the kernel already uses for VR headsets and the Apple Touch Bar) via a per-unit EDID override, so the console ignores the panel and uses the external monitor at its full resolution. ug-paneld keeps driving the panel normally, since it selects the connector directly and never reads the EDID identity. Proxmox/Debian only, run as root, then reboot to apply (`--uninstall` reverts). One caveat: with the panel flagged non-desktop and no external monitor attached at boot, there is no local text console until one is plugged in (the front panel and SSH still work).
+
 ## How it works
 
 Everything runs in userspace, with no display kernel patches:
