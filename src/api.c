@@ -650,7 +650,7 @@ static void handle_settings_post(int fd, const http_req_t *req) {
     char s[64];
 
     if (json_get_int(j, "brightness", &v) == 0) {
-        if (v < 1 || v > 100) { send_error(fd, 400, "brightness 1-100"); return; }
+        if (v < 0 || v > 100) { send_error(fd, 400, "brightness 0-100"); return; }
         p.has_brightness = 1; p.brightness = v;
     }
     if (json_get_int(j, "backlight_timeout", &v) == 0) {

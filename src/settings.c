@@ -86,7 +86,7 @@ void settings_load(ui_state_t *st, const config_t *cfg)
     json_get_str(json, "storage_path", st->storage_path, sizeof(st->storage_path));
     if (!st->storage_path[0]) snprintf(st->storage_path, sizeof(st->storage_path), "/");
 
-    if (st->brightness < 1) st->brightness = 1;
+    if (st->brightness < 0) st->brightness = 0;
     if (st->brightness > 100) st->brightness = 100;
     if (st->backlight_timeout < 0) st->backlight_timeout = 0;
     if (st->sleep_brightness < 0) st->sleep_brightness = 0;
