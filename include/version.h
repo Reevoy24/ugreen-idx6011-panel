@@ -5,7 +5,7 @@
  * (and exposed via /api/stats). Bump this on every release alongside the README
  * badge. The .deb/tarball build scripts derive their package version from it
  * (turning a "-betaN" suffix into "~betaN" for dpkg ordering). */
-#define UG_VERSION "1.7.2-beta3"
+#define UG_VERSION "1.7.2"
 
 /* Standalone fan daemon (ug-fand) version. Released and versioned independently
  * of the panel (it ships on the non-Pro iDX6011, which has no display). Shown in
