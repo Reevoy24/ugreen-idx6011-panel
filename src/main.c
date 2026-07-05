@@ -59,9 +59,14 @@ static api_snapshot_t g_snap; /* assembled each poll cycle, published to the API
 #define SLEEPLOG(...) do { fprintf(stderr, "ug-paneld[disp]: " __VA_ARGS__); fputc('\n', stderr); } while (0)
 
 /* ---- settings panel actions ---- */
+/* Last non-zero brightness, so a wake from a manual "0 = off" restores a
+ * visible level instead of a black screen. */
+static int g_last_on_brightness = 100;
+
 static void act_set_brightness(int pct) {
     backlight_set(pct);
     api_set_brightness(pct);
+    if (pct > 0) g_last_on_brightness = pct;
 }
 
 static void act_set_timeout(int seconds) {
@@ -239,10 +244,15 @@ static void read_fand_status(int update_gui) {
  * Inline-safe fields run here under settings_lock; LVGL-touching changes are
  * queued for the main loop. Returns 0. */
 int api_apply_settings(const api_settings_patch_t *p) {
-    int changed = 0, lang_changed = 0;
+    int changed = 0, lang_changed = 0, wake_req = 0;
 
     pthread_mutex_lock(&settings_lock);
-    if (p->has_brightness) { ui_state.brightness = p->brightness; act_set_brightness(p->brightness); changed = 1; }
+    if (p->has_brightness) {
+        ui_state.brightness = p->brightness;
+        act_set_brightness(p->brightness);
+        if (p->brightness > 0) wake_req = 1;   /* a >0 brightness from the web wakes a screen turned off at 0 */
+        changed = 1;
+    }
     if (p->has_timeout)    { ui_state.backlight_timeout = p->timeout; act_set_timeout(p->timeout); changed = 1; }
     if (p->has_sleep)      { ui_state.sleep_brightness = p->sleep_brightness; changed = 1; }
     if (p->has_clock_24h)  { ui_state.clock_24h = p->clock_24h; changed = 1; }
@@ -251,6 +261,7 @@ int api_apply_settings(const api_settings_patch_t *p) {
                              i18n_set_language(p->language); lang_changed = 1; changed = 1; }
     if (changed) settings_save(&ui_state);
     pthread_mutex_unlock(&settings_lock);
+    if (wake_req) api_set_state(1);   /* a >0 brightness from the web wakes a screen that was turned off at 0 */
 
     /* GUI-touching changes → main thread */
     if (lang_changed)     { api_cmd_t c = { .type = API_CMD_RETRANSLATE }; api_cmd_push(&c); }
@@ -273,6 +284,22 @@ int api_apply_settings(const api_settings_patch_t *p) {
      * arg_str, which is too small for a full mountpoint). */
     if (p->has_storage_path) { api_cmd_t c = { .type = API_CMD_SET_STORAGE }; api_cmd_push(&c); }
     return 0;
+}
+
+/* Restore the backlight when waking. If brightness was manually set to 0 (the
+ * screen turned fully off from the slider), bring it back to the last visible
+ * level and write that back to the setting + slider, so a tap never wakes to a
+ * black screen. Otherwise just re-assert the current brightness. */
+static void wake_restore_backlight(void) {
+    if (api_get_brightness() > 0) { backlight_set(api_get_brightness()); return; }
+    int b = g_last_on_brightness > 0 ? g_last_on_brightness : 100;
+    pthread_mutex_lock(&settings_lock);
+    ui_state.brightness = b;
+    settings_save(&ui_state);
+    pthread_mutex_unlock(&settings_lock);
+    act_set_brightness(b);   /* backlight on + api brightness */
+    gui_set_brightness(b);   /* reflect it on the panel slider */
+    SLEEPLOG("wake: restored brightness to %d%% (was manual off)", b);
 }
 
 /* Assemble + publish the web-API snapshot from the latest collected stats. */
@@ -428,6 +455,7 @@ int main(int argc, char *argv[]) {
     backlight_init();
     backlight_set(ui_state.brightness);
     api_set_brightness(ui_state.brightness);
+    g_last_on_brightness = ui_state.brightness > 0 ? ui_state.brightness : 100;
 
     if (config.api_port > 0)
         api_start(config.api_port, config.api_password);
@@ -609,7 +637,7 @@ int main(int argc, char *argv[]) {
             SLEEPLOG("power button pressed — shutting down");
             if (screen_asleep) {
                 gui_set_sleep(0);
-                backlight_set(api_get_brightness());
+                wake_restore_backlight();
                 screen_asleep = 0;
             }
             gui_power_overlay(1);
@@ -623,7 +651,7 @@ int main(int argc, char *argv[]) {
             if (touched || api_get_state()) {
                 SLEEPLOG("wake (%s)", touched ? "touch" : "api");
                 gui_set_sleep(0);
-                backlight_set(api_get_brightness());
+                wake_restore_backlight();
                 screen_asleep = 0;
                 api_set_state(1);
                 last_touch_time = custom_tick_get();
@@ -695,16 +723,22 @@ int main(int argc, char *argv[]) {
          * reliably produces a valid frame on contact, so wake works. */
         int idle_hit = has_touch && bl_timeout_ms > 0 &&
                        (int32_t)(now - last_touch_time) >= (int32_t)bl_timeout_ms;
-        if (!warming && !g_shutting_down && (idle_hit || !api_get_state())) {
+        /* Manual "0 = off": once the finger is off the slider, treat brightness
+         * 0 as a sleep so the proven tap-to-wake path brings the screen back
+         * (waking restores the last visible level, never 0). */
+        int manual_off = api_get_brightness() <= 0 &&
+                         (!has_touch || (int32_t)(now - touch_last_activity()) > 300);
+        if (!warming && !g_shutting_down && (idle_hit || manual_off || !api_get_state())) {
             gui_set_sleep(1);
             lv_refr_now(NULL); /* paint the black frame before pausing renders */
-            if (ui_state.sleep_brightness <= 0)
-                backlight_off();
-            else
+            int dim = !manual_off && ui_state.sleep_brightness > 0;
+            if (dim)
                 backlight_set(ui_state.sleep_brightness);
+            else
+                backlight_off();
             screen_asleep = 1;
             api_set_state(0);
-            SLEEPLOG("sleep (backlight %s)", ui_state.sleep_brightness <= 0 ? "off" : "dim");
+            SLEEPLOG("sleep (backlight %s%s)", dim ? "dim" : "off", manual_off ? ", manual 0" : "");
             nanosleep(&sleep_long, NULL);
             continue;
         }

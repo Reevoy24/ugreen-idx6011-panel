@@ -928,7 +928,7 @@ void api_set_state(int on) { current_state = on; }
 int  api_get_state(void) { return current_state; }
 int  api_get_brightness(void) { return current_brightness; }
 void api_set_brightness(int val) {
-    if (val < 1) val = 1;
+    if (val < 0) val = 0;   /* 0 = screen off; the main loop treats it as a wake-able sleep */
     if (val > 100) val = 100;
     current_brightness = val;
 }

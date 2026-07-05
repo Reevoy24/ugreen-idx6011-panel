@@ -1145,6 +1145,22 @@ static void bri_slider_cb(lv_event_t *e)
     }
 }
 
+/* Update the brightness slider + label from outside the touch callback. The
+ * main loop calls this after waking from a manual brightness-0 "off", so the
+ * slider reflects the restored level instead of staying stuck at 0. A
+ * programmatic set does not fire the value-changed callback, so it does not
+ * re-apply the backlight. */
+void gui_set_brightness(int pct)
+{
+    if (!bri_slider) return;
+    lv_slider_set_value(bri_slider, pct, LV_ANIM_OFF);
+    if (bri_val_label) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d %%", pct);
+        lv_label_set_text(bri_val_label, buf);
+    }
+}
+
 static void timeout_btn_cb(lv_event_t *e)
 {
     LV_UNUSED(e);
@@ -1467,7 +1483,7 @@ static void build_settings_panel(lv_obj_t *screen)
 
     bri_slider = lv_slider_create(card);
     lv_obj_set_size(bri_slider, LV_PCT(100), 18);
-    lv_slider_set_range(bri_slider, 5, 100);
+    lv_slider_set_range(bri_slider, 0, 100);
     lv_slider_set_value(bri_slider, setup.state->brightness, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bri_slider, lv_color_hex(COL_TRACK), LV_PART_MAIN);
     lv_obj_set_style_bg_color(bri_slider, lv_color_hex(COL_CYAN), LV_PART_INDICATOR);

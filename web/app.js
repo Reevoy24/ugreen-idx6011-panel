@@ -204,7 +204,6 @@ function render(s) {
   /* settings (skip controls the user is interacting with) */
   syncRange("set-brightness", stx.brightness);
   syncTimeoutSelect(stx.backlight_timeout);
-  syncRange("set-sleep", stx.sleep_brightness);
   /* the panel follows its device language; the non-Pro fan dashboard has none,
    * so its picker reflects the client choice (default English) instead. */
   const uiLang = hasPanel ? stx.language : lang;
@@ -458,8 +457,6 @@ function buildSelects() {
 function wireControls() {
   $("set-brightness").addEventListener("input", (e) => setText("set-brightness-v", e.target.value + "%"));
   $("set-brightness").addEventListener("change", (e) => postSettings({ brightness: parseInt(e.target.value, 10) }));
-  $("set-sleep").addEventListener("input", (e) => setText("set-sleep-v", e.target.value + "%"));
-  $("set-sleep").addEventListener("change", (e) => postSettings({ sleep_brightness: parseInt(e.target.value, 10) }));
   $("set-timeout").addEventListener("change", (e) => postSettings({ backlight_timeout: parseInt(e.target.value, 10) }));
   const changeLanguage = (v) => {
     if (STRINGS[v]) { lang = v; localStorage.setItem("ugpaneld_lang", lang); applyI18n(); }

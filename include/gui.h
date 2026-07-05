@@ -50,6 +50,7 @@ void gui_show_page(int idx);
 void gui_settings_open(void);
 void gui_settings_close(void);
 void gui_set_sleep(int on);   /* black overlay while the screen "sleeps" */
+void gui_set_brightness(int pct);  /* reflect a restored brightness on the slider (wake from manual 0) */
 void gui_leds_refresh(void);  /* re-read LED state into the panel rows */
 void gui_power_overlay(int is_shutdown);  /* show the "shutting down…" cover */
 
