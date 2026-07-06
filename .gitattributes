@@ -2,3 +2,4 @@
 *.sh text eol=lf
 *.service text eol=lf
 *.txt text eol=lf
+patches/*.patch text eol=lf
