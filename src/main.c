@@ -357,15 +357,14 @@ static void signal_handler(int sig) {
     if (signal_count >= 2) _exit(1);
 }
 
-// OS will display login screen on the display if bound, so we unbind first
-// Works on Proxmox, Debian, and most Linux distros
-static void unbind_vt_console(void) {
-    int fd = open("/sys/class/vtconsole/vtcon1/bind", O_WRONLY);
-    if (fd >= 0) {
-        if (write(fd, "0", 1) < 0) { /* best-effort unbind; ignore failure */ }
-        close(fd);
-    }
-}
+/* NOTE: earlier versions unbound fbcon here (echo 0 > /sys/class/vtconsole/
+ * vtcon1/bind) to keep the login prompt off the panel — a leftover from the
+ * fbdev-rendering days. It detached the text console from EVERY display
+ * system-wide and was never reverted, so on a system with an external monitor
+ * the console silently stopped rendering (keystrokes reached the tty but no
+ * echo appeared — "dead keyboard"), persisting across service stop until a
+ * reboot. Unnecessary with DRM rendering: while ug-paneld holds DRM master the
+ * console buffer is not scanned out on the panel anyway. Do not re-add. */
 
 /* System uptime in seconds (0 on error). Used to detect a cold boot: when the
  * daemon starts at low uptime the panel/ITE EC may not be ready to accept the
@@ -417,8 +416,6 @@ int main(int argc, char *argv[]) {
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
-
-    unbind_vt_console();
 
     config_t config;
     if (config_load(&config) != 0)
