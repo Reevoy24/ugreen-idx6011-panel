@@ -459,7 +459,7 @@ ls /sys/bus/i2c/devices/            # CUST0000 or MSFT8000 revision?
 journalctl -u ug-paneld -n 100      # ug-paneld's own connector/probe inventory
 ```
 
-**Alternative fix (UEFI boot path).** On some newer units the UGOS step does not help, because the real cause is the UEFI firmware graphics handoff. What has fixed it on real hardware, while staying in UEFI: in the BIOS boot order, pick the **Linux Boot Manager** entry (systemd-boot) instead of a generic **UEFI OS** entry.
+**Alternative fix (UEFI boot path).** On some newer units the UGOS step does not help, because the real cause is the UEFI firmware graphics handoff. What has fixed it on real hardware, while staying in UEFI: in the BIOS boot order, pick the **Linux Boot Manager** entry (systemd-boot) instead of a generic **UEFI OS** entry. On Unraid, keep the Unraid USB stick plugged in while changing this, since its boot entry only appears in the list when the stick is present.
 
 <details>
 <summary><b>Background: why newer revisions boot with a dead panel</b></summary>
