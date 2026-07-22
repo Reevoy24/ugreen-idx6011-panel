@@ -12,6 +12,14 @@ mode=default
 # Polling / update interval in seconds (1..60)
 interval=3
 
+# Drive-temperature poll interval in seconds (5..3600, default 30). Outside
+# Unraid every poll sends a real SMART query to each SATA disk (drivetemp),
+# which audibly unparks the heads on many drives — so drive temps run on their
+# own, slower clock than `interval` (HDDs heat up far too slowly for 3 s polls
+# to matter). On Unraid the temps are read from emhttpd (disks.ini) at zero
+# disk I/O and spun-down drives are left asleep.
+#disk_interval=30
+
 # Run even if the DMI product name is not an iDX6011 (NOT recommended —
 # the EC fan registers are specific to these models). Uncomment to force.
 #force=1

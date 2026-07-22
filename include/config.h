@@ -3,6 +3,9 @@
 
 #define CONFIG_FILE_PATH "/etc/ug-paneld/config.json"
 #define DEFAULT_POLL_RATE 2
+/* drive temps get their own, slower clock: off-Unraid every poll is a live
+ * SMART query (drivetemp) that can audibly unpark HDD heads */
+#define DEFAULT_DISK_INTERVAL 30
 /* generous so an early boot start (before the panel connector is ready) waits
  * for it instead of giving up with exit code 2 */
 #define DEFAULT_DRM_PROBE_TIMEOUT 60
@@ -16,6 +19,10 @@
 
 typedef struct {
     int poll_rate;
+    int disk_interval;     /* seconds between drive-temp polls (disk page + web).
+                              On Unraid the temps come from emhttpd's disks.ini
+                              (no disk I/O); elsewhere each poll is a real SMART
+                              query per drive, so it runs slower than poll_rate */
     char drm_device[64];   /* DRM device path, "" = scan /dev/dri (keys: drm_device, legacy drm_card) */
     char connector[32];    /* DRM connector name ("eDP-1"), numeric id, or "auto" */
     int drm_probe_timeout; /* seconds to wait for a connected connector before giving up */

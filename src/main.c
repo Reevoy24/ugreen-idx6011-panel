@@ -505,7 +505,12 @@ int main(int argc, char *argv[]) {
 
     uint32_t last_stats_update = 0;
     uint32_t last_slow_update = 0;
-    const uint32_t slow_interval = 10000; /* disks + pve every 10 s */
+    const uint32_t slow_interval = 10000; /* pve every 10 s */
+    uint32_t last_disk_update = 0;
+    /* drive temps on their own, slower clock: on Unraid they come from emhttpd
+     * (disks.ini, no disk I/O), everywhere else each poll is a live SMART query
+     * per drive (drivetemp) that can audibly unpark HDD heads */
+    const uint32_t disk_interval = (uint32_t)config.disk_interval * 1000;
     uint32_t stats_interval = config.poll_rate * 1000;
     uint32_t last_touch_time = custom_tick_get();
     int screen_asleep = 0;
@@ -516,7 +521,7 @@ int main(int argc, char *argv[]) {
     system_stats_t stats;
     opnsense_stats_t opn_stats;
     /* persistent across cycles so the web-API snapshot keeps the last values
-     * (disks/pve refresh only every 10 s). */
+     * (pve refreshes every 10 s, disks every disk_interval). */
     net_stats_t net;     memset(&net, 0, sizeof(net));
     disk_stats_t disks;  memset(&disks, 0, sizeof(disks));
     pve_stats_t pve;     memset(&pve, 0, sizeof(pve));
@@ -665,8 +670,12 @@ int main(int argc, char *argv[]) {
                         if (has_gpu) gpu_usage = gpu_stats_usage();
                         read_fand_status(0);
                         if (has_opnsense) opnsense_collect(&opn_stats);
-                        if (nowz - last_slow_update >= slow_interval) {
+                        if (last_disk_update == 0 ||
+                            nowz - last_disk_update >= disk_interval) {
                             disk_stats_collect(&disks);
+                            last_disk_update = nowz;
+                        }
+                        if (nowz - last_slow_update >= slow_interval) {
                             if (has_pve) pve_stats_collect(&pve);
                             last_slow_update = nowz;
                         }
@@ -767,9 +776,12 @@ int main(int argc, char *argv[]) {
                 gui_update_wan_throughput(opn_stats.wan_in_bps, opn_stats.wan_out_bps);
             }
 
-            if (now - last_slow_update >= slow_interval) {
+            if (last_disk_update == 0 || now - last_disk_update >= disk_interval) {
                 if (disk_stats_collect(&disks) == 0)
                     gui_update_disks(&disks);
+                last_disk_update = now;
+            }
+            if (now - last_slow_update >= slow_interval) {
                 if (has_pve && pve_stats_collect(&pve) == 0)
                     gui_update_pve(&pve);
                 last_slow_update = now;

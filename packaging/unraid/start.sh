@@ -69,7 +69,9 @@ if [ -f "$PERSIST/ug-fand" ]; then
     chmod 755 /usr/local/bin/ug-fand
     mkdir -p /etc/ug-fand
     [ -f "$PERSIST/fand-config" ] && cp -f "$PERSIST/fand-config" /etc/ug-fand/config
-    modprobe drivetemp 2>/dev/null   # exposes SATA drive temps as hwmon
+    # SATA temps as hwmon — fallback only: on Unraid the daemons prefer
+    # emhttpd's disks.ini (no SMART traffic, spun-down drives stay asleep)
+    modprobe drivetemp 2>/dev/null
     pkill -x ug-fand 2>/dev/null && sleep 1
     nohup /usr/local/bin/ug-fand >/var/log/ug-fand.log 2>&1 &
     echo "ug-fand started (log: /var/log/ug-fand.log)"

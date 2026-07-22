@@ -68,6 +68,7 @@ int config_load(config_t *config) {
     if (!config) return -1;
 
     config->poll_rate = DEFAULT_POLL_RATE;
+    config->disk_interval = DEFAULT_DISK_INTERVAL;
     config->drm_device[0] = '\0';
     snprintf(config->connector, sizeof(config->connector), "auto");
     config->drm_probe_timeout = DEFAULT_DRM_PROBE_TIMEOUT;
@@ -119,6 +120,11 @@ int config_load(config_t *config) {
     fclose(fp);
 
     json_get_int(json, "poll_rate", &config->poll_rate);
+    json_get_int(json, "disk_interval", &config->disk_interval);
+    /* keep drive-temp polling low-frequency even on a typo'd config: each poll
+     * is real SMART traffic outside Unraid */
+    if (config->disk_interval < 5) config->disk_interval = 5;
+    if (config->disk_interval > 3600) config->disk_interval = 3600;
     /* "drm_card" is the legacy key; "drm_device" wins if both are present */
     json_get_str(json, "drm_card", config->drm_device, sizeof(config->drm_device));
     json_get_str(json, "drm_device", config->drm_device, sizeof(config->drm_device));

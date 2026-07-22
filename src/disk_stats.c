@@ -42,10 +42,10 @@ static float read_temp_c(const char *dev)
 {
     char pattern[160];
     const char *patterns[2];
-    snprintf(pattern, sizeof(pattern), "/sys/block/%s/device/hwmon*/temp1_input", dev);
+    snprintf(pattern, sizeof(pattern), "/sys/block/%.15s/device/hwmon*/temp1_input", dev);
     patterns[0] = pattern;
     char pattern2[160];
-    snprintf(pattern2, sizeof(pattern2), "/sys/block/%s/device/hwmon/hwmon*/temp1_input", dev);
+    snprintf(pattern2, sizeof(pattern2), "/sys/block/%.15s/device/hwmon/hwmon*/temp1_input", dev);
     patterns[1] = pattern2;
 
     for (int i = 0; i < 2; i++) {
@@ -66,6 +66,67 @@ static float read_temp_c(const char *dev)
     return -1.0f;
 }
 
+/* ---- Unraid: temps from emhttpd instead of drivetemp ----
+ * emhttpd already polls every managed drive (respecting spindown: spun-down
+ * drives report temp="*") into /var/local/emhttp/disks.ini. Reading that file
+ * costs no disk I/O, while every drivetemp hwmon read is a live SMART query
+ * that audibly unparks the heads on many HDDs. */
+#define UNRAID_DISKS_INI "/var/local/emhttp/disks.ini"
+#define INI_DISK_MAX 32
+
+typedef struct { char dev[16]; float temp_c; } ini_disk_t;
+
+/* Parse disks.ini sections into dev -> temp entries (temp -1 = spun down or
+ * unknown). Returns the entry count, or -1 if the file is absent (not Unraid). */
+static int unraid_ini_load(ini_disk_t *out, int max)
+{
+    const char *path = getenv("UG_DISKS_INI");   /* test override */
+    if (!path || !*path) path = UNRAID_DISKS_INI;
+    FILE *fp = fopen(path, "r");
+    if (!fp) return -1;
+
+    int n = 0;
+    char line[256], dev[16] = "", val[16];
+    float temp = -1.0f;
+    for (;;) {
+        char *got = fgets(line, sizeof(line), fp);
+        if (!got || line[0] == '[') {            /* next section or EOF: commit */
+            if (dev[0] && n < max) {
+                snprintf(out[n].dev, sizeof(out[n].dev), "%s", dev);
+                out[n].temp_c = temp;
+                n++;
+            }
+            dev[0] = 0; temp = -1.0f;
+            if (!got) break;
+            continue;
+        }
+        if (sscanf(line, "device=\"%15[^\"]\"", val) == 1)
+            snprintf(dev, sizeof(dev), "%s", val);
+        else if (sscanf(line, "temp=\"%15[^\"]\"", val) == 1)
+            temp = isdigit((unsigned char)val[0]) ? (float)atoi(val) : -1.0f;
+    }
+    fclose(fp);
+    return n;
+}
+
+static int ini_find(const ini_disk_t *ini, int n, const char *dev, float *temp)
+{
+    for (int i = 0; i < n; i++)
+        if (strcmp(ini[i].dev, dev) == 0) { *temp = ini[i].temp_c; return 1; }
+    return 0;
+}
+
+int disk_stats_unraid_max(int *max_c)
+{
+    ini_disk_t ini[INI_DISK_MAX];
+    int n = unraid_ini_load(ini, INI_DISK_MAX);
+    int best = -1;
+    for (int i = 0; i < n; i++)
+        if (ini[i].temp_c >= 0 && (int)ini[i].temp_c > best) best = (int)ini[i].temp_c;
+    *max_c = best;
+    return n;
+}
+
 static int cmp_name(const void *a, const void *b)
 {
     return strcmp(((const disk_info_t *)a)->dev, ((const disk_info_t *)b)->dev);
@@ -74,6 +135,9 @@ static int cmp_name(const void *a, const void *b)
 int disk_stats_collect(disk_stats_t *out)
 {
     memset(out, 0, sizeof(*out));
+
+    ini_disk_t ini[INI_DISK_MAX];
+    int ini_n = unraid_ini_load(ini, INI_DISK_MAX);
 
     DIR *dir = opendir("/sys/block");
     if (!dir) return -1;
@@ -87,7 +151,11 @@ int disk_stats_collect(disk_stats_t *out)
         snprintf(d->dev, sizeof(d->dev), "%.15s", ent->d_name);
         d->is_nvme = nvme;
         d->size_tb = read_size_tb(ent->d_name);
-        d->temp_c = read_temp_c(ent->d_name);
+        float t;
+        if (ini_n > 0 && ini_find(ini, ini_n, ent->d_name, &t))
+            d->temp_c = t;   /* emhttpd's value; -1 = spun down, leave it asleep */
+        else
+            d->temp_c = read_temp_c(ent->d_name);
         d->online = 1;
     }
     closedir(dir);

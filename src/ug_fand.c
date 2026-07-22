@@ -183,12 +183,36 @@ static int cpu_temp(void) {
     if (t < 0) t = hwmon_temp_max("acpitz");
     return t;
 }
-static int sys_temp(void) {
-    int t = hwmon_temp_max("nvme");
-    int d = hwmon_temp_max("drivetemp");
-    if (d > t) t = d;
-    if (t < 0) t = hwmon_temp_max("acpitz");
-    return t;
+
+/* Unraid reports every drive spun down: no cooling demand — distinct from -1
+ * (no reading at all), which trips the missing-sensor failsafe. */
+#define TEMP_ASLEEP (-2)
+
+/* Hottest SATA drive. On Unraid this comes from emhttpd's disks.ini (zero disk
+ * I/O, spun-down drives stay asleep); elsewhere from the drivetemp hwmon, where
+ * EVERY read is a live SMART query that audibly unparks HDD heads on many
+ * drives. Cached for max_age seconds — HDDs have huge thermal mass, polling
+ * them at the fan loop rate (3 s) just kept resetting their head-park timers. */
+static int sata_temp_cached(int max_age) {
+    static time_t last = 0;
+    static int cached = -1;
+    time_t now = time(NULL);
+    if (last == 0 || now - last >= max_age || now < last) {
+        int m, n = disk_stats_unraid_max(&m);
+        if (n > 0) cached = (m >= 0) ? m : TEMP_ASLEEP;
+        else       cached = hwmon_temp_max("drivetemp");  /* not Unraid (or nothing listed) */
+        last = now;
+    }
+    return cached;
+}
+
+static int sys_temp(int disk_max_age) {
+    int t = hwmon_temp_max("nvme");   /* controller register — no mechanical side effects */
+    int d = sata_temp_cached(disk_max_age);
+    if (d >= 0 && d > t) t = d;
+    if (t >= 0) return t;
+    if (d == TEMP_ASLEEP) return TEMP_ASLEEP;
+    return hwmon_temp_max("acpitz");
 }
 
 /* ---- fan curves (temp -> speed%) ---- */
@@ -204,6 +228,7 @@ static const char *mode_name(fan_mode_t m) {
 typedef struct {
     fan_mode_t mode;
     int interval;
+    int disk_interval;         /* s between drive-temp polls (SMART traffic off-Unraid) */
     int force;
     int api_port;              /* >0 enables the web dashboard (opt-in) */
     char api_password[64];     /* "" = fan control open on the LAN */
@@ -261,6 +286,7 @@ static void set_curve(curve_t *c, const point_t *src, int n) {
 static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->mode = MODE_DEFAULT;
     cf->interval = 3;
+    cf->disk_interval = 30;
     cf->force = cli_force;
     cf->api_port = 0;
     cf->api_password[0] = '\0';
@@ -297,6 +323,8 @@ static void load_config(fanconf_t *cf, int cli_force) {
             else cf->mode = MODE_DEFAULT;
         } else if (!strcmp(key, "interval")) {
             int v = atoi(val); if (v >= 1 && v <= 60) cf->interval = v;
+        } else if (!strcmp(key, "disk_interval")) {
+            int v = atoi(val); if (v >= 5 && v <= 3600) cf->disk_interval = v;
         } else if (!strcmp(key, "force")) {
             cf->force = atoi(val);
         } else if (!strcmp(key, "api_port")) {
@@ -444,8 +472,8 @@ int main(int argc, char **argv) {
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
-    fprintf(stderr, "ug-fand %s: started, mode=%s, interval=%ds, model=%s\n",
-            UG_FAND_VERSION, mode_name(cf.mode), cf.interval,
+    fprintf(stderr, "ug-fand %s: started, mode=%s, interval=%ds, disk_interval=%ds, model=%s\n",
+            UG_FAND_VERSION, mode_name(cf.mode), cf.interval, cf.disk_interval,
             g_nonpro ? "iDX6011 non-Pro (2 sys fans @ 0x9C)" : "iDX6011 Pro (4 fans @ 0xB0)");
 
     /* Optional web dashboard (opt-in via api_port in the config). Started once
@@ -457,6 +485,9 @@ int main(int argc, char **argv) {
         web_on = (fand_api_start(cf.api_port, cf.api_password) == 0);
 
     time_t cfg_mtime = 0;
+    disk_stats_t web_disks;              /* throttled per-drive stats for the web snapshot */
+    memset(&web_disks, 0, sizeof(web_disks));
+    time_t web_disks_ts = 0;
     double cpu_ema = -1, sys_ema = -1;   /* smoothed temps (kills brief spikes) */
     int applied_cp = -1, applied_sp = -1; /* last applied speed % */
     int warn_cpu_crit = 0, warn_sys_crit = 0, warn_cpu_read = 0, warn_sys_read = 0;
@@ -473,7 +504,13 @@ int main(int argc, char **argv) {
             applied_cp = applied_sp = -1;   /* snap to the (possibly new) curves */
         }
 
-        int ct = cpu_temp(), st = sys_temp();
+        int ct = cpu_temp(), st = sys_temp(cf.disk_interval);
+
+        /* Unraid with every drive spun down: zero cooling demand, not a broken
+         * sensor — run the sys curve at its floor (temp 0) and show "no
+         * reading", instead of blasting the failsafe over sleeping disks. */
+        int st_show = st;
+        if (st == TEMP_ASLEEP) { st = 0; st_show = -1; }
 
         /* EMA-smooth so brief CPU spikes don't make the fans ramp up and down. */
         if (ct >= 0) cpu_ema = cpu_ema < 0 ? ct : cpu_ema + (ct - cpu_ema) * 0.2;
@@ -537,7 +574,7 @@ int main(int argc, char **argv) {
             rpm[2] = fan_rpm(REG_NP_SYSFAN1_RPM);
             rpm[3] = fan_rpm(REG_NP_SYSFAN2_RPM);
             disp_sp = np;
-            write_status(cf.mode, ct, st, 0, 0, rpm[2], rpm[3],
+            write_status(cf.mode, ct, st_show, 0, 0, rpm[2], rpm[3],
                          applied_cp, np, &cf.cpu[cf.mode], &cf.sys[cf.mode]);
         } else {
             set_fan_pair(REG_CPU_EN1, applied_cp);
@@ -545,7 +582,7 @@ int main(int argc, char **argv) {
             rpm[0] = fan_rpm(REG_CPUFAN1_RPM); rpm[1] = fan_rpm(REG_CPUFAN2_RPM);
             rpm[2] = fan_rpm(REG_SYSFAN1_RPM); rpm[3] = fan_rpm(REG_SYSFAN2_RPM);
             disp_sp = applied_sp;
-            write_status(cf.mode, ct, st, rpm[0], rpm[1], rpm[2], rpm[3],
+            write_status(cf.mode, ct, st_show, rpm[0], rpm[1], rpm[2], rpm[3],
                          applied_cp, applied_sp, &cf.cpu[cf.mode], &cf.sys[cf.mode]);
         }
 
@@ -558,11 +595,19 @@ int main(int argc, char **argv) {
             system_stats_set_root(cf.storage_path);  /* honours storage_path (hot-reloaded) */
             system_stats_collect(&fs.sys);
             net_stats_collect(&fs.net);
-            disk_stats_collect(&fs.disks);
+            /* per-drive temps on the disk_interval clock, not every cycle —
+             * off-Unraid each collect is a SMART query to every drive */
+            time_t nowd = time(NULL);
+            if (web_disks_ts == 0 || nowd - web_disks_ts >= cf.disk_interval ||
+                nowd < web_disks_ts) {
+                disk_stats_collect(&web_disks);
+                web_disks_ts = nowd;
+            }
+            fs.disks = web_disks;
             fs.fan_running = 1;
             snprintf(fs.fan_mode, sizeof(fs.fan_mode), "%s", mode_name(cf.mode));
             fs.fan_cpu_temp = ct;
-            fs.fan_sys_temp = st;
+            fs.fan_sys_temp = st_show;
             fs.fan_cpu_pct  = applied_cp;
             fs.fan_sys_pct  = disp_sp;
             for (int i = 0; i < 4; i++) fs.fan_rpm[i] = rpm[i];

@@ -61,6 +61,10 @@ OBJS = $(AOBJS) $(COBJS) $(MAINOBJ)
 DEPS = $(OBJS:$(OBJEXT)=.d)
 -include $(DEPS)
 
+# The included .d files declare targets, and the FIRST target read becomes
+# make's default goal — pin it so a plain `make` still means `make all`.
+.DEFAULT_GOAL := all
+
 all: default fand
 
 %.o: %.c

@@ -198,12 +198,15 @@ The config lives in `/etc/ug-fand/config`:
 ```
 mode=default       # silent | default | turbo
 interval=3         # seconds between updates
+disk_interval=30   # seconds between drive-temperature polls (see below)
 # optional per-mode curves, comma-separated temp:speed points (°C : 0-100%):
 cpu_default=0:15,60:15,70:38,78:71,86:100
 sys_default=0:28,52:28,58:55,63:80,68:100
 ```
 
 The three modes are temperature-to-speed curves, from silent (quietest) to turbo (coolest). The `cpu_*` curves follow the CPU temperature, the `sys_*` curves follow the disk/NVMe temperature. The reading is smoothed and a speed deadband is applied, so the fans hold a steady speed instead of hunting on brief CPU spikes. A thermal failsafe forces full speed above the critical thresholds (88 °C CPU, 68 °C disks), and a missing temperature reading is treated as "full", so a broken sensor never silences the fans.
+
+Drive temperatures are deliberately polled on their own, slower clock (`disk_interval`, default 30 s): outside Unraid every poll is a real SMART query to each SATA disk (via the `drivetemp` kernel driver), which audibly unparks the heads on many drives — and HDDs heat up far too slowly for 3-second polls to buy anything. On **Unraid** the temperatures are read from emhttpd's `disks.ini` instead, which costs no disk I/O at all and leaves spun-down drives asleep; if every drive is spun down, the sys curve idles at its floor rather than tripping the missing-sensor failsafe.
 
 Each curve is a comma-separated list of `temp:speed` points: temperature in °C, fan speed in percent (`0` to `100`, where `100` is full). Edit them with any editor:
 
@@ -413,6 +416,7 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 | Key | Default | Description |
 |-----|---------|-------------|
 | `poll_rate` | `2` | How often to poll system stats (seconds) |
+| `disk_interval` | `30` | How often to poll drive temperatures (seconds, 5-3600). On Unraid they come from emhttpd's `disks.ini` (no disk I/O, spun-down drives stay asleep); elsewhere every poll is a real SMART query per drive (`drivetemp`), which audibly unparks HDD heads — hence the separate, slower clock |
 | `brightness` | `100` | Backlight brightness (1-100) |
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
 | `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing it on the panel saves to `state.json` and overrides this; set it here for a reboot-stable default (useful on TrueNAS, where `state.json` is not restored after a reboot) |

@@ -17,7 +17,9 @@ case "$DIR" in
     /boot/*) cp -f "$DIR/ug-fand" /usr/local/bin/ug-fand 2>/dev/null && chmod 755 /usr/local/bin/ug-fand && BIN=/usr/local/bin/ug-fand ;;
 esac
 
-# drivetemp exposes SATA disk temperatures via hwmon (the system-fan input)
+# drivetemp exposes SATA disk temperatures via hwmon (the system-fan input).
+# On Unraid it is only a fallback: ug-fand prefers emhttpd's disks.ini there,
+# which costs no disk I/O and leaves spun-down drives asleep.
 modprobe drivetemp 2>/dev/null
 
 # Web dashboard (only active if api_port is set in the config). Serve the bundled

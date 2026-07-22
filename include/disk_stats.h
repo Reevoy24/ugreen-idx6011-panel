@@ -19,4 +19,12 @@ typedef struct {
 
 int disk_stats_collect(disk_stats_t *out);
 
+/* Unraid only: drive temps as already collected by emhttpd
+ * (/var/local/emhttp/disks.ini) — reading them costs no disk I/O, unlike
+ * drivetemp, whose SMART query can audibly unpark HDD heads on every poll.
+ * Returns -1 when the file is absent (not Unraid), else the number of drives
+ * listed. *max_c is set to the hottest reported temp in whole °C, or -1 when
+ * no listed drive reports one (spun-down drives report temp="*"). */
+int disk_stats_unraid_max(int *max_c);
+
 #endif
