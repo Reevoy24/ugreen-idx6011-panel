@@ -5,9 +5,10 @@ Requirements
 - Unraid 7.x on a UGREEN iDX6011 Pro (kernel with i915, glibc >= 2.34,
   libdrm.so.2 and libcurl.so.4 — all present on stock Unraid 7).
 - If the display stays black and the log says "No connected DRM connector
-  found", read "Debugging on newer iDX6011 Pro revisions" in the project
-  README: on newer hardware revisions you must boot UGOS once and then
-  warm-reboot into Unraid so the EC powers the panel (one-time fix).
+  found", see Troubleshooting in the project README: on newer hardware
+  revisions, pick the Unraid USB stick's UEFI entry in the BIOS boot order
+  instead of the generic "UEFI OS" entry (one-time fix; the stick's entry
+  only exists while the stick is plugged in, so it has to stay in).
 
 Install (as root, e.g. via the web terminal)
     cd /tmp

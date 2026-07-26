@@ -83,7 +83,7 @@ sh install.sh
 After installing, the dashboard appears on the display and the Fan control page works right away. To run the daemon as a different user or build it yourself, see [Build from source](#build-from-source). Set up the [front LEDs](#front-panel-leds) next if you want them.
 
 > [!IMPORTANT]
-> **Display stays black on a Pro unit?** On newer iDX6011 Pro revisions the internal eDP panel does not answer the graphics driver until UGOS has initialized it once, so on a cold Linux boot i915 drops the panel and the screen stays black. One-time fix: boot UGOS, let the front display light up, then reboot into your Linux drive (firmware boot menu, Ctrl+F12). That initialization is non-volatile, so it holds across later reboots and full power-offs; you only do it once per unit. Full background in [Troubleshooting](#troubleshooting).
+> **Display stays black on a Pro unit?** Newer iDX6011 Pro revisions boot with a dead internal panel when the firmware starts the OS through the generic **"UEFI OS"** boot entry. One-time fix, confirmed on real hardware: in the BIOS boot order, put your OS's **own boot-manager entry** first — **"Linux Boot Manager"** (systemd-boot) on Proxmox, the Unraid USB stick's UEFI entry on Unraid — instead of "UEFI OS". On Unraid the stick must be (and stay) plugged in, since its boot entry only exists while the stick is present. Full background in [Troubleshooting](#troubleshooting).
 
 ## Front panel LEDs
 
@@ -454,25 +454,23 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 > [!WARNING]
 > **Never diagnose the touch controller with ug-paneld stopped.** The chip auto-sleeps when nobody polls it and then answers every I2C transaction with constant `0x23` bytes, which is indistinguishable from a broken chip. The running daemon's 33 to 50 ms polling keeps it awake (that is also why tap-to-wake works with the backlight fully off).
 
-**Display black, service exits with code 2** ("No connected DRM connector found"): the kernel never brought up the internal panel. On newer revisions i915 cannot read the eDP panel over the AUX channel on a cold boot and disables it, so apply the one-time UGOS init from the [Install](#install) section. The tell-tale is the `eDP-1` connector being absent entirely (only the external `DP-*` outputs remain). Useful checks:
+**Display black, service exits with code 2** ("No connected DRM connector found"): the kernel never brought up the internal panel. On newer revisions i915 cannot read the eDP panel over the AUX channel on a cold boot and disables it — the cause is the UEFI firmware graphics handoff, and the fix is the one-time **BIOS boot-order change** from the [Install](#install) section: boot through the OS's own boot-manager entry (e.g. **"Linux Boot Manager"**) instead of the generic **"UEFI OS"** entry. The tell-tale is the `eDP-1` connector being absent entirely (only the external `DP-*` outputs remain). Useful checks:
 
 ```bash
 dmesg | grep -iE 'eDP|DDI A|link'   # look for "failed to retrieve link info, disabling eDP"
-ls /sys/class/drm/                  # is there an eDP-1 at all? (newer Pro: often only DP-* until UGOS init)
+ls /sys/class/drm/                  # is there an eDP-1 at all? (newer Pro: only DP-* when booted via the generic "UEFI OS" entry)
 ls /sys/bus/i2c/devices/            # CUST0000 or MSFT8000 revision?
 journalctl -u ug-paneld -n 100      # ug-paneld's own connector/probe inventory
 ```
-
-**Alternative fix (UEFI boot path).** On some newer units the UGOS step does not help, because the real cause is the UEFI firmware graphics handoff. What has fixed it on real hardware, while staying in UEFI: in the BIOS boot order, pick the **Linux Boot Manager** entry (systemd-boot) instead of a generic **UEFI OS** entry. On Unraid, keep the Unraid USB stick plugged in while changing this, since its boot entry only appears in the list when the stick is present.
 
 <details>
 <summary><b>Background: why newer revisions boot with a dead panel</b></summary>
 
 The BIOS declares the panel correctly (a healthy VBT: eDP on DDI-A/AUX-A, 1 lane, 258×960), and it is a standard Intel eDP display that i915 drives directly through the PCH panel power sequencer. The catch is the panel's sink (its TCON): on a cold Linux boot it does not answer the first DPCD read over the AUX channel, so i915 concludes the port is a ghost, logs `failed to retrieve link info, disabling eDP`, and removes the connector entirely. That is why the panel appears as no `eDP-1` connector at all (only the external `DP-*` outputs are listed), rather than a connected-but-black screen.
 
-Booting UGOS once initializes the panel's sink so it answers on AUX. That initialization is non-volatile: it has been verified to survive later reboots and a full mains-off power cut, so a Linux/Proxmox boot afterwards inherits a panel that responds and i915 keeps the `eDP-1` connector. It is genuinely a one-time step per unit; repeat it only after a firmware update or if the panel is ever reset. (An earlier theory that an EC power rail was switched off turned out to be wrong: the panel's VDD pins read identically on a working and a dark unit, so the only difference is whether the eDP sink has been initialized.)
+Whether the sink answers depends on how the UEFI firmware hands graphics over to the OS. Booted through the generic **"UEFI OS"** entry, the panel comes up unresponsive, the first AUX read fails and i915 drops the connector. Booted through the OS's **own boot-manager entry** (**"Linux Boot Manager"** / systemd-boot on Proxmox, the Unraid USB stick's UEFI entry on Unraid), the panel is handed over responsive and `eDP-1` appears normally — verified on real hardware. That is why the whole fix is a boot-order change in the BIOS, no software involved. On Unraid, remember that the stick's boot entry only exists while the stick is plugged in, so it has to stay in.
 
-There is also an in-flight Intel kernel patch for exactly this Meteor Lake case, which wakes the eDP sink with a DP power-on write before the first DPCD read. It is not in released kernels yet, but a future kernel may let the panel come up under Linux without the UGOS step.
+There is also an in-flight Intel kernel patch for exactly this Meteor Lake case, which wakes the eDP sink with a DP power-on write before the first DPCD read. It is not in released kernels yet, but a future kernel may let the panel come up regardless of which boot entry the firmware used.
 
 Newer revisions also enumerate the touchscreen as `MSFT8000:00` instead of `CUST0000:00`, and ug-paneld knows both ids. The DRM card number can change between boots (`card0` or `card1`), so ug-paneld scans all of them.
 

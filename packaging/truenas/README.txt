@@ -6,9 +6,9 @@ Requirements
   iDX6011 Pro. TrueNAS CORE (FreeBSD) is NOT supported.
 - Stock system libraries are enough (glibc >= 2.34, libdrm.so.2, libcurl.so.4).
 - If the display stays black and the log says "No connected DRM connector
-  found", read "Debugging on newer iDX6011 Pro revisions" in the project
-  README: on newer hardware revisions you must boot UGOS once and then
-  warm-reboot into TrueNAS so the EC powers the panel (one-time fix).
+  found", see Troubleshooting in the project README: on newer hardware
+  revisions, pick the OS's own boot-manager entry in the BIOS boot order
+  instead of the generic "UEFI OS" entry (one-time fix).
 
 Why no .deb? TrueNAS has a read-only root filesystem and using apt/dpkg there
 is unsupported. This package installs to one of your pools instead and starts
