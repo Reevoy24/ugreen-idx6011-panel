@@ -199,12 +199,17 @@ The config lives in `/etc/ug-fand/config`:
 mode=default       # silent | default | turbo
 interval=3         # seconds between updates
 disk_interval=30   # seconds between drive-temperature polls (see below)
+# optional failsafe overrides in °C (defaults 88 / 68, allowed 40-105):
+#cpu_crit=88
+#sys_crit=68
 # optional per-mode curves, comma-separated temp:speed points (°C : 0-100%):
 cpu_default=0:15,60:15,70:38,78:71,86:100
 sys_default=0:28,52:28,58:55,63:80,68:100
 ```
 
-The three modes are temperature-to-speed curves, from silent (quietest) to turbo (coolest). The `cpu_*` curves follow the CPU temperature, the `sys_*` curves follow the disk/NVMe temperature. The reading is smoothed and a speed deadband is applied, so the fans hold a steady speed instead of hunting on brief CPU spikes. A thermal failsafe forces full speed above the critical thresholds (88 °C CPU, 68 °C disks), and a missing temperature reading is treated as "full", so a broken sensor never silences the fans.
+The three modes are temperature-to-speed curves, from silent (quietest) to turbo (coolest). The `cpu_*` curves follow the CPU temperature, the `sys_*` curves follow the disk/NVMe temperature. The reading is smoothed and a speed deadband is applied, so the fans hold a steady speed instead of hunting on brief CPU spikes. A thermal failsafe forces full speed above the critical thresholds (88 °C CPU, 68 °C disks — overridable with `cpu_crit` / `sys_crit`), and a missing temperature reading is treated as "full", so a broken sensor never silences the fans.
+
+For NVMe drives the temperature used is the drive's **Composite** sensor — the value the manufacturer's own warning/critical thresholds are specified against. Vendor-specific secondary sensors (some controller dies idle at 75 °C+) are ignored, so a hot-running controller no longer pins the fans at 100%.
 
 Drive temperatures are deliberately polled on their own, slower clock (`disk_interval`, default 30 s): outside Unraid every poll is a real SMART query to each SATA disk (via the `drivetemp` kernel driver), which audibly unparks the heads on many drives — and HDDs heat up far too slowly for 3-second polls to buy anything. On **Unraid** the temperatures are read from emhttpd's `disks.ini` instead, which costs no disk I/O at all and leaves spun-down drives asleep; if every drive is spun down, the sys curve idles at its floor rather than tripping the missing-sensor failsafe.
 

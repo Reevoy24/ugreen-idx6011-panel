@@ -71,7 +71,9 @@
 
 /* Critical temperatures (deg C) that force fans to full regardless of mode.
  * SYS_CRIT is set for spinning HDDs, which run warm (60C is reached fast in
- * summer); the curve already ramps hard well before this last-resort failsafe. */
+ * summer); the curve already ramps hard well before this last-resort failsafe.
+ * These are the DEFAULTS — overridable via cpu_crit= / sys_crit= in the config
+ * (some NVMe drives legitimately idle warmer than any HDD should ever get). */
 #define CPU_CRIT 88
 #define SYS_CRIT 68
 
@@ -155,7 +157,13 @@ static int read_sysfs_int(const char *path) {
     return (int)v;
 }
 
-static int hwmon_temp_max(const char *want) {
+/* Hottest reading across all matching hwmon devices, scanning temp1..temp<nsen>
+ * per device. nsen limits the per-device scan: the NVMe driver exposes the
+ * Composite value (the one the drive's own warning/critical thresholds are
+ * specified against) as temp1 and vendor-specific extra sensors as temp2+ —
+ * e.g. Phison controllers report a die sensor that sits at ~75C near-idle,
+ * which used to trip the disk-critical failsafe permanently (issue #7). */
+static int hwmon_temp_max_n(const char *want, int nsen) {
     int best = -1;
     DIR *d = opendir("/sys/class/hwmon");
     if (!d) return -1;
@@ -167,7 +175,7 @@ static int hwmon_temp_max(const char *want) {
         FILE *nf = fopen(p, "r");
         if (nf) { if (fscanf(nf, "%63s", name) != 1) name[0] = 0; fclose(nf); }
         if (!strstr(name, want)) continue;
-        for (int i = 1; i <= 24; i++) {
+        for (int i = 1; i <= nsen; i++) {
             snprintf(p, sizeof(p), "/sys/class/hwmon/%s/temp%d_input", e->d_name, i);
             int mC = read_sysfs_int(p);
             if (mC > 0 && mC / 1000 > best) best = mC / 1000;
@@ -176,6 +184,8 @@ static int hwmon_temp_max(const char *want) {
     closedir(d);
     return best;
 }
+
+static int hwmon_temp_max(const char *want) { return hwmon_temp_max_n(want, 24); }
 
 static int cpu_temp(void) {
     int t = hwmon_temp_max("coretemp");
@@ -207,7 +217,9 @@ static int sata_temp_cached(int max_age) {
 }
 
 static int sys_temp(int disk_max_age) {
-    int t = hwmon_temp_max("nvme");   /* controller register — no mechanical side effects */
+    /* NVMe: Composite (temp1) ONLY — vendor secondary sensors run far hotter
+     * than the value the manufacturer thresholds refer to (see hwmon_temp_max_n) */
+    int t = hwmon_temp_max_n("nvme", 1);
     int d = sata_temp_cached(disk_max_age);
     if (d >= 0 && d > t) t = d;
     if (t >= 0) return t;
@@ -229,6 +241,7 @@ typedef struct {
     fan_mode_t mode;
     int interval;
     int disk_interval;         /* s between drive-temp polls (SMART traffic off-Unraid) */
+    int cpu_crit, sys_crit;    /* failsafe temps (C) forcing 100% regardless of curve */
     int force;
     int api_port;              /* >0 enables the web dashboard (opt-in) */
     char api_password[64];     /* "" = fan control open on the LAN */
@@ -287,6 +300,8 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->mode = MODE_DEFAULT;
     cf->interval = 3;
     cf->disk_interval = 30;
+    cf->cpu_crit = CPU_CRIT;
+    cf->sys_crit = SYS_CRIT;
     cf->force = cli_force;
     cf->api_port = 0;
     cf->api_password[0] = '\0';
@@ -325,6 +340,10 @@ static void load_config(fanconf_t *cf, int cli_force) {
             int v = atoi(val); if (v >= 1 && v <= 60) cf->interval = v;
         } else if (!strcmp(key, "disk_interval")) {
             int v = atoi(val); if (v >= 5 && v <= 3600) cf->disk_interval = v;
+        } else if (!strcmp(key, "cpu_crit")) {
+            int v = atoi(val); if (v >= 40 && v <= 105) cf->cpu_crit = v;
+        } else if (!strcmp(key, "sys_crit")) {
+            int v = atoi(val); if (v >= 40 && v <= 105) cf->sys_crit = v;
         } else if (!strcmp(key, "force")) {
             cf->force = atoi(val);
         } else if (!strcmp(key, "api_port")) {
@@ -354,14 +373,17 @@ static void fprint_curve(FILE *f, const char *key, const curve_t *c) {
 
 static void write_status(fan_mode_t mode, int ct, int st,
                          long c1, long c2, long s1, long s2, int cp, int sp,
-                         const curve_t *cpu_c, const curve_t *sys_c) {
+                         const curve_t *cpu_c, const curve_t *sys_c,
+                         int crit_cpu, int crit_sys) {
     char tmp[] = STATUS_PATH ".tmp";
     FILE *f = fopen(tmp, "w");
     if (!f) return;
     fprintf(f, "mode=%s\ncpu_temp=%d\nsys_temp=%d\n"
                "cpufan1=%ld\ncpufan2=%ld\nsysfan1=%ld\nsysfan2=%ld\n"
-               "cpu_pct=%d\nsys_pct=%d\n",
-            mode_name(mode), ct, st, c1, c2, s1, s2, cp, sp);
+               "cpu_pct=%d\nsys_pct=%d\n"
+               "crit_cpu=%d\ncrit_sys=%d\n",
+            mode_name(mode), ct, st, c1, c2, s1, s2, cp, sp,
+            crit_cpu, crit_sys);
     fprint_curve(f, "cpu_curve", cpu_c);
     fprint_curve(f, "sys_curve", sys_c);
     fclose(f);
@@ -524,8 +546,8 @@ int main(int argc, char **argv) {
          * over the limit (a brief turbo spike or a one-off bad reading) is
          * ignored; two in a row (~6s) forces full. A missing reading stays
          * instant (handled above via cts/sts < 0). */
-        cpu_crit_streak = (ct >= CPU_CRIT) ? cpu_crit_streak + 1 : 0;
-        sys_crit_streak = (st >= SYS_CRIT) ? sys_crit_streak + 1 : 0;
+        cpu_crit_streak = (ct >= cf.cpu_crit) ? cpu_crit_streak + 1 : 0;
+        sys_crit_streak = (st >= cf.sys_crit) ? sys_crit_streak + 1 : 0;
         int cpu_crit = (cpu_crit_streak >= 2), sys_crit = (sys_crit_streak >= 2);
         if (cpu_crit) cp = SPEED_FULL;
         if (sys_crit) sp = SPEED_FULL;
@@ -536,13 +558,13 @@ int main(int argc, char **argv) {
         if (cpu_crit != warn_cpu_crit) {
             fprintf(stderr, cpu_crit ? "ug-fand: CPU %dC >= %dC critical — fans forced to 100%%\n"
                                      : "ug-fand: CPU back below critical (now %dC)\n",
-                    ct, CPU_CRIT);
+                    ct, cf.cpu_crit);
             warn_cpu_crit = cpu_crit;
         }
         if (sys_crit != warn_sys_crit) {
             fprintf(stderr, sys_crit ? "ug-fand: disk %dC >= %dC critical — fans forced to 100%%\n"
                                      : "ug-fand: disk back below critical (now %dC)\n",
-                    st, SYS_CRIT);
+                    st, cf.sys_crit);
             warn_sys_crit = sys_crit;
         }
         if (cpu_read != warn_cpu_read) {
@@ -575,7 +597,8 @@ int main(int argc, char **argv) {
             rpm[3] = fan_rpm(REG_NP_SYSFAN2_RPM);
             disp_sp = np;
             write_status(cf.mode, ct, st_show, 0, 0, rpm[2], rpm[3],
-                         applied_cp, np, &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+                         applied_cp, np, &cf.cpu[cf.mode], &cf.sys[cf.mode],
+                         cf.cpu_crit, cf.sys_crit);
         } else {
             set_fan_pair(REG_CPU_EN1, applied_cp);
             set_fan_pair(REG_SYS_EN1, applied_sp);
@@ -583,7 +606,8 @@ int main(int argc, char **argv) {
             rpm[2] = fan_rpm(REG_SYSFAN1_RPM); rpm[3] = fan_rpm(REG_SYSFAN2_RPM);
             disp_sp = applied_sp;
             write_status(cf.mode, ct, st_show, rpm[0], rpm[1], rpm[2], rpm[3],
-                         applied_cp, applied_sp, &cf.cpu[cf.mode], &cf.sys[cf.mode]);
+                         applied_cp, applied_sp, &cf.cpu[cf.mode], &cf.sys[cf.mode],
+                         cf.cpu_crit, cf.sys_crit);
         }
 
         /* Publish a snapshot for the web dashboard: the system/net/disk stats
@@ -613,8 +637,8 @@ int main(int argc, char **argv) {
             for (int i = 0; i < 4; i++) fs.fan_rpm[i] = rpm[i];
             curve_to_str(fs.fan_cpu_curve, sizeof(fs.fan_cpu_curve), &cf.cpu[cf.mode]);
             curve_to_str(fs.fan_sys_curve, sizeof(fs.fan_sys_curve), &cf.sys[cf.mode]);
-            fs.fan_crit_cpu = CPU_CRIT;
-            fs.fan_crit_sys = SYS_CRIT;
+            fs.fan_crit_cpu = cf.cpu_crit;
+            fs.fan_crit_sys = cf.sys_crit;
             int sidx;
             snprintf(fs.storage_path, sizeof(fs.storage_path), "%s", cf.storage_path);
             fs.storage_count = system_stats_list_mounts(fs.storage_opts, STORAGE_OPT_MAX,

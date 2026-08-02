@@ -51,6 +51,7 @@ static int  g_fan_running = 0, g_fan_cpu = -1, g_fan_sys = -1;
 static int  g_fan_cpu_pct = -1, g_fan_sys_pct = -1;
 static long g_fan_rpm[4] = { -1, -1, -1, -1 };
 static char g_fan_mode[16] = "", g_fan_cpu_curve[192] = "", g_fan_sys_curve[192] = "";
+static int g_fan_crit_cpu = -1, g_fan_crit_sys = -1;   /* -1 = ug-fand too old / absent */
 
 static api_snapshot_t g_snap; /* assembled each poll cycle, published to the API */
 
@@ -207,6 +208,7 @@ void api_action_power(int poweroff) {
  * and cache it for the web-API snapshot. */
 static void read_fand_status(int update_gui) {
     int cpu_t = -1, sys_t = -1, cp = -1, sp = -1, running = 0;
+    int crit_c = -1, crit_s = -1;
     long rpm[4] = { -1, -1, -1, -1 };
     char mode[16] = "", cpu_curve[192] = "", sys_curve[192] = "";
     FILE *f = fopen("/run/ug-fand/status", "r");
@@ -222,6 +224,8 @@ static void read_fand_status(int update_gui) {
             else if (sscanf(line, "sysfan2=%ld", &rpm[3]) == 1) continue;
             else if (sscanf(line, "cpu_pct=%d", &cp) == 1) continue;
             else if (sscanf(line, "sys_pct=%d", &sp) == 1) continue;
+            else if (sscanf(line, "crit_cpu=%d", &crit_c) == 1) continue;
+            else if (sscanf(line, "crit_sys=%d", &crit_s) == 1) continue;
             else if (sscanf(line, "cpu_curve=%191[^\n]", cpu_curve) == 1) continue;
             else if (sscanf(line, "sys_curve=%191[^\n]", sys_curve) == 1) continue;
             else    sscanf(line, "mode=%15s", mode);
@@ -234,6 +238,7 @@ static void read_fand_status(int update_gui) {
     g_fan_running = running && mode[0];
     g_fan_cpu = cpu_t; g_fan_sys = sys_t;
     g_fan_cpu_pct = cp; g_fan_sys_pct = sp;
+    g_fan_crit_cpu = crit_c; g_fan_crit_sys = crit_s;
     memcpy(g_fan_rpm, rpm, sizeof(g_fan_rpm));
     snprintf(g_fan_mode, sizeof(g_fan_mode), "%s", mode);
     snprintf(g_fan_cpu_curve, sizeof(g_fan_cpu_curve), "%s", cpu_curve);
@@ -321,6 +326,7 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
     g_snap.fan_running = g_fan_running;
     g_snap.fan_cpu_temp = g_fan_cpu; g_snap.fan_sys_temp = g_fan_sys;
     g_snap.fan_cpu_pct = g_fan_cpu_pct; g_snap.fan_sys_pct = g_fan_sys_pct;
+    g_snap.fan_crit_cpu = g_fan_crit_cpu; g_snap.fan_crit_sys = g_fan_crit_sys;
     memcpy(g_snap.fan_rpm, g_fan_rpm, sizeof(g_snap.fan_rpm));
     snprintf(g_snap.fan_mode, sizeof(g_snap.fan_mode), "%s", g_fan_mode);
     snprintf(g_snap.fan_cpu_curve, sizeof(g_snap.fan_cpu_curve), "%s", g_fan_cpu_curve);

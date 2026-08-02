@@ -26,6 +26,7 @@ typedef struct {
 
     /* fan (from /run/ug-fand/status) */
     int  fan_running, fan_cpu_temp, fan_sys_temp, fan_cpu_pct, fan_sys_pct;
+    int  fan_crit_cpu, fan_crit_sys;   /* failsafe temps; -1 = ug-fand too old / absent */
     long fan_rpm[4];
     char fan_mode[16], fan_cpu_curve[192], fan_sys_curve[192];
 

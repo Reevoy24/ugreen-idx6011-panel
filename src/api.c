@@ -566,7 +566,12 @@ static void handle_stats(int fd) {
     }
     jappend(&b, "},\"cpu_curve\":"); jcurve(&b, s.fan_cpu_curve);
     jappend(&b, ",\"sys_curve\":"); jcurve(&b, s.fan_sys_curve);
-    jappend(&b, ",\"crit\":{\"cpu\":88,\"sys\":60}},");
+    /* Failsafe thresholds as reported by ug-fand's status file (configurable
+     * via cpu_crit/sys_crit since v1.1.1-beta2); fall back to its built-in
+     * defaults when an older ug-fand doesn't publish them. */
+    jappend(&b, ",\"crit\":{\"cpu\":%d,\"sys\":%d}},",
+            s.fan_crit_cpu > 0 ? s.fan_crit_cpu : 88,
+            s.fan_crit_sys > 0 ? s.fan_crit_sys : 68);
 
     jappend(&b, "\"settings\":{\"brightness\":%d,\"backlight_timeout\":%d,\"sleep_brightness\":%d,"
                 "\"leds_on\":%s,\"led_night\":%s,\"clock_24h\":%s,\"language\":",

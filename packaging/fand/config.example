@@ -20,6 +20,14 @@ interval=3
 # disk I/O and spun-down drives are left asleep.
 #disk_interval=30
 
+# Critical failsafe temperatures in degrees C (40..105). At or above these the
+# fans are forced to 100% regardless of mode/curves. Defaults: 88 (CPU),
+# 68 (disks/NVMe). NVMe temps use the drive's Composite sensor — the value the
+# manufacturer's own warning/critical thresholds are specified against — so the
+# defaults fit most drives; raise sys_crit only if yours legitimately runs hot.
+#cpu_crit=88
+#sys_crit=68
+
 # Run even if the DMI product name is not an iDX6011 (NOT recommended —
 # the EC fan registers are specific to these models). Uncomment to force.
 #force=1
@@ -49,4 +57,5 @@ sys_silent=0:20,54:20,60:45,64:75,68:100
 sys_default=0:28,52:28,58:55,63:80,68:100
 sys_turbo=0:48,47:48,51:76,55:96,58:100
 
-# Safety: above 88 C (CPU) or 68 C (disks) the fans go to 100% regardless.
+# Safety: at/above cpu_crit (CPU) or sys_crit (disks) the fans go to 100%
+# regardless of the curves (see above; defaults 88 / 68).
