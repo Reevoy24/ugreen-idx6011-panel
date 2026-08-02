@@ -4,7 +4,7 @@ Touch dashboard, front-LED control and fan control for the UGREEN NASync iDX6011
 
 *Community project. Not affiliated with or endorsed by UGREEN.*
 
-[![Release](https://img.shields.io/badge/release-v1.7.4-2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.7.5-2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
