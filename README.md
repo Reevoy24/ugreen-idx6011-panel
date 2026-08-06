@@ -87,7 +87,7 @@ After installing, the dashboard appears on the display and the Fan control page 
 
 ### Verifying a release
 
-Releases after v1.7.5 are built by GitHub Actions directly from the tagged commit — nothing is compiled or uploaded from a developer machine. Every artifact carries signed [build provenance](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations) (SLSA), and each release includes a `SHA256SUMS` file. To confirm a download was really produced by this repository's CI from the code you can audit:
+From v1.7.5 onward, releases are built by GitHub Actions directly from the tagged commit — nothing is compiled or uploaded from a developer machine. Every artifact carries signed [build provenance](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations) (SLSA), and each release includes a `SHA256SUMS` file. To confirm a download was really produced by this repository's CI from the code you can audit:
 
 ```bash
 gh attestation verify ug-paneld_1.7.6_amd64.deb -R Reevoy24/ugreen-idx6011-panel
