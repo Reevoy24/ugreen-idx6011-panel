@@ -42,7 +42,10 @@ jobs:
         id: meta
         shell: bash  # container default is dash; ${version/-/~} is a bashism
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+          # Branch on the ref, not the event: dispatching the workflow on a
+          # tag ref runs the full release path (useful when a tag push event
+          # gets swallowed, e.g. after deleting + recreating a tag).
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
             kind=both
             version=""
           elif [ "${GITHUB_REF_NAME#ug-fand-v}" != "$GITHUB_REF_NAME" ]; then
@@ -69,7 +72,7 @@ jobs:
       # The tag must match the version compiled into the binaries (shown in
       # the web UI footer), otherwise the release would lie about itself.
       - name: Verify tag matches include/version.h
-        if: github.event_name == 'push'
+        if: github.ref_type == 'tag'
         run: |
           case "${{ steps.meta.outputs.kind }}" in
             panel) macro=UG_VERSION ;;
