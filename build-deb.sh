@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build ug-paneld .deb packages locally (mirrors .github/workflows/release.yml).
+# Build ug-paneld .deb packages. Single source of truth for the package
+# layout — release CI (.github/workflows/release.yml) runs this same script.
 # Usage: ./build-deb.sh [version]   (run on Linux/WSL after `make`)
 set -e
 

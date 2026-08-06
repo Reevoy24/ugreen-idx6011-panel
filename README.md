@@ -85,6 +85,14 @@ After installing, the dashboard appears on the display and the Fan control page 
 > [!IMPORTANT]
 > **Display stays black on a Pro unit?** Newer iDX6011 Pro revisions boot with a dead internal panel when the firmware starts the OS through the generic **"UEFI OS"** boot entry. One-time fix, confirmed on real hardware: in the BIOS boot order, put your OS's **own boot-manager entry** first instead of "UEFI OS". That entry is **"Linux Boot Manager"** (systemd-boot) on Proxmox and the Unraid USB stick's UEFI entry on Unraid. On Unraid the stick must be (and stay) plugged in, since its boot entry only exists while the stick is present. Full background in [Troubleshooting](#troubleshooting).
 
+### Verifying a release
+
+Releases after v1.7.5 are built by GitHub Actions directly from the tagged commit — nothing is compiled or uploaded from a developer machine. Every artifact carries signed [build provenance](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations) (SLSA), and each release includes a `SHA256SUMS` file. To confirm a download was really produced by this repository's CI from the code you can audit:
+
+```bash
+gh attestation verify ug-paneld_1.7.6_amd64.deb -R Reevoy24/ugreen-idx6011-panel
+```
+
 ## Front panel LEDs
 
 The 9 RGB status LEDs (power, 2× LAN, 6× disk) are driven by a separate MCU whose protocol differs from older UGREEN models. It was reverse-engineered in [miskcoo/ugreen_leds_controller#93](https://github.com/miskcoo/ugreen_leds_controller/issues/93) and implemented in [klein0r's fork](https://github.com/klein0r/ugreen_leds_controller) (all credit to them).
