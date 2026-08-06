@@ -40,6 +40,7 @@ jobs:
 
       - name: Determine release line and version
         id: meta
+        shell: bash  # container default is dash; ${version/-/~} is a bashism
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             kind=both
