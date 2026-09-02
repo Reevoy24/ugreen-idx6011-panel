@@ -23,8 +23,18 @@ mkdir -p "$DEST"
 cp -f ugreen_leds_cli "$DEST/ugreen_leds_cli"
 cp -f start.sh "$DEST/start.sh"
 cp -f ugreen-leds-mon.sh "$DEST/ugreen-leds-mon.sh"
+cp -f ugreen-leds-mon.conf.example "$DEST/ugreen-leds-mon.conf.example"
 cp -f README.txt "$DEST/README.txt" 2>/dev/null || true
 chmod 755 "$DEST/ugreen_leds_cli" "$DEST/start.sh" "$DEST/ugreen-leds-mon.sh"
+
+# Settings survive an upgrade: the config is created once and never
+# overwritten, while the example above always carries the current keys.
+if [ -f "$DEST/ugreen-leds-mon.conf" ]; then
+    echo "Kept your existing $DEST/ugreen-leds-mon.conf"
+else
+    cp ugreen-leds-mon.conf.example "$DEST/ugreen-leds-mon.conf"
+    echo "Created $DEST/ugreen-leds-mon.conf"
+fi
 
 # Register a Post-Init script so the LEDs are set on every boot.
 if command -v midclt >/dev/null 2>&1; then
@@ -45,4 +55,6 @@ fi
 sh "$DEST/start.sh"
 echo
 echo "Installed to $DEST. The rolling animation stops at every boot now."
-echo "Colors/brightness: edit $DEST/start.sh and re-run it."
+echo "Colors, brightness and activity thresholds: edit"
+echo "  $DEST/ugreen-leds-mon.conf"
+echo "then re-run:  sh $DEST/start.sh"

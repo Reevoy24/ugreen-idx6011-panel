@@ -1,0 +1,71 @@
+# Front-LED settings for the UGREEN iDX6011 Pro (static variant).
+# Copy of this file is created as ugreen-leds-mon.conf on install and is
+# never overwritten by a later install — edit that one, not this example.
+# Read by both start.sh (base state at boot) and ugreen-leds-mon.sh
+# (activity monitor). Apply changes by re-running start.sh.
+#
+# The key names match /etc/ugreen-leds.conf from the kernel-module setup on
+# Proxmox/Debian, so the vocabulary is the same on either platform.
+
+# =========== colors and brightness ===========
+# Colors are "R G B", 0-255 each. Brightness is 1-255.
+#   white "255 255 255"   blue "0 0 255"      yellow "255 255 0"
+#   red   "255 0 0"       green "0 255 0"     orange "255 165 0"
+
+COLOR_POWER="255 255 255"
+BRIGHTNESS_POWER=144
+
+COLOR_DISK_HEALTH="255 255 255"
+BRIGHTNESS_DISK_LEDS=64
+
+COLOR_NETDEV_NORMAL="255 255 255"
+BRIGHTNESS_NETDEV_LED=96
+
+# Color while blinking on activity (empty = same color as when idle).
+COLOR_DISK_ACTIVE=""
+COLOR_NETDEV_ACTIVE=""
+
+# Bays with no disk in them. Empty = LED off, which is what you usually
+# want on a half-populated NAS; set a color to light them anyway.
+COLOR_DISK_EMPTY=""
+
+# Blink timing in milliseconds (on, off).
+BLINK_ON=300
+BLINK_OFF=200
+
+# =========== activity monitoring ===========
+
+# Poll interval in seconds.
+INTERVAL=2
+
+# Blink the disk / network LEDs on activity at all (0 = static LEDs only).
+DISK_ACTIVITY=1
+NET_ACTIVITY=1
+
+# How much traffic per poll counts as "busy". Without a threshold an idle
+# NAS still blinks constantly: ZFS commits, logs and background broadcast
+# traffic (ARP, mDNS, an open web UI) never let the counters rest. Lower
+# these if the LEDs feel unresponsive, raise them if they still flicker
+# while the system is idle.
+DISK_THRESHOLD_KB=128
+NET_THRESHOLD_KB=64
+
+# Consecutive quiet polls before an LED goes back to solid. Keeps a bursty
+# workload from flickering the LED between blinking and solid.
+IDLE_HOLD=2
+
+# =========== disk and NIC mapping ===========
+
+# Bay order disk1..disk6. Empty = auto (all sd* in /sys/block, sorted).
+# Verify by generating I/O on one disk and watching which LED blinks.
+DISKS=""
+
+# LAN1 LAN2. Empty = auto (physical NICs, sorted).
+NICS=""
+
+# Leave the OS disk out of the auto-detected bay list (it is never idle).
+# Only applies when DISKS is empty.
+SKIP_BOOT_DISK=1
+
+# Additional disks to leave out of the auto-detected list, e.g. "sdg sdh".
+EXCLUDE_DISKS=""

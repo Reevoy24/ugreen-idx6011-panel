@@ -35,11 +35,11 @@ The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows s
 | Platform | Display + touch | Fan control | Front LEDs |
 |----------|:---------------:|:-----------:|:----------:|
 | **Proxmox / Debian** | ✅ field-tested | ✅ field-tested | ✅ field-tested |
-| **TrueNAS SCALE** | ✅ confirmed | ✅ verified | ⚠️ not yet confirmed |
+| **TrueNAS SCALE** | ✅ confirmed | ✅ verified | ✅ confirmed |
 | **Unraid** | display ✅ / touch ❌ | ✅ | ❌ |
 
 - **Proxmox / Debian** is the reference platform. Everything is tested on real hardware (a newer-revision iDX6011 Pro).
-- **TrueNAS SCALE** ships the identical binaries. The display, touch and fan control are confirmed on real TrueNAS hardware (a user reported smooth swiping, full touch coverage, idle sleep and working web stats; fan install, reboot persistence and mode switching all work). Only the front LEDs are not yet confirmed there, so feedback through the [issues](../../issues) is welcome.
+- **TrueNAS SCALE** ships the identical binaries. The display, touch and fan control are confirmed on real TrueNAS hardware (a user reported smooth swiping, full touch coverage, idle sleep and working web stats; fan install, reboot persistence and mode switching all work). The front LEDs are confirmed too, including full color control ([#9](../../issues/9)).
 - **Unraid** runs the display fine, since it goes over i915/DRM rather than I2C, but touch and the front LEDs do not work on the stock kernel. Unraid omits the Intel SoC I2C stack this Meteor Lake board needs (`intel_lpss` for the touch bus, and the pinctrl/SMBus pieces for the LED bus), so neither I2C bus comes up. The fix is a custom Unraid kernel with `CONFIG_PINCTRL_METEORLAKE` and `CONFIG_MFD_INTEL_LPSS_*`, not a different LED driver. See [`packaging/unraid/README.txt`](packaging/unraid/README.txt) for the custom-kernel notes.
 
 ## Install
@@ -115,12 +115,26 @@ Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs*
 The LED tarball installs onto one of your pools and registers a Post-Init script, so the LEDs come up on every boot without touching the read-only system area:
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/leds-v1.1.1/ugreen-leds_1.1.1_truenas_amd64.tar.gz
-tar xzf ugreen-leds_1.1.1_truenas_amd64.tar.gz && cd ugreen-leds
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/leds-v1.2.0/ugreen-leds_1.2.0_truenas_amd64.tar.gz
+tar xzf ugreen-leds_1.2.0_truenas_amd64.tar.gz && cd ugreen-leds
 sh install.sh /mnt/<your-pool>/ugreen-leds
 ```
 
-It stops the animation at boot, sets a calm base state and runs a small userspace activity monitor (busy means a hardware blink, idle means solid). This needs no kernel module and survives every platform update. Per-I/O triggers with SMART colors need the kernel module built for that kernel, which is tracked upstream in [0x556c79/install_ugreen_leds_controller#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23). The LED side is not yet confirmed on TrueNAS hardware, so feedback is welcome.
+It stops the animation at boot, sets a calm base state and runs a small userspace activity monitor (busy means a hardware blink, idle means solid). This needs no kernel module and survives every platform update.
+
+Colors, brightness and how eagerly the LEDs blink all live in one file, `ugreen-leds-mon.conf`, in the install directory. An install never overwrites it, so your settings survive an upgrade; the `ugreen-leds-mon.conf.example` next to it always lists the current keys. Edit the config and apply it by re-running `start.sh`:
+
+```sh
+COLOR_POWER="255 255 255"      # white power LED
+COLOR_DISK_HEALTH="0 0 255"    # blue disks
+COLOR_NETDEV_NORMAL="255 255 0"  # yellow LAN
+```
+
+The key names match `/etc/ugreen-leds.conf` from the Proxmox setup above, so the vocabulary is the same on either platform. Bays with no disk in them are switched off by default, so a half-populated NAS does not glow for empty slots — `COLOR_DISK_EMPTY` lights them anyway.
+
+The **Status LEDs** and **night mode** rows in the panel settings work with this install too: ug-paneld looks for the tools in `/usr/local/bin`, then on the Unraid flash drive and on the pools (`/mnt/*/*/ugreen_leds_cli`). If you installed somewhere the search does not reach, point the daemon at it with `UG_PANELD_LEDS_DIR=/mnt/<pool>/<dir>`. Switching the LEDs off stops the activity monitor as well, and switching them back on re-runs `start.sh`, so your colors come back.
+
+Per-I/O triggers with SMART health colors still need the kernel module built for that exact kernel. That is moving forward upstream: the iDX protocol has been picked up in miskcoo's [`dev-idx601-series`](https://github.com/miskcoo/ugreen_leds_controller/tree/dev-idx601-series) branch, TrueNAS modules are now built in upstream CI, and prebuilt `led-ugreen.ko` files for recent TrueNAS releases live in [0x556c79/install_ugreen_leds_controller](https://github.com/0x556c79/install_ugreen_leds_controller) (tracked in [#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23)). Note that the kernel-module path does not make the LEDs any calmer: it blinks per I/O and per packet, with no activity threshold.
 
 ### Unraid
 
@@ -131,8 +145,9 @@ Reported **not working** on the iDX6011. The front-LED MCU lives on the i801 SMB
 
 * **Bay order:** the default ata-based disk-to-LED mapping is not yet verified on the iDX6011 Pro. Generate I/O on one disk and check that the right bay blinks. If the order is wrong, run `ugreen-detect-disks` and switch `/etc/ugreen-leds.conf` to `MAPPING_METHOD=serial`.
 * **LAN port order:** if LAN1 and LAN2 are swapped, set `NETLED_IFACES="<nic1> <nic2>"` in `/etc/default/ugreen-idx-netled` (Proxmox) or `NICS="..."` in `ugreen-leds-mon.conf` (TrueNAS/Unraid).
+* **LEDs blinking on an idle NAS (TrueNAS/Unraid):** the activity monitor only blinks once traffic crosses a threshold per poll, because the counters are never truly still — ZFS commits, logs and background broadcast traffic (ARP, mDNS, an open web UI) keep ticking. Raise `DISK_THRESHOLD_KB` / `NET_THRESHOLD_KB` in `ugreen-leds-mon.conf` if the LEDs still flicker while idle, lower them if they feel unresponsive, or set `DISK_ACTIVITY=0` / `NET_ACTIVITY=0` for plain static LEDs. The OS disk is left out of the auto-detected bay list for the same reason (`SKIP_BOOT_DISK`).
 * **Manual control:** the CLI tool and the kernel module conflict. Stop the LED services and `rmmod led_ugreen` before using `ugreen_leds_cli` by hand.
-* **LED toggle semantics:** "off" on the display stops `ugreen-diskiomon` and zeroes every LED, "on" restarts the monitors. The choice persists in `state.json`.
+* **LED toggle semantics:** "off" on the display stops the activity monitor (`ugreen-diskiomon` with the kernel module, `ugreen-leds-mon` with the static install) and zeroes every LED, "on" restarts it. The choice persists in `state.json`.
 
 </details>
 

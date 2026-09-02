@@ -23,8 +23,19 @@ animation stops right away.
 
 Customize
 ---------
-Edit /boot/config/ugreen-leds/start.sh and re-run it:
+All colors, brightness and activity settings live in one file:
+    /boot/config/ugreen-leds/ugreen-leds-mon.conf
+Edit it, then apply with:
     sh /boot/config/ugreen-leds/start.sh
+
+An install never overwrites that file, so your settings survive an
+upgrade. ugreen-leds-mon.conf.example next to it always lists the current
+keys with their defaults.
+
+Example — white power LED, blue disks, yellow LAN:
+    COLOR_POWER="255 255 255"
+    COLOR_DISK_HEALTH="0 0 255"
+    COLOR_NETDEV_NORMAL="255 255 0"
 
 CLI examples (run as root; UGREEN_MODEL=idx6011 must be set):
     export UGREEN_MODEL=idx6011
@@ -37,13 +48,23 @@ LED names: power, netdev, netdev2, disk1..disk6, all
 Activity monitor notes
 ----------------------
 Polling is coarse (default every 2 s) — LEDs indicate "busy vs idle", not
-per-I/O flicker like the kernel-module setup on Proxmox/Debian. Overrides
-go into /boot/config/ugreen-leds/ugreen-leds-mon.conf, e.g.:
-    INTERVAL=2
-    DISKS="sda sdb sdc sdd sde sdf"   # bay order disk1..disk6
-    NICS="eth0 eth1"                  # LAN1 LAN2
-The default disk order is /sys/block sd* sorted, which usually matches the
-bays — verify by generating I/O on one disk and watching which LED blinks.
+per-I/O flicker like the kernel-module setup on Proxmox/Debian.
+
+An LED only starts blinking once activity crosses a threshold in one poll
+(DISK_THRESHOLD_KB, NET_THRESHOLD_KB), and it takes IDLE_HOLD quiet polls
+to go solid again. Without the thresholds an idle NAS blinks constantly:
+ZFS commits, logs and background broadcast traffic (ARP, mDNS, an open web
+UI) never let the counters rest. Lower them if the LEDs feel unresponsive,
+raise them if they still flicker while the system is idle. Setting
+DISK_ACTIVITY=0 / NET_ACTIVITY=0 turns the blinking off entirely and keeps
+the LEDs static.
+
+Bays with no disk behind them are switched off, so a half-populated NAS
+does not glow for empty slots; set COLOR_DISK_EMPTY to light them anyway.
+
+Bay mapping is auto-detected (all sd* in /sys/block, sorted, minus the
+disk the OS boots from) — verify by generating I/O on one disk and
+watching which LED blinks, and set DISKS explicitly if the order is wrong.
 Monitor log: /var/log/ugreen-leds-mon.log
 
 Details and the full Proxmox/Debian setup (kernel module, per-I/O

@@ -18,6 +18,16 @@ mkdir -p "$PERSIST"
 cp -f ugreen_leds_cli "$PERSIST/ugreen_leds_cli"
 cp -f start.sh "$PERSIST/start.sh"
 cp -f ugreen-leds-mon.sh "$PERSIST/ugreen-leds-mon.sh"
+cp -f ugreen-leds-mon.conf.example "$PERSIST/ugreen-leds-mon.conf.example"
+
+# Settings survive an upgrade: the config is created once and never
+# overwritten, while the example above always carries the current keys.
+if [ -f "$PERSIST/ugreen-leds-mon.conf" ]; then
+    echo "Kept your existing $PERSIST/ugreen-leds-mon.conf"
+else
+    cp ugreen-leds-mon.conf.example "$PERSIST/ugreen-leds-mon.conf"
+    echo "Created $PERSIST/ugreen-leds-mon.conf"
+fi
 cp -f README.txt "$PERSIST/README.txt" 2>/dev/null || true
 
 if ! grep -q "$MARK_BEGIN" "$GO" 2>/dev/null; then
@@ -33,4 +43,6 @@ fi
 sh "$PERSIST/start.sh"
 echo
 echo "Installed. The rolling animation stops at every boot now."
-echo "Colors/brightness: edit $PERSIST/start.sh and re-run it."
+echo "Colors, brightness and activity thresholds: edit"
+echo "  $PERSIST/ugreen-leds-mon.conf"
+echo "then re-run:  sh $PERSIST/start.sh"

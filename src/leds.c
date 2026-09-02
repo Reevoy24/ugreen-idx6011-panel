@@ -3,10 +3,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <glob.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
-#define CLI_PATH      "/usr/local/bin/ugreen_leds_cli"
-#define STATIC_SCRIPT "/usr/local/bin/ugreen-leds-static"
+/* Where the static-variant tools live. On Proxmox/Debian they are in
+ * /usr/local/bin; on TrueNAS and Unraid /usr is read-only, so the tarball
+ * installs onto a pool or the flash drive instead and we have to go find
+ * it (or be told through UG_PANELD_LEDS_DIR). */
+#define MON_PIDFILE "/var/run/ugreen-leds-mon.pid"
+static char cli_path[512] = "/usr/local/bin/ugreen_leds_cli";
+static char static_script[512] = "/usr/local/bin/ugreen-leds-static";
 
 enum { BACKEND_NONE, BACKEND_SYSFS, BACKEND_CLI };
 
@@ -33,6 +41,81 @@ static int path_exists(const char *p)
     return stat(p, &st) == 0;
 }
 
+/* An install directory qualifies when the CLI is there; its start.sh (the
+ * script that applies the configured colors) is optional. */
+static int try_leds_dir(const char *dir)
+{
+    char cli[512], script[512];
+    if (snprintf(cli, sizeof(cli), "%s/ugreen_leds_cli", dir) >= (int)sizeof(cli))
+        return 0;
+    if (access(cli, X_OK) != 0) return 0;
+    snprintf(cli_path, sizeof(cli_path), "%s", cli);
+    if (snprintf(script, sizeof(script), "%s/start.sh", dir) < (int)sizeof(script) &&
+        path_exists(script))
+        snprintf(static_script, sizeof(static_script), "%s", script);
+    return 1;
+}
+
+static void locate_cli(void)
+{
+    if (access(cli_path, X_OK) == 0) return;  /* found earlier, or in /usr/local/bin */
+
+    /* Nothing installed yet. leds_tick() re-probes every second, so do not
+     * walk the pools that often. */
+    static time_t last_scan = 0;
+    time_t now = time(NULL);
+    if (last_scan && now - last_scan < 10) return;
+    last_scan = now;
+
+    const char *env = getenv("UG_PANELD_LEDS_DIR");
+    if (env && env[0] && try_leds_dir(env)) return;
+
+    if (try_leds_dir("/boot/config/ugreen-leds")) return;  /* Unraid flash */
+
+    glob_t g;
+    if (glob("/mnt/*/*/ugreen_leds_cli", 0, NULL, &g) == 0) {
+        for (size_t i = 0; i < g.gl_pathc; i++) {
+            char dir[512];
+            snprintf(dir, sizeof(dir), "%s", g.gl_pathv[i]);
+            char *slash = strrchr(dir, '/');
+            if (!slash) continue;
+            *slash = '\0';
+            if (try_leds_dir(dir)) break;
+        }
+        globfree(&g);
+    }
+}
+
+/* The static-variant activity monitor keeps writing to the LEDs, so it has
+ * to stop before "off" — otherwise the next disk burst lights them again.
+ * The pid is cross-checked against the process name: the monitor does not
+ * always get to clean up its pid file, and we must not signal a stranger
+ * that inherited the pid. UGREEN_LEDS_PIDFILE overrides the location, the
+ * same knob the monitor itself reads. */
+static void stop_activity_monitor(void)
+{
+    const char *pidfile = getenv("UGREEN_LEDS_PIDFILE");
+    if (!pidfile || !pidfile[0]) pidfile = MON_PIDFILE;
+    FILE *f = fopen(pidfile, "r");
+    if (!f) return;
+    int pid = 0;
+    int got = fscanf(f, "%d", &pid);
+    fclose(f);
+    if (got != 1 || pid <= 1) return;
+
+    char path[64], buf[512];
+    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+    f = fopen(path, "r");
+    if (!f) return;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    for (size_t i = 0; i + 1 < n; i++)      /* cmdline is NUL-separated */
+        if (buf[i] == '\0') buf[i] = ' ';
+    if (strstr(buf, "ugreen-leds-mon"))
+        kill((pid_t)pid, SIGTERM);
+}
+
 static int parse_hhmm(const char *s, int fallback)
 {
     int h = 0, m = 0;
@@ -51,7 +134,8 @@ static int detect_backend(void)
      * CLI. The writes are no-ops until the LEDs appear. */
     if (path_exists("/sys/module/led_ugreen"))
         return BACKEND_SYSFS;
-    if (access(CLI_PATH, X_OK) == 0)
+    locate_cli();
+    if (access(cli_path, X_OK) == 0)
         return BACKEND_CLI;
     return BACKEND_NONE;
 }
@@ -113,16 +197,21 @@ static void apply(int on)
             }
         }
     } else { /* BACKEND_CLI */
+        char cmd[1100];
         if (on) {
-            if (path_exists(STATIC_SCRIPT))
-                run(STATIC_SCRIPT " >/dev/null 2>&1");
+            /* start.sh re-applies the configured colors and brings the
+             * activity monitor back; the bare CLI can only light them. */
+            if (path_exists(static_script))
+                snprintf(cmd, sizeof(cmd), "sh %s >/dev/null 2>&1", static_script);
             else
-                run("UGREEN_MODEL=idx6011 " CLI_PATH
-                    " all -on >/dev/null 2>&1");
+                snprintf(cmd, sizeof(cmd),
+                         "UGREEN_MODEL=idx6011 %s all -on >/dev/null 2>&1", cli_path);
         } else {
-            run("UGREEN_MODEL=idx6011 " CLI_PATH
-                " all -off >/dev/null 2>&1");
+            stop_activity_monitor();
+            snprintf(cmd, sizeof(cmd),
+                     "UGREEN_MODEL=idx6011 %s all -off >/dev/null 2>&1", cli_path);
         }
+        run(cmd);
     }
 }
 
@@ -147,6 +236,9 @@ int leds_init(const char *night_start, const char *night_end)
     snprintf(window_str, sizeof(window_str), "%02d:%02d-%02d:%02d",
              start_min / 60, start_min % 60, end_min / 60, end_min % 60);
     backend = detect_backend();
+    if (backend == BACKEND_CLI)
+        fprintf(stderr, "leds: cli %s, start script %s\n", cli_path,
+                path_exists(static_script) ? static_script : "(none)");
     return backend != BACKEND_NONE;
 }
 

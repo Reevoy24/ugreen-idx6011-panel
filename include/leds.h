@@ -11,7 +11,12 @@
  *           "off" stops ugreen-diskiomon and zeroes all LEDs; "on" restarts
  *           the monitor services, which restore triggers/colors/brightness.
  *   cli   — only ugreen_leds_cli exists (static-LED variant, e.g. without
- *           kernel headers): on/off through the CLI tool.
+ *           kernel headers): on/off through the CLI tool. "on" re-runs the
+ *           install's start.sh so the configured colors come back; "off"
+ *           stops the activity monitor first, or it would re-light the LEDs
+ *           on the next disk burst. Looked for in /usr/local/bin, then on
+ *           the Unraid flash drive and the TrueNAS pools (/usr is read-only
+ *           there) — UG_PANELD_LEDS_DIR overrides the search.
  *
  * The night window (config: led_night_start/led_night_end) turns the LEDs
  * off between two times of day. Toggling them back on during the window
