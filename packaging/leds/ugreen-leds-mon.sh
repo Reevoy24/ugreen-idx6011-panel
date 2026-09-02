@@ -85,12 +85,24 @@ if [ -z "$DISKS" ]; then
     if [ "$SKIP_BOOT_DISK" = 1 ]; then
         for b in $(boot_disks); do skip="$skip$b "; done
     fi
+    all_sd=$(ls -1 /sys/block 2>/dev/null | grep '^sd' | sort)
     DISKS=""
-    for d in $(ls -1 /sys/block 2>/dev/null | grep '^sd' | sort); do
-        case "$skip" in *" $d "*) continue ;; esac
+    dropped=""
+    for d in $all_sd; do
+        case "$skip" in
+            *" $d "*) dropped="$dropped$d "; continue ;;
+        esac
         DISKS="$DISKS$d "
         [ "$(echo "$DISKS" | wc -w)" -ge 6 ] && break
     done
+    # Excluding everything would leave every bay dark and look like a
+    # broken install — better to watch the OS disk than nothing at all.
+    if [ -z "$DISKS" ] && [ -n "$all_sd" ]; then
+        echo "ugreen-leds-mon: every disk was excluded, falling back to all of them"
+        DISKS="$(echo "$all_sd" | head -6 | tr '\n' ' ')"
+        dropped=""
+    fi
+    [ -n "$dropped" ] && echo "ugreen-leds-mon: not watching: $dropped(OS disk / EXCLUDE_DISKS; set SKIP_BOOT_DISK=0 to keep it)"
 fi
 if [ -z "$NICS" ]; then
     NICS="$(for n in /sys/class/net/*; do

@@ -153,8 +153,7 @@ check '^disk1 disk2 disk3 disk4 disk5 disk6 -on -color 0 0 255 -brightness 64$' 
 
 echo
 echo "== case 7: multiple bays keep their index (busy disk must not move the wrong LED)"
-OTHERS=$(ls /sys/block | grep '^sd' | grep -v "^$DISK$" | sort | head -2 | tr '
-' ' ')
+OTHERS=$(ls /sys/block | grep '^sd' | grep -v "^$DISK$" | sort | head -2 | tr '\n' ' ')
 if [ "$(echo "$OTHERS" | wc -w)" -lt 2 ]; then
     echo "  SKIP  need at least three sd* disks on this host"
 else
@@ -181,6 +180,24 @@ stop_mon
 start_mon 'COLOR_DISK_EMPTY="255 0 0"'
 check '^disk2 -on -color 255 0 0 -brightness 64$' "COLOR_DISK_EMPTY lights empty bays instead"
 check_not '^disk2 -off$' "empty bays are not switched off when a color is set"
+stop_mon
+
+echo
+echo "== case 9: excluding every disk falls back instead of going all dark"
+rm -rf "$T"; mkdir -p "$T"
+cat > "$T/ugreen_leds_cli" <<'EOF'
+#!/bin/sh
+echo "$@" >> /tmp/ledmon-test/calls.log
+EOF
+chmod 755 "$T/ugreen_leds_cli"
+cp "$SRC" "$T/"
+ALLSD=$(ls /sys/block | grep '^sd' | sort | tr '\n' ' ')
+{ echo "INTERVAL=1"; echo "EXCLUDE_DISKS=\"$ALLSD\""; } > "$T/ugreen-leds-mon.conf"
+UGREEN_LEDS_CLI="$T/ugreen_leds_cli" UGREEN_LEDS_PIDFILE="$T/pid"     dash "$T/ugreen-leds-mon.sh" > "$T/mon.log" 2>&1 &
+MON=$!
+sleep 2
+grep -q "falling back" "$T/mon.log" && pass "the fallback is reported in the log"                                     || fail "the fallback is reported in the log"
+check '^disk1 -on ' "bay 1 is still driven rather than dark"
 stop_mon
 
 echo
