@@ -234,6 +234,157 @@ static int effective(void)
     return user_on && !(night_on && night_active_now && !night_override);
 }
 
+/* ---- configurable colors (the three the UI exposes) --------------------
+ *
+ * Both backends already keep their colors in a shell-style config, and the
+ * key names are deliberately the same in each: the kernel-module setup uses
+ * /etc/ugreen-leds.conf, the static install uses the ugreen-leds-mon.conf
+ * next to its start.sh. So editing means rewriting one KEY="R G B" line and
+ * telling whoever owns the LEDs to re-read it. */
+
+static leds_colors_t color_cache;
+static int  colors_loaded = 0;
+static time_t colors_read_at = 0;
+
+/* The config to edit, or NULL when we have nothing to write to. */
+static const char *colors_conf_path(char *buf, size_t n)
+{
+    if (backend == BACKEND_SYSFS) {
+        snprintf(buf, n, "%s", "/etc/ugreen-leds.conf");
+        return path_exists(buf) ? buf : NULL;
+    }
+    if (backend == BACKEND_CLI && path_exists(static_script)) {
+        snprintf(buf, n, "%s", static_script);
+        char *slash = strrchr(buf, '/');
+        if (!slash) return NULL;
+        size_t used = (size_t)(slash + 1 - buf);
+        if (used >= n) return NULL;
+        snprintf(slash + 1, n - used, "ugreen-leds-mon.conf");
+        return buf;
+    }
+    return NULL;
+}
+
+/* KEY="R G B" / KEY=R G B, ignoring a trailing comment. Leaves out untouched
+ * when the line is a different key. */
+static void parse_color_line(const char *line, const char *key,
+                             char *out, size_t n)
+{
+    size_t klen = strlen(key);
+    if (strncmp(line, key, klen) != 0 || line[klen] != '=') return;
+    const char *v = line + klen + 1;
+    while (*v == ' ' || *v == '"' || *v == 39) v++;
+    size_t i = 0;
+    while (*v && *v != '"' && *v != 39 && *v != 10 && *v != '#' && i + 1 < n)
+        out[i++] = *v++;
+    while (i > 0 && out[i - 1] == ' ') i--;
+    out[i] = 0;
+}
+
+static void load_colors(leds_colors_t *c)
+{
+    snprintf(c->power,  sizeof(c->power),  "%s", "255 255 255");
+    snprintf(c->disk,   sizeof(c->disk),   "%s", "255 255 255");
+    snprintf(c->netdev, sizeof(c->netdev), "%s", "255 255 255");
+
+    char path[600];
+    if (!colors_conf_path(path, sizeof(path))) return;
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        parse_color_line(line, "COLOR_POWER",         c->power,  sizeof(c->power));
+        parse_color_line(line, "COLOR_DISK_HEALTH",   c->disk,   sizeof(c->disk));
+        parse_color_line(line, "COLOR_NETDEV_NORMAL", c->netdev, sizeof(c->netdev));
+    }
+    fclose(f);
+}
+
+int leds_colors_supported(void)
+{
+    char path[600];
+    return colors_conf_path(path, sizeof(path)) != NULL;
+}
+
+void leds_get_colors(leds_colors_t *out)
+{
+    time_t now = time(NULL);
+    if (!colors_loaded || now - colors_read_at >= 5) {
+        load_colors(&color_cache);
+        colors_loaded = 1;
+        colors_read_at = now;
+    }
+    *out = color_cache;
+}
+
+/* Stream the config through a temp file, replacing the three keys and
+ * appending whichever were missing, then rename over the original so a
+ * reader never sees a half-written file. */
+static int write_colors(const char *path, const leds_colors_t *c)
+{
+    const char *keys[3] = { "COLOR_POWER", "COLOR_DISK_HEALTH", "COLOR_NETDEV_NORMAL" };
+    const char *vals[3] = { c->power, c->disk, c->netdev };
+    int written[3] = { 0, 0, 0 };
+
+    char tmp[620];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    FILE *w = fopen(tmp, "w");
+    if (!w) return -1;
+
+    FILE *r = fopen(path, "r");
+    if (r) {
+        char line[512];
+        while (fgets(line, sizeof(line), r)) {
+            int replaced = 0;
+            for (int i = 0; i < 3; i++) {
+                size_t klen = strlen(keys[i]);
+                if (strncmp(line, keys[i], klen) == 0 && line[klen] == '=') {
+                    fprintf(w, "%s=\"%s\"\n", keys[i], vals[i]);
+                    written[i] = 1;
+                    replaced = 1;
+                    break;
+                }
+            }
+            if (!replaced) fputs(line, w);
+        }
+        fclose(r);
+    }
+    for (int i = 0; i < 3; i++)
+        if (!written[i]) fprintf(w, "%s=\"%s\"\n", keys[i], vals[i]);
+
+    if (fclose(w) != 0) { unlink(tmp); return -1; }
+    if (rename(tmp, path) != 0) { unlink(tmp); return -1; }
+    return 0;
+}
+
+int leds_set_colors(const leds_colors_t *c)
+{
+    char path[600];
+    if (!colors_conf_path(path, sizeof(path))) return -1;
+    if (write_colors(path, c) != 0) {
+        fprintf(stderr, "leds: cannot write %s\n", path);
+        return -1;
+    }
+    color_cache = *c;
+    colors_loaded = 1;
+    colors_read_at = time(NULL);
+
+    /* Only push them to the hardware when the LEDs are supposed to be lit;
+     * otherwise a color change at night would light up the whole front. */
+    if (!effective()) return 0;
+
+    if (backend == BACKEND_SYSFS) {
+        run("systemctl restart ugreen-diskiomon.service 2>/dev/null; "
+            "systemctl restart ugreen-idx-netled.service 2>/dev/null");
+        sysfs_write("power", "color", color_cache.power);
+    } else if (backend == BACKEND_CLI && path_exists(static_script)) {
+        char cmd[620];
+        snprintf(cmd, sizeof(cmd), "sh %s >/dev/null 2>&1", static_script);
+        run(cmd);
+    }
+    return 0;
+}
+
 int leds_init(const char *night_start, const char *night_end)
 {
     start_min = parse_hhmm(night_start, 21 * 60);

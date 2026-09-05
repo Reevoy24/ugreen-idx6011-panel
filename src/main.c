@@ -279,6 +279,12 @@ int api_apply_settings(const api_settings_patch_t *p) {
         snprintf(c.arg_str, sizeof(c.arg_str), "%s-%s", p->night_start, p->night_end);
         api_cmd_push(&c);
     }
+    if (p->has_led_colors) {
+        api_cmd_t c = { .type = API_CMD_SET_LED_COLORS };
+        snprintf(c.arg_str, sizeof(c.arg_str), "%s|%s|%s",
+                 p->led_colors.power, p->led_colors.disk, p->led_colors.netdev);
+        api_cmd_push(&c);
+    }
     if (p->has_timezone) {
         api_cmd_t c = { .type = API_CMD_SET_TIMEZONE };
         snprintf(c.arg_str, sizeof(c.arg_str), "%s", p->timezone);
@@ -349,6 +355,8 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
 
     if (has_leds)
         snprintf(g_snap.led_night_window, sizeof(g_snap.led_night_window), "%s", leds_night_window());
+    g_snap.has_led_colors = has_leds && leds_colors_supported();
+    if (g_snap.has_led_colors) leds_get_colors(&g_snap.led_colors);
     g_snap.wp_count = gui_wallpaper_options(g_snap.wp_opts, API_WP_MAX, &g_snap.wp_cur);
     g_snap.storage_count = system_stats_list_mounts(g_snap.storage_opts, STORAGE_OPT_MAX,
                                                     g_snap.storage_path, &g_snap.storage_cur);
@@ -604,6 +612,16 @@ int main(int argc, char *argv[]) {
                 settings_save(&ui_state);
                 pthread_mutex_unlock(&settings_lock);
                 gui_leds_refresh();
+                break;
+            }
+            case API_CMD_SET_LED_COLORS: {
+                /* "R G B|R G B|R G B" -- power, disks, LAN. Not mirrored into
+                 * state.json: the colors live in the LED config itself, which
+                 * is already on persistent storage on every platform. */
+                leds_colors_t lc;
+                if (sscanf(cmd.arg_str, "%15[^|]|%15[^|]|%15[^|]",
+                           lc.power, lc.disk, lc.netdev) == 3)
+                    leds_set_colors(&lc);
                 break;
             }
             case API_CMD_SET_TIMEZONE:

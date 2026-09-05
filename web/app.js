@@ -215,6 +215,9 @@ function render(s) {
   toggle("row-night", caps.has_leds);
   if (!caps.has_leds) { const ne = $("night-edit"); if (ne) ne.hidden = true; }
   paintNightWindow(stx);
+  toggle("row-led-colors", !!stx.has_led_colors);
+  if (!stx.has_led_colors) { const ce = $("colors-edit"); if (ce) ce.hidden = true; }
+  paintLedColors(stx);
   const serverIs24 = stx.clock_24h !== false;
   const fmtEl = $("set-format");
   if (fmtEl && document.activeElement !== fmtEl) { fmtEl.value = serverIs24 ? "24" : "12"; setClockFormat(serverIs24); }
@@ -387,6 +390,35 @@ function fmtTime(hhmm) {
 }
 
 /* the "(start–end)" label next to the night-mode toggle, in the current format */
+// LED colors travel as "R G B" (the format both LED configs use), while the
+// browser's color input speaks hex.
+function rgbToHex(rgb) {
+  const p = String(rgb || "").trim().split(/\s+/).map((n) => parseInt(n, 10));
+  if (p.length !== 3 || p.some((n) => !(n >= 0 && n <= 255))) return "#ffffff";
+  return "#" + p.map((n) => n.toString(16).padStart(2, "0")).join("");
+}
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+  if (!m) return "255 255 255";
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(" ");
+}
+// A picked colour must survive until the user saves it: the 2.5 s poll would
+// otherwise paint the server's values back over an unsaved choice. Focus is
+// not enough of a guard here, because closing the native colour dialog can
+// take focus off the input.
+let colorsDirty = false;
+function paintLedColors(stx) {
+  if (colorsDirty) return;
+  const map = { "power": stx.led_color_power, "disk": stx.led_color_disk, "netdev": stx.led_color_netdev };
+  for (const k in map) {
+    const hex = rgbToHex(map[k]);
+    const inp = $("color-" + k);
+    if (inp) inp.value = hex;
+    const sw = $("cs-" + k);
+    if (sw) sw.style.background = hex;
+  }
+}
 function paintNightWindow(stx) {
   const w = stx && stx.led_night_window;
   if (!w) { setText("night-window", ""); return; }
@@ -470,6 +502,33 @@ function wireControls() {
   $("set-leds").addEventListener("change", (e) => postSettings({ leds_on: e.target.checked ? 1 : 0 }));
   $("set-night").addEventListener("change", (e) => postSettings({ led_night: e.target.checked ? 1 : 0 }));
 
+  ["power", "disk", "netdev"].forEach((k) => {
+    const inp = $("color-" + k);
+    if (!inp) return;
+    inp.addEventListener("input", () => {
+      colorsDirty = true;
+      const sw = $("cs-" + k);            // keep the collapsed row's dots in sync
+      if (sw) sw.style.background = inp.value;
+    });
+  });
+  const cx = $("colors-x");
+  if (cx) cx.addEventListener("click", () => {
+    const e = $("colors-edit");
+    if (e) { e.hidden = !e.hidden; cx.classList.toggle("open", !e.hidden); }
+  });
+  // all three colors go in one request: they share a config file and one re-apply
+  const csv = $("colors-save");
+  if (csv) csv.addEventListener("click", async () => {
+    try {
+      await postJSON("/api/settings", {
+        led_color_power:  hexToRgb($("color-power").value),
+        led_color_disk:   hexToRgb($("color-disk").value),
+        led_color_netdev: hexToRgb($("color-netdev").value),
+      });
+      colorsDirty = false;
+      toast(t("saved"), true);
+    } catch (err) { toast(err.message); }
+  });
   const nx = $("night-x");
   if (nx) nx.addEventListener("click", () => {
     const e = $("night-edit");

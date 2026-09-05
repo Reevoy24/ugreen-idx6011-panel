@@ -3,6 +3,7 @@
 // reuse the device's wording (src/i18n.c) where they exist.
 export const STRINGS = {
   en: {
+    led_colors: "LED colors", led_power: "Power", led_disks: "Disks", led_network: "Network",
     title: "iDX6011 Pro", subtitle: "Panel · Web", online: "Online", offline: "Panel offline",
     sec_overview: "Overview", sec_fan: "Fan control", sec_storage: "Storage", storage_mount: "Mountpoint",
     sec_network: "Network", sec_services: "Services", sec_settings: "Settings", sec_power: "Power",
@@ -23,6 +24,7 @@ export const STRINGS = {
     daemon_offline: "Fan daemon not running",
   },
   de: {
+    led_colors: "LED-Farben", led_power: "Power", led_disks: "Festplatten", led_network: "Netzwerk",
     title: "iDX6011 Pro", subtitle: "Panel · Web", online: "Online", offline: "Panel offline",
     sec_overview: "Übersicht", sec_fan: "Lüftersteuerung", sec_storage: "Speicher", storage_mount: "Mountpoint",
     sec_network: "Netzwerk", sec_services: "Dienste", sec_settings: "Einstellungen", sec_power: "Energie",
@@ -43,6 +45,7 @@ export const STRINGS = {
     daemon_offline: "Lüfter-Daemon läuft nicht",
   },
   es: {
+    led_colors: "Colores LED", led_power: "Encendido", led_disks: "Discos", led_network: "Red",
     title: "iDX6011 Pro", sec_overview: "Resumen", sec_fan: "Ventiladores", sec_storage: "Almacenamiento", storage_mount: "Punto de montaje",
     sec_network: "Red", sec_services: "Servicios", sec_settings: "Ajustes", sec_power: "Energía",
     online: "En línea", offline: "Panel desconectado", system: "Sistema", applied: "Aplicado",
@@ -56,6 +59,7 @@ export const STRINGS = {
     daemon_offline: "El daemon de ventiladores no está activo",
   },
   fr: {
+    led_colors: "Couleurs LED", led_power: "Alimentation", led_disks: "Disques", led_network: "Réseau",
     title: "iDX6011 Pro", sec_overview: "Aperçu", sec_fan: "Ventilateurs", sec_storage: "Stockage", storage_mount: "Point de montage",
     sec_network: "Réseau", sec_services: "Services", sec_settings: "Réglages", sec_power: "Alimentation",
     online: "En ligne", offline: "Panneau hors ligne", system: "Système", applied: "Appliqué",
@@ -69,6 +73,7 @@ export const STRINGS = {
     daemon_offline: "Le démon des ventilateurs n'est pas actif",
   },
   pt: {
+    led_colors: "Cores do LED", led_power: "Energia", led_disks: "Discos", led_network: "Rede",
     title: "iDX6011 Pro", sec_overview: "Visão geral", sec_fan: "Ventoinhas", sec_storage: "Armazenamento", storage_mount: "Ponto de montagem",
     sec_network: "Rede", sec_services: "Serviços", sec_settings: "Definições", sec_power: "Energia",
     online: "Online", offline: "Painel offline", system: "Sistema", applied: "Aplicado",
@@ -82,6 +87,7 @@ export const STRINGS = {
     daemon_offline: "O daemon das ventoinhas não está em execução",
   },
   id: {
+    led_colors: "Warna LED", led_power: "Daya", led_disks: "Disk", led_network: "Jaringan",
     title: "iDX6011 Pro", sec_overview: "Ringkasan", sec_fan: "Kontrol Kipas", sec_storage: "Penyimpanan", storage_mount: "Titik mount",
     sec_network: "Jaringan", sec_services: "Layanan", sec_settings: "Pengaturan", sec_power: "Daya",
     online: "Online", offline: "Panel offline", system: "Sistem", applied: "Diterapkan",

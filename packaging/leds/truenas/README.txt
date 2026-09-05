@@ -37,6 +37,10 @@ Example — white power LED, blue disks, yellow LAN:
     COLOR_DISK_HEALTH="0 0 255"
     COLOR_NETDEV_NORMAL="255 255 0"
 
+The three main colors (power, disks, LAN) can also be set in ug-paneld's web
+dashboard under "LED colors" -- it writes this same file and re-applies. The
+rest stays file-only.
+
 CLI examples (run as root; UGREEN_MODEL=idx6011 must be set):
     export UGREEN_MODEL=idx6011
     ugreen_leds_cli all -status

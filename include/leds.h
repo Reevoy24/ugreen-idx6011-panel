@@ -22,6 +22,19 @@
  * off between two times of day. Toggling them back on during the window
  * overrides it until the window ends; the next night they go off again. */
 
+/* The three LED colors the settings UI exposes, as "R G B" strings. They
+ * live in the LED config the active backend reads (/etc/ugreen-leds.conf for
+ * the kernel module, ugreen-leds-mon.conf for the static install), so they
+ * persist on their own and need no entry in state.json. Setting them writes
+ * that file and re-applies, unless the LEDs are currently off. */
+typedef struct {
+    char power[16], disk[16], netdev[16];
+} leds_colors_t;
+
+int  leds_colors_supported(void);              /* 1 = a config we can edit */
+void leds_get_colors(leds_colors_t *out);
+int  leds_set_colors(const leds_colors_t *c);  /* 0 ok */
+
 int  leds_init(const char *night_start, const char *night_end); /* 1 = controllable */
 int  leds_available(void);
 

@@ -455,6 +455,15 @@ static int valid_wallpaper(const char *name) {
     return ok;
 }
 
+/* "R G B", each component 0-255 and nothing else on the line. */
+static int valid_rgb(const char *s) {
+    int n[3], used = 0;
+    if (sscanf(s, "%d %d %d %n", &n[0], &n[1], &n[2], &used) < 3) return 0;
+    if (used == 0 || s[used] != 0) return 0;
+    for (int i = 0; i < 3; i++) if (n[i] < 0 || n[i] > 255) return 0;
+    return 1;
+}
+
 static int valid_hhmm(const char *s) {
     int h = -1, m = -1;
     if (sscanf(s, "%d:%d", &h, &m) != 2) return 0;
@@ -584,6 +593,10 @@ static void handle_stats(int fd) {
     jappend(&b, ",\"led_night_start\":"); jstr(&b, s.led_night_start);
     jappend(&b, ",\"led_night_end\":"); jstr(&b, s.led_night_end);
     jappend(&b, ",\"timezone\":"); jstr(&b, s.timezone);
+    jappend(&b, ",\"has_led_colors\":%s", s.has_led_colors ? "true" : "false");
+    jappend(&b, ",\"led_color_power\":");  jstr(&b, s.led_colors.power);
+    jappend(&b, ",\"led_color_disk\":");   jstr(&b, s.led_colors.disk);
+    jappend(&b, ",\"led_color_netdev\":"); jstr(&b, s.led_colors.netdev);
     jappend(&b, "},");
 
     jappend(&b, "\"wallpapers\":{\"current\":");
@@ -623,6 +636,10 @@ static void handle_settings_get(int fd) {
     jappend(&b, ",\"led_night_end\":"); jstr(&b, s.led_night_end);
     jappend(&b, ",\"timezone\":"); jstr(&b, s.timezone);
     jappend(&b, ",\"storage_path\":"); jstr(&b, s.storage_path);
+    jappend(&b, ",\"has_led_colors\":%s", s.has_led_colors ? "true" : "false");
+    jappend(&b, ",\"led_color_power\":");  jstr(&b, s.led_colors.power);
+    jappend(&b, ",\"led_color_disk\":");   jstr(&b, s.led_colors.disk);
+    jappend(&b, ",\"led_color_netdev\":"); jstr(&b, s.led_colors.netdev);
     jappend(&b, "}");
     send_json(fd, 200, out);
 }
@@ -689,6 +706,22 @@ static void handle_settings_post(int fd, const http_req_t *req) {
         if (!valid_timezone(s)) { send_error(fd, 400, "unknown timezone"); return; }
         p.has_timezone = 1; snprintf(p.timezone, sizeof(p.timezone), "%.39s", s);
     }
+    /* The three colors are written as one unit: they share a config file and
+     * one re-apply, and the UI always sends them together. */
+    if (has_leds_cap && json_get_str(j, "led_color_power", s, sizeof(s)) == 0) {
+        leds_colors_t lc;
+        static const char *ckeys[3] = { "led_color_power", "led_color_disk", "led_color_netdev" };
+        char *cdst[3] = { lc.power, lc.disk, lc.netdev };
+        for (int i = 0; i < 3; i++) {
+            if (json_get_str(j, ckeys[i], s, sizeof(s)) != 0 || !valid_rgb(s)) {
+                send_error(fd, 400, "led_color_* must be \"R G B\" with each 0-255");
+                return;
+            }
+            snprintf(cdst[i], sizeof(lc.power), "%.15s", s);
+        }
+        p.has_led_colors = 1;
+        p.led_colors = lc;
+    }
     char sp[256];
     if (json_get_str(j, "storage_path", sp, sizeof(sp)) == 0) {
         if (!valid_storage(sp)) { send_error(fd, 400, "storage_path must be an existing directory"); return; }
@@ -698,7 +731,7 @@ static void handle_settings_post(int fd, const http_req_t *req) {
     if (!(p.has_brightness || p.has_timeout || p.has_sleep || p.has_language ||
           p.has_leds_on || p.has_led_night || p.has_wallpaper ||
           p.has_night_start || p.has_night_end || p.has_timezone || p.has_clock_24h ||
-          p.has_storage_path)) {
+          p.has_storage_path || p.has_led_colors)) {
         send_error(fd, 400, "no changes");
         return;
     }

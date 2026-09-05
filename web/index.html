@@ -101,6 +101,15 @@
             </div>
             <button class="act sm okbtn" id="night-save" data-i18n="save">Save</button>
           </div>
+          <div class="srow" id="row-led-colors"><div class="sk"><button class="nx" id="colors-x" aria-label="colors">&#9656;</button> <span data-i18n="led_colors">LED colors</span></div><div class="cswatch"><i id="cs-power"></i><i id="cs-disk"></i><i id="cs-netdev"></i></div></div>
+          <div class="srow" id="colors-edit" hidden>
+            <div class="tgrid">
+              <label class="tfield"><span data-i18n="led_power">Power</span><input type="color" id="color-power"></label>
+              <label class="tfield"><span data-i18n="led_disks">Disks</span><input type="color" id="color-disk"></label>
+              <label class="tfield"><span data-i18n="led_network">Network</span><input type="color" id="color-netdev"></label>
+            </div>
+            <button class="act sm okbtn" id="colors-save" data-i18n="save">Save</button>
+          </div>
           <div class="srow col"><div class="sk" data-i18n="wallpaper">Wallpaper</div><div class="wps" id="wp-options"></div><label class="upload"><input type="file" id="wp-upload" accept="image/png" hidden><span data-i18n="upload_image">Upload image</span></label></div>
         </div>
       </section>

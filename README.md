@@ -108,7 +108,7 @@ bash setup-ugreen-leds.sh
 
 The rolling animation stops immediately, disk LEDs show activity and health, and the LAN LEDs blink on traffic. The script also installs the kernel-header meta package (`proxmox-default-headers`), so DKMS rebuilds the module on every kernel update and the LEDs keep working across reboots and upgrades. If the LEDs ever drop to a plain static state after a kernel update, the matching headers were missing: just re-run the script to repair it.
 
-Colors live in `/etc/ugreen-leds.conf` (`COLOR_POWER`, `COLOR_DISK_HEALTH`, `COLOR_NETDEV_NORMAL`, plus health and standby colors the kernel module can show). The setup script only writes that file when it does not exist yet, so your edits survive a re-run; restart `ugreen-diskiomon` to apply them.
+Colors live in `/etc/ugreen-leds.conf` (`COLOR_POWER`, `COLOR_DISK_HEALTH`, `COLOR_NETDEV_NORMAL`, plus health and standby colors the kernel module can show). The setup script only writes that file when it does not exist yet, so your edits survive a re-run; restart `ugreen-diskiomon` to apply them. The three main colors are also editable in the [web dashboard](#web-dashboard) under **LED colors**.
 
 Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs** on/off row and a **night mode** row, which turns the LEDs off automatically between `led_night_start` and `led_night_end` (default 21:00 to 08:00). Turning them on during the window overrides it until the window ends.
 
@@ -132,7 +132,7 @@ COLOR_DISK_HEALTH="0 0 255"    # blue disks
 COLOR_NETDEV_NORMAL="255 255 0"  # yellow LAN
 ```
 
-The key names match `/etc/ugreen-leds.conf` from the Proxmox setup above, so the vocabulary is the same on either platform. Bays with no disk in them are switched off by default, so a half-populated NAS does not glow for empty slots — `COLOR_DISK_EMPTY` lights them anyway.
+The key names match `/etc/ugreen-leds.conf` from the Proxmox setup above, so the vocabulary is the same on either platform. If the [web dashboard](#web-dashboard) is enabled you can pick the three main colors there instead of editing the file. Bays with no disk in them are switched off by default, so a half-populated NAS does not glow for empty slots — `COLOR_DISK_EMPTY` lights them anyway.
 
 The **Status LEDs** and **night mode** rows in the panel settings work with this install too: ug-paneld looks for the tools in `/usr/local/bin`, then on the Unraid flash drive and on the pools (`/mnt/*/*/ugreen_leds_cli`). If you installed somewhere the search does not reach, point the daemon at it with `UG_PANELD_LEDS_DIR=/mnt/<pool>/<dir>`. Switching the LEDs off stops the activity monitor as well, and switching them back on re-runs `start.sh`, so your colors come back.
 
@@ -325,7 +325,7 @@ PY
 
 ## Web dashboard
 
-This is opt-in. Add `api_port` to `config.json` and ug-paneld serves a browser dashboard on the LAN that mirrors the whole panel: live stats (CPU, RAM, temps, uptime, network, disks, Proxmox, OPNsense, GPU, fans), the Silent/Default/Turbo switch and fan curve, and every setting (brightness, screen-off timeout, language, LEDs plus night window, wallpaper with custom upload) plus restart/shutdown. It is built into ug-paneld, so there is no extra service or container.
+This is opt-in. Add `api_port` to `config.json` and ug-paneld serves a browser dashboard on the LAN that mirrors the whole panel: live stats (CPU, RAM, temps, uptime, network, disks, Proxmox, OPNsense, GPU, fans), the Silent/Default/Turbo switch and fan curve, and every setting (brightness, screen-off timeout, language, LEDs plus night window and colors, wallpaper with custom upload) plus restart/shutdown. It is built into ug-paneld, so there is no extra service or container.
 
 ```json
 {

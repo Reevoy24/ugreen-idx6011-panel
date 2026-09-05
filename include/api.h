@@ -7,6 +7,7 @@
 #include "disk_stats.h"
 #include "pve_stats.h"
 #include "opnsense.h"
+#include "leds.h"
 
 #define API_WP_MAX 10
 
@@ -34,6 +35,8 @@ typedef struct {
     int  brightness, backlight_timeout, sleep_brightness, leds_on, led_night, clock_24h;
     char language[8], wallpaper[32], led_night_window[16];
     char led_night_start[8], led_night_end[8], timezone[40];
+    int  has_led_colors;      /* 0 = no LED config we can edit, hide the row */
+    leds_colors_t led_colors;
 
     /* wallpaper options */
     int  wp_count, wp_cur;
@@ -59,6 +62,7 @@ typedef struct {
     int has_timezone;    char timezone[40];
     int has_clock_24h,   clock_24h;
     int has_storage_path; char storage_path[256];
+    int has_led_colors;   leds_colors_t led_colors;
 } api_settings_patch_t;
 
 /* GUI-affecting commands the API enqueues; the main loop drains + runs them on
@@ -72,7 +76,8 @@ typedef enum {
     API_CMD_LEDS_SET_NIGHT,
     API_CMD_SET_NIGHT_WINDOW,
     API_CMD_SET_TIMEZONE,
-    API_CMD_SET_STORAGE
+    API_CMD_SET_STORAGE,
+    API_CMD_SET_LED_COLORS
 } api_cmd_type_t;
 
 typedef struct {

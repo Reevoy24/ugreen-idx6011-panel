@@ -130,6 +130,8 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: none;
 .nx { display: inline-block; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 4px 0 0; transition: transform .15s; }
 .nx.open { transform: rotate(90deg); }
 .tgrid { display: flex; gap: 16px; flex-wrap: wrap; }
+.cswatch { display: flex; gap: 6px; }
+.cswatch i { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, .18) inset; }
 .tfield { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
 input[type="time"], .tfield select { background: var(--btn); color: var(--text); border: 0.5px solid rgba(255, 255, 255, .12); border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 13px; }
 .tfield select { cursor: pointer; }
