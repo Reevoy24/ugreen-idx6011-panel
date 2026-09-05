@@ -35,7 +35,9 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y build-essential libdrm-dev libcurl4-openssl-dev pkg-config git
+          # file(1) is used by the LED build scripts to assert the bundled
+          # ugreen_leds_cli really came out statically linked
+          apt-get install -y build-essential libdrm-dev libcurl4-openssl-dev pkg-config git file
 
       - name: Checkout
         uses: actions/checkout@v4
