@@ -3,7 +3,7 @@
 # Usage: ./build-leds-tarballs.sh [version]   (run on Linux/WSL)
 #
 # Needs packaging/leds/ugreen_leds_cli — the statically linked CLI built
-# from klein0r/ugreen_leds_controller (commit 4df6616a, the same reviewed
+# from klein0r/ugreen_leds_controller (commit 480f114b, the same reviewed
 # code tools/setup-ugreen-leds.sh installs on Proxmox/Debian). Easiest way
 # to get it: copy it from a machine that ran the setup script, e.g.
 #   scp root@<nas>:/usr/local/bin/ugreen_leds_cli packaging/leds/

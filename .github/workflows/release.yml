@@ -7,6 +7,9 @@ name: Build and Release
 # Two tag lines:
 #   v*          ug-paneld bundle: 2 .deb + TrueNAS/Unraid tarballs
 #   ug-fand-v*  standalone fan daemon: 1 .deb + TrueNAS/Unraid tarballs
+#   leds-v*     front-LED tarballs: TrueNAS/Unraid (the bundled
+#               ugreen_leds_cli is compiled here from the pinned upstream
+#               commit, so no third-party binary is uploaded by hand)
 #
 # workflow_dispatch builds everything without releasing (CI smoke test).
 
@@ -15,6 +18,7 @@ on:
     tags:
       - 'v*'
       - 'ug-fand-v*'
+      - 'leds-v*'
   workflow_dispatch:
 
 permissions:
@@ -51,6 +55,9 @@ jobs:
           elif [ "${GITHUB_REF_NAME#ug-fand-v}" != "$GITHUB_REF_NAME" ]; then
             kind=fand
             version="${GITHUB_REF_NAME#ug-fand-v}"
+          elif [ "${GITHUB_REF_NAME#leds-v}" != "$GITHUB_REF_NAME" ]; then
+            kind=leds
+            version="${GITHUB_REF_NAME#leds-v}"
           else
             kind=panel
             version="${GITHUB_REF_NAME#v}"
@@ -72,7 +79,7 @@ jobs:
       # The tag must match the version compiled into the binaries (shown in
       # the web UI footer), otherwise the release would lie about itself.
       - name: Verify tag matches include/version.h
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' && steps.meta.outputs.kind != 'leds'
         run: |
           case "${{ steps.meta.outputs.kind }}" in
             panel) macro=UG_VERSION ;;
@@ -84,15 +91,24 @@ jobs:
           }
 
       - name: Build ug-paneld artifacts
-        if: steps.meta.outputs.kind != 'fand'
+        if: steps.meta.outputs.kind == 'panel' || steps.meta.outputs.kind == 'both'
         run: |
           make
           ./build-deb.sh ${{ steps.meta.outputs.dpkg_version }}
           ./build-tarballs.sh ${{ steps.meta.outputs.dpkg_version }}
 
       - name: Build ug-fand artifacts
-        if: steps.meta.outputs.kind != 'panel'
+        if: steps.meta.outputs.kind == 'fand' || steps.meta.outputs.kind == 'both'
         run: ./build-fand.sh ${{ steps.meta.outputs.dpkg_version }}
+
+      # The LED CLI is third-party (klein0r's fork, pinned). Building it here
+      # rather than committing a binary keeps the same provenance guarantee
+      # the other artifacts have.
+      - name: Build front-LED tarballs
+        if: steps.meta.outputs.kind == 'leds' || steps.meta.outputs.kind == 'both'
+        run: |
+          ./tools/build-leds-cli.sh
+          ./build-leds-tarballs.sh ${{ steps.meta.outputs.dpkg_version }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -117,8 +133,12 @@ jobs:
         with:
           name: release-artifacts
 
+      # A leds-v* release has no .deb, so an unmatched glob must not abort.
       - name: Generate checksums
-        run: sha256sum *.deb *.tar.gz > SHA256SUMS
+        run: |
+          shopt -s nullglob
+          files=(*.deb *.tar.gz)
+          sha256sum "${files[@]}" > SHA256SUMS
 
       # Signed SLSA provenance: proves each artifact was built by this
       # workflow from this commit. Verify with:
