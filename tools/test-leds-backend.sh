@@ -58,7 +58,17 @@ OUT=$(UG_PANELD_LEDS_DIR="$T/nonexistent" "$T/stub" 2>&1)
 echo "$OUT" | grep -q "BACKEND none" && pass "reports no backend" || fail "reports no backend"
 
 echo
-echo "== case 3: \"off\" stops the activity monitor before killing the LEDs"
+echo "== case 3: an install without start.sh still drives the LEDs"
+mkdir -p "$T/cli-only"
+cp "$T/install/ugreen_leds_cli" "$T/cli-only/ugreen_leds_cli"
+: > "$T/calls.log"
+OUT=$(UG_PANELD_LEDS_DIR="$T/cli-only" "$T/stub" 2>&1)
+echo "$OUT" | grep -q "BACKEND ok" && pass "backend detected without a start script"                                    || fail "backend detected without a start script"
+echo "$OUT" | grep -q "start script (none)" && pass "reports that there is no start script"                                             || fail "reports that there is no start script"
+check 'cli all -on' "falls back to the bare CLI for \"on\""
+
+echo
+echo "== case 4: \"off\" stops the activity monitor before killing the LEDs"
 cp "$REPO/packaging/leds/ugreen-leds-mon.sh" "$T/ugreen-leds-mon.sh"
 sleep 300 &                       # stand-in with the wrong name
 STRANGER=$!

@@ -41,36 +41,41 @@ static int path_exists(const char *p)
     return stat(p, &st) == 0;
 }
 
-/* An install directory qualifies when the CLI is there; its start.sh (the
- * script that applies the configured colors) is optional. */
-static int try_leds_dir(const char *dir)
+/* An install directory holds the CLI and, for a complete one, the start.sh
+ * that applies the configured colors. The search insists on a complete
+ * install (require_script) so a bare CLI sitting in /usr/local/bin cannot
+ * shadow the real install on a pool or the Unraid flash drive — that would
+ * cost us the start script and reset the user's colors on every "on". */
+static int try_leds_dir(const char *dir, int require_script)
 {
     char cli[512], script[512];
     if (snprintf(cli, sizeof(cli), "%s/ugreen_leds_cli", dir) >= (int)sizeof(cli))
         return 0;
     if (access(cli, X_OK) != 0) return 0;
+    int have_script = snprintf(script, sizeof(script), "%s/start.sh", dir)
+                          < (int)sizeof(script) && path_exists(script);
+    if (require_script && !have_script) return 0;
     snprintf(cli_path, sizeof(cli_path), "%s", cli);
-    if (snprintf(script, sizeof(script), "%s/start.sh", dir) < (int)sizeof(script) &&
-        path_exists(script))
-        snprintf(static_script, sizeof(static_script), "%s", script);
+    if (have_script) snprintf(static_script, sizeof(static_script), "%s", script);
     return 1;
 }
 
 static void locate_cli(void)
 {
-    if (access(cli_path, X_OK) == 0) return;  /* found earlier, or in /usr/local/bin */
+    /* A complete install is already known; nothing left to look for. */
+    if (access(cli_path, X_OK) == 0 && path_exists(static_script)) return;
 
-    /* Nothing installed yet. leds_tick() re-probes every second, so do not
-     * walk the pools that often. */
+    /* leds_tick() re-probes every second, so do not walk the pools that
+     * often. A bare CLI in /usr/local/bin stays the fallback throughout. */
     static time_t last_scan = 0;
     time_t now = time(NULL);
     if (last_scan && now - last_scan < 10) return;
     last_scan = now;
 
     const char *env = getenv("UG_PANELD_LEDS_DIR");
-    if (env && env[0] && try_leds_dir(env)) return;
+    if (env && env[0] && try_leds_dir(env, 0)) return;   /* explicit wins outright */
 
-    if (try_leds_dir("/boot/config/ugreen-leds")) return;  /* Unraid flash */
+    if (try_leds_dir("/boot/config/ugreen-leds", 1)) return;  /* Unraid flash */
 
     glob_t g;
     if (glob("/mnt/*/*/ugreen_leds_cli", 0, NULL, &g) == 0) {
@@ -80,7 +85,7 @@ static void locate_cli(void)
             char *slash = strrchr(dir, '/');
             if (!slash) continue;
             *slash = '\0';
-            if (try_leds_dir(dir)) break;
+            if (try_leds_dir(dir, 1)) break;
         }
         globfree(&g);
     }

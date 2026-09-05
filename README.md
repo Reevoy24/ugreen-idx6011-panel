@@ -108,6 +108,8 @@ bash setup-ugreen-leds.sh
 
 The rolling animation stops immediately, disk LEDs show activity and health, and the LAN LEDs blink on traffic. The script also installs the kernel-header meta package (`proxmox-default-headers`), so DKMS rebuilds the module on every kernel update and the LEDs keep working across reboots and upgrades. If the LEDs ever drop to a plain static state after a kernel update, the matching headers were missing: just re-run the script to repair it.
 
+Colors live in `/etc/ugreen-leds.conf` (`COLOR_POWER`, `COLOR_DISK_HEALTH`, `COLOR_NETDEV_NORMAL`, plus health and standby colors the kernel module can show). The setup script only writes that file when it does not exist yet, so your edits survive a re-run; restart `ugreen-diskiomon` to apply them.
+
 Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs** on/off row and a **night mode** row, which turns the LEDs off automatically between `led_night_start` and `led_night_end` (default 21:00 to 08:00). Turning them on during the window overrides it until the window ends.
 
 ### TrueNAS SCALE
