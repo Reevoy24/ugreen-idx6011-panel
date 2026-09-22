@@ -78,11 +78,12 @@ typedef struct {
                                 For drives this host cannot see at all — typically a
                                 pool whose HBA is passed through to a VM: a helper
                                 over there keeps the file current and the panel lists
-                                those drives with the local ones. ug-fand reads the
-                                same file for its fan curve; point both at one path.
+                                those drives with the local ones. Normally NOT set
+                                here: it is taken from ug-fand's config, which is
+                                where the fan curve that needs it is configured.
                                 Format: see disk_stats.h */
     int disk_temp_max_age;   /* seconds before that file counts as no reading at all
-                                (0 = never expire) */
+                                (0 = never expire); also inherited from ug-fand */
     char storage_path[256];  /* mountpoint whose usage the Storage widget shows;
                                 "/" (default) = the root filesystem. On TrueNAS the
                                 root is the read-only boot pool, so point this at a

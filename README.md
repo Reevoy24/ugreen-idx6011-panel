@@ -276,7 +276,7 @@ sdc=*           # spun down or no reading — no cooling demand, not a dead sens
 max=44          # optional aggregate, for a helper that only knows the hottest drive
 ```
 
-A name the host also has locally just gets its temperature replaced; a name it has no block device for is added to the disk list as a drive of its own. Set the same `disk_temp_file` in ug-paneld's `config.json` and those drives appear on the display and the web dashboard too.
+A name the host also has locally just gets its temperature replaced; a name it has no block device for is added to the disk list as a drive of its own. Both keys live in `/etc/ug-fand/config` and ug-paneld reads them from there, so the path is only configured once — the drives appear on the display and the web dashboard without touching `config.json`.
 
 > [!IMPORTANT]
 > **A stale file counts as a dead sensor, not a cool one.** Once it is older than `disk_temp_max_age` seconds (default 120, `0` = never expire), `ug-fand` reports no disk temperature at all and the missing-sensor failsafe takes the fans to 100%. That is deliberate: a helper that died mid-scrub must not leave the fans regulating on a frozen number. So expect full fans while the storage VM reboots, and raise `disk_temp_max_age` if that bothers you more than the risk does.
@@ -507,8 +507,8 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 | `power_button` | `auto` | Chassis power button handling. `auto` grabs the ACPI power button so the daemon owns it (logind resumes if ug-paneld exits); `off` leaves it to logind; or a specific `/dev/input/eventN` |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
-| `disk_temp_file` | | Opt-in file with temperatures for drives this host cannot see (an HBA passed through to a VM). Set it to the same path as in the `ug-fand` config so the panel lists those drives and the fans regulate on them. Empty = off. See [Drives the host cannot see](#drives-the-host-cannot-see) |
-| `disk_temp_max_age` | `120` | Seconds before that file counts as no reading at all (`0` = never expire). In `ug-fand` this trips the missing-sensor failsafe |
+| `disk_temp_file` | from `ug-fand` | Opt-in file with temperatures for drives this host cannot see (an HBA passed through to a VM). Configure it in `/etc/ug-fand/config`, not here — the panel inherits it from there. Set it here only to make the panel use a different path. See [Drives the host cannot see](#drives-the-host-cannot-see) |
+| `disk_temp_max_age` | from `ug-fand` | Seconds before that file counts as no reading at all (`0` = never expire); likewise inherited from `ug-fand`'s config |
 | `storage_path` | `/` | Mountpoint the Storage widget reports usage for. On TrueNAS the root is the read-only boot pool, so set this to a data pool (for example `/mnt/tank`) for useful numbers. `statvfs` of a pool mountpoint covers the whole pool, regardless of how many drives back it |
 | `drm_device` | auto | DRM device path, for example `/dev/dri/card0`; empty scans all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: a name (`eDP-1`), numeric id, or `auto` |

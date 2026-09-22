@@ -64,6 +64,45 @@ static int json_get_str(const char *json, const char *key, char *buf, size_t buf
     return 0;
 }
 
+/* ug-fand's config, read-only. The drive-temperature source belongs to the fan
+ * daemon (it owns the curve that needs it), and the panel already reads and
+ * writes that same file for fan mode and curves — so the path is configured
+ * once, there, instead of being kept in sync in two places. A disk_temp_file in
+ * config.json still wins if someone wants the panel to differ. */
+#define FAND_CONFIG_PATH "/etc/ug-fand/config"
+
+static int fand_config_get(const char *key, char *buf, size_t buf_size) {
+    FILE *f = fopen(FAND_CONFIG_PATH, "r");
+    if (!f) return -1;
+
+    char line[256], k[64], v[192];
+    int found = -1;
+    while (fgets(line, sizeof(line), f)) {
+        if (sscanf(line, " %63[^= ] = %191[^\n\r]", k, v) != 2) continue;
+        if (strcmp(k, key) != 0) continue;       /* a commented-out key never matches */
+        size_t len = strlen(v);
+        while (len && (v[len-1] == ' ' || v[len-1] == '\t' || v[len-1] == '\r')) v[--len] = 0;
+        snprintf(buf, buf_size, "%s", v);
+        found = 0;                               /* last occurrence wins, as in ug-fand */
+    }
+    fclose(f);
+    return found;
+}
+
+/* Fill in whatever config.json did not set from ug-fand's config. */
+static void disk_temp_from_fand(config_t *config, int json_set_max_age) {
+    if (!config->disk_temp_file[0])
+        fand_config_get("disk_temp_file", config->disk_temp_file,
+                        sizeof(config->disk_temp_file));
+    if (!json_set_max_age) {
+        char v[32];
+        if (fand_config_get("disk_temp_max_age", v, sizeof(v)) == 0) {
+            int age = atoi(v);
+            if (age >= 0) config->disk_temp_max_age = age;
+        }
+    }
+}
+
 int config_load(config_t *config) {
     if (!config) return -1;
 
@@ -104,8 +143,10 @@ int config_load(config_t *config) {
     snprintf(config->storage_path, sizeof(config->storage_path), "/");
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
-    if (!fp)
+    if (!fp) {
+        disk_temp_from_fand(config, 0);
         return 0;
+    }
 
     fseek(fp, 0, SEEK_END);
     long size = ftell(fp);
@@ -161,7 +202,8 @@ int config_load(config_t *config) {
     json_get_str(json, "state_file", config->state_file, sizeof(config->state_file));
     json_get_str(json, "storage_path", config->storage_path, sizeof(config->storage_path));
     json_get_str(json, "disk_temp_file", config->disk_temp_file, sizeof(config->disk_temp_file));
-    json_get_int(json, "disk_temp_max_age", &config->disk_temp_max_age);
+    int json_set_max_age = (json_get_int(json, "disk_temp_max_age", &config->disk_temp_max_age) == 0);
+    disk_temp_from_fand(config, json_set_max_age);
     if (config->disk_temp_max_age < 0) config->disk_temp_max_age = 0;
 
     free(json);
