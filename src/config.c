@@ -99,6 +99,8 @@ int config_load(config_t *config) {
     snprintf(config->power_button, sizeof(config->power_button), "auto");
     config->boot_settle_secs = 120;
     config->state_file[0] = '\0';
+    config->disk_temp_file[0] = '\0';
+    config->disk_temp_max_age = DEFAULT_DISK_TEMP_MAX_AGE;
     snprintf(config->storage_path, sizeof(config->storage_path), "/");
 
     FILE *fp = fopen(CONFIG_FILE_PATH, "r");
@@ -158,6 +160,9 @@ int config_load(config_t *config) {
     json_get_int(json, "boot_settle_secs", &config->boot_settle_secs);
     json_get_str(json, "state_file", config->state_file, sizeof(config->state_file));
     json_get_str(json, "storage_path", config->storage_path, sizeof(config->storage_path));
+    json_get_str(json, "disk_temp_file", config->disk_temp_file, sizeof(config->disk_temp_file));
+    json_get_int(json, "disk_temp_max_age", &config->disk_temp_max_age);
+    if (config->disk_temp_max_age < 0) config->disk_temp_max_age = 0;
 
     free(json);
     return 0;

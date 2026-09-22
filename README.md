@@ -255,6 +255,47 @@ Delete a curve line to fall back to the built-in default.
 > [!NOTE]
 > On TrueNAS and Unraid the system area is rebuilt every boot, so `/etc/ug-fand/config` is re-synced at boot from the copy on your pool or flash drive. With the **bundled install**, a mode or curve change made on the panel or web UI is mirrored back to that copy (`<install-dir>/fand-config`), so it survives a reboot. For the **standalone fan-only daemon** (no panel), edit the pool copy directly (`/mnt/<pool>/ug-fand/config`) and re-run its `start.sh`.
 
+
+### Drives the host cannot see
+
+With a SATA controller or HBA passed through to a VM (Proxmox plus a TrueNAS or Unraid guest, VFIO), the pool disks belong to the guest: the host has no `/dev/sd*` for them, no SMART and nothing for `drivetemp`, so `ug-fand` only ever sees the NVMe drives. That is backwards — scrubs, resilvers and long SMART tests heat the spinning disks while the NVMe sit idle — and running the daemon inside the VM is no answer either, because the fans hang off the *host's* EC (port I/O on `0x62`/`0x66`), which a guest cannot reach. Sensing and actuation end up on opposite sides of the passthrough.
+
+`disk_temp_file` bridges them. Point it at a file that something with access to the drives keeps up to date, and it replaces `drivetemp` as the drive source: the `sys_*` curve, the `sys_crit` failsafe and the disk list then follow whichever is hotter, those drives or the local NVMe.
+
+```
+disk_temp_file=/run/ug-fand/disk-temps
+disk_temp_max_age=120
+```
+
+The file is plain text, one line per drive:
+
+```
+sda=41          # whole °C
+sdb=39,16.0     # optional second field: capacity in TB, for the disk list
+sdc=*           # spun down or no reading — no cooling demand, not a dead sensor
+max=44          # optional aggregate, for a helper that only knows the hottest drive
+```
+
+A name the host also has locally just gets its temperature replaced; a name it has no block device for is added to the disk list as a drive of its own. Set the same `disk_temp_file` in ug-paneld's `config.json` and those drives appear on the display and the web dashboard too.
+
+> [!IMPORTANT]
+> **A stale file counts as a dead sensor, not a cool one.** Once it is older than `disk_temp_max_age` seconds (default 120, `0` = never expire), `ug-fand` reports no disk temperature at all and the missing-sensor failsafe takes the fans to 100%. That is deliberate: a helper that died mid-scrub must not leave the fans regulating on a frozen number. So expect full fans while the storage VM reboots, and raise `disk_temp_max_age` if that bothers you more than the risk does.
+
+**Filling the file.** [`tools/ug-hddtemp-pull.sh`](tools/ug-hddtemp-pull.sh) does it from the host side: it ssh's into the guest, reads the temperatures there with `smartctl` (leaving spun-down drives asleep) and writes the file. Pull, not push — the credentials stay on the host, and the guest needs nothing but `sshd` and `smartctl`:
+
+```bash
+sh tools/ug-hddtemp-pull.sh -t root@truenas.lan          # once — for a cron job or systemd timer
+sh tools/ug-hddtemp-pull.sh -t root@truenas.lan -i 60    # or resident, every 60 s
+```
+
+To push from inside the guest instead, send the same content to the daemon's [web API](#web-dashboard) (needs `api_port` and `api_password`):
+
+```bash
+printf 'sda=41\nsdb=39\n' | curl -u :PASSWORD --data-binary @- http://<nas>:8080/api/disk-temps
+```
+
+A failed pull writes nothing at all, so the old file simply ages out into the failsafe rather than being replaced by a wrong number.
+
 ### Monitoring
 
 `ug-fand` writes live values to `/run/ug-fand/status`:
@@ -338,6 +379,7 @@ Add these two keys to `/etc/ug-paneld/config.json` (on TrueNAS and Unraid, edit 
 
 * **Monitoring is open** on the LAN. **Changing settings or fan mode** needs the password when `api_password` is set. **Restart and shutdown always need it** and are refused entirely when no password is set.
 * The legacy `GET/POST /backlight` endpoint still works (Home Assistant, see below).
+* `POST /api/disk-temps` takes drive temperatures for [drives the host cannot see](#drives-the-host-cannot-see). It needs the password like restart and shutdown do, since those readings steer the fans.
 
 > [!WARNING]
 > This is a control surface on a daemon running as root, over plain HTTP. **Use it on the LAN only and never port-forward it to the internet.** Set `api_password` and keep it on a trusted network. (ug-fand's thermal failsafe still forces full speed above the critical thresholds, so a bad curve cannot overheat the NAS.)
@@ -465,6 +507,8 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 | `power_button` | `auto` | Chassis power button handling. `auto` grabs the ACPI power button so the daemon owns it (logind resumes if ug-paneld exits); `off` leaves it to logind; or a specific `/dev/input/eventN` |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
+| `disk_temp_file` | | Opt-in file with temperatures for drives this host cannot see (an HBA passed through to a VM). Set it to the same path as in the `ug-fand` config so the panel lists those drives and the fans regulate on them. Empty = off. See [Drives the host cannot see](#drives-the-host-cannot-see) |
+| `disk_temp_max_age` | `120` | Seconds before that file counts as no reading at all (`0` = never expire). In `ug-fand` this trips the missing-sensor failsafe |
 | `storage_path` | `/` | Mountpoint the Storage widget reports usage for. On TrueNAS the root is the read-only boot pool, so set this to a data pool (for example `/mnt/tank`) for useful numbers. `statvfs` of a pool mountpoint covers the whole pool, regardless of how many drives back it |
 | `drm_device` | auto | DRM device path, for example `/dev/dri/card0`; empty scans all (legacy key `drm_card` works) |
 | `connector` | `auto` | DRM connector: a name (`eDP-1`), numeric id, or `auto` |

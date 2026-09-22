@@ -2084,8 +2084,10 @@ void gui_update_disks(const disk_stats_t *disks)
 
         if (d->size_tb >= 1.0f)
             snprintf(text, sizeof(text), "%.1f TB", d->size_tb);
-        else
+        else if (d->size_tb > 0)
             snprintf(text, sizeof(text), "%.0f GB", d->size_tb * 1000.0f);
+        else
+            snprintf(text, sizeof(text), "--");   /* externally reported drive without a capacity */
         lv_label_set_text(disk_size_val[i], text);
 
         if (d->temp_c >= 0)

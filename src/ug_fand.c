@@ -197,30 +197,53 @@ static int cpu_temp(void) {
 /* Unraid reports every drive spun down: no cooling demand — distinct from -1
  * (no reading at all), which trips the missing-sensor failsafe. */
 #define TEMP_ASLEEP (-2)
+/* A configured external source went missing or stale. The drives it watches are
+ * exactly the ones no local sensor can see, so this is a LOST sensor, not a cool
+ * one: it has to trip the failsafe instead of quietly falling back to the NVMe
+ * reading it was configured to replace. */
+#define TEMP_STALE  (-3)
 
-/* Hottest SATA drive. On Unraid this comes from emhttpd's disks.ini (zero disk
- * I/O, spun-down drives stay asleep); elsewhere from the drivetemp hwmon, where
- * EVERY read is a live SMART query that audibly unparks HDD heads on many
- * drives. Cached for max_age seconds — HDDs have huge thermal mass, polling
- * them at the fan loop rate (3 s) just kept resetting their head-park timers. */
+/* Hottest spinning drive, from the first source that is configured/present:
+ *   1. an external file (disk_temp_file) — for drives this host cannot see at
+ *      all, e.g. a pool whose HBA is passed through to a VM. Configured means
+ *      authoritative: those drives are the ones that matter, so a missing or
+ *      stale file is a lost sensor (TEMP_STALE), not a reason to fall back.
+ *   2. Unraid's emhttpd (disks.ini) — zero disk I/O, spun-down drives stay asleep.
+ *   3. the drivetemp hwmon, where EVERY read is a live SMART query that audibly
+ *      unparks HDD heads on many drives.
+ * Cached for max_age seconds — HDDs have huge thermal mass, polling them at the
+ * fan loop rate (3 s) just kept resetting their head-park timers. */
 static int sata_temp_cached(int max_age) {
     static time_t last = 0;
     static int cached = -1;
+    static int warned_stale = 0;
     time_t now = time(NULL);
     if (last == 0 || now - last >= max_age || now < last) {
-        int m, n = disk_stats_unraid_max(&m);
-        if (n > 0) cached = (m >= 0) ? m : TEMP_ASLEEP;
-        else       cached = hwmon_temp_max("drivetemp");  /* not Unraid (or nothing listed) */
+        int m, n = disk_stats_external_max(&m);
+        if (n != DISK_EXT_OFF) {
+            cached = (n == DISK_EXT_STALE) ? TEMP_STALE : (m >= 0 ? m : TEMP_ASLEEP);
+            if ((cached == TEMP_STALE) != warned_stale) {
+                warned_stale = (cached == TEMP_STALE);
+                fprintf(stderr, warned_stale
+                    ? "ug-fand: external drive temperatures missing or stale — treating the disks as unmonitored\n"
+                    : "ug-fand: external drive temperatures are current again\n");
+            }
+        } else {
+            n = disk_stats_unraid_max(&m);
+            if (n > 0) cached = (m >= 0) ? m : TEMP_ASLEEP;
+            else       cached = hwmon_temp_max("drivetemp");  /* not Unraid (or nothing listed) */
+        }
         last = now;
     }
     return cached;
 }
 
 static int sys_temp(int disk_max_age) {
+    int d = sata_temp_cached(disk_max_age);
+    if (d == TEMP_STALE) return -1;   /* failsafe, even though the NVMe still reads */
     /* NVMe: Composite (temp1) ONLY — vendor secondary sensors run far hotter
      * than the value the manufacturer thresholds refer to (see hwmon_temp_max_n) */
     int t = hwmon_temp_max_n("nvme", 1);
-    int d = sata_temp_cached(disk_max_age);
     if (d >= 0 && d > t) t = d;
     if (t >= 0) return t;
     if (d == TEMP_ASLEEP) return TEMP_ASLEEP;
@@ -247,6 +270,10 @@ typedef struct {
     char api_password[64];     /* "" = fan control open on the LAN */
     char storage_path[256];    /* mountpoint the web Storage widget reports (default "/";
                                   on TrueNAS point at a data pool, e.g. /mnt/tank) */
+    char disk_temp_file[256];  /* external drive-temperature source, "" = off (default).
+                                  For drives the host cannot see: a helper elsewhere
+                                  keeps the file current, see disk_stats.h */
+    int disk_temp_max_age;     /* s before that file counts as no reading at all */
     curve_t cpu[MODE_COUNT];
     curve_t sys[MODE_COUNT];
 } fanconf_t;
@@ -293,6 +320,11 @@ static void set_curve(curve_t *c, const point_t *src, int n) {
     for (int i = 0; i < n; i++) c->pts[i] = src[i];
 }
 
+/* How long an external drive-temperature file stays trustworthy. Long enough to
+ * ride out a helper hiccup, short enough that a dead helper (or a VM that went
+ * down mid-scrub) does not leave the fans regulating on a frozen number. */
+#define DEFAULT_DISK_TEMP_MAX_AGE 120
+
 /* Built-in defaults in PERCENT (used for any curve the config doesn't set).
  * Tuned on a real iDX6011: quiet stock-like idle floor held flat past typical
  * idle, then ramps to 100% before the critical thresholds. */
@@ -306,6 +338,8 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     cf->api_port = 0;
     cf->api_password[0] = '\0';
     snprintf(cf->storage_path, sizeof(cf->storage_path), "/");
+    cf->disk_temp_file[0] = '\0';
+    cf->disk_temp_max_age = DEFAULT_DISK_TEMP_MAX_AGE;
     static const point_t cs[] = {{0,14},{64,14},{74,35},{82,71}, {88,100}};
     static const point_t cd[] = {{0,15},{60,15},{70,38},{78,71}, {86,100}};
     static const point_t ct[] = {{0,25},{55,25},{66,66},{75,93}, {82,100}};
@@ -325,7 +359,9 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
 static void load_config(fanconf_t *cf, int cli_force) {
     config_defaults(cf, cli_force);
     FILE *f = fopen(CONFIG_PATH, "r");
-    if (!f) return;
+    /* the external source is process-global state inside disk_stats, so it is
+     * re-applied on every load — including the no-config-file case */
+    if (!f) { disk_stats_set_external(cf->disk_temp_file, cf->disk_temp_max_age); return; }
     char line[256];
     while (fgets(line, sizeof(line), f)) {
         char key[64], val[192];
@@ -352,6 +388,11 @@ static void load_config(fanconf_t *cf, int cli_force) {
             snprintf(cf->api_password, sizeof(cf->api_password), "%s", val);
         } else if (!strcmp(key, "storage_path")) {
             snprintf(cf->storage_path, sizeof(cf->storage_path), "%s", val);
+        } else if (!strcmp(key, "disk_temp_file")) {
+            snprintf(cf->disk_temp_file, sizeof(cf->disk_temp_file), "%s", val);
+        } else if (!strcmp(key, "disk_temp_max_age")) {
+            /* 0 = never expire (only for a source that cannot go stale) */
+            int v = atoi(val); if (v == 0 || (v >= 10 && v <= 86400)) cf->disk_temp_max_age = v;
         }
         else if (!strcmp(key, "cpu_silent"))  parse_curve(val, &cf->cpu[MODE_SILENT]);
         else if (!strcmp(key, "cpu_default")) parse_curve(val, &cf->cpu[MODE_DEFAULT]);
@@ -361,6 +402,7 @@ static void load_config(fanconf_t *cf, int cli_force) {
         else if (!strcmp(key, "sys_turbo"))   parse_curve(val, &cf->sys[MODE_TURBO]);
     }
     fclose(f);
+    disk_stats_set_external(cf->disk_temp_file, cf->disk_temp_max_age);
 }
 
 /* cpu_pct / sys_pct in the status file are fan speed in percent (0-100). */

@@ -167,7 +167,7 @@ function render(s) {
   /* storage */
   const dk = s.disks || { items: [] };
   $("disks").innerHTML = (dk.items || []).map((x) =>
-    `<div class="row"><span class="l"><span class="gdot${x.online ? "" : " off"}"></span>${x.dev} · ${(x.size_tb ?? 0).toFixed(1)} TB</span><span>${x.temp_c == null ? "--" : Math.round(x.temp_c) + " °C"}</span></div>`
+    `<div class="row"><span class="l"><span class="gdot${x.online ? "" : " off"}"></span>${x.dev}${x.size_tb > 0 ? " · " + x.size_tb.toFixed(1) + " TB" : ""}</span><span>${x.temp_c == null ? "--" : Math.round(x.temp_c) + " °C"}</span></div>`
   ).join("") || `<div class="row"><span class="l">—</span></div>`;
 
   /* network */

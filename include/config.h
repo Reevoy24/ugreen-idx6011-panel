@@ -6,6 +6,9 @@
 /* drive temps get their own, slower clock: off-Unraid every poll is a live
  * SMART query (drivetemp) that can audibly unpark HDD heads */
 #define DEFAULT_DISK_INTERVAL 30
+/* how long an external drive-temperature file stays trustworthy (see
+ * disk_temp_file below and the format notes in disk_stats.h) */
+#define DEFAULT_DISK_TEMP_MAX_AGE 120
 /* generous so an early boot start (before the panel connector is ready) waits
  * for it instead of giving up with exit code 2 */
 #define DEFAULT_DRM_PROBE_TIMEOUT 60
@@ -71,6 +74,15 @@ typedef struct {
                                 On TrueNAS/Unraid point this at the pool/flash so
                                 changes survive a reboot (env UG_PANELD_STATE also
                                 works; this key wins if set) */
+    char disk_temp_file[256];/* external drive-temperature source, "" (default) = off.
+                                For drives this host cannot see at all — typically a
+                                pool whose HBA is passed through to a VM: a helper
+                                over there keeps the file current and the panel lists
+                                those drives with the local ones. ug-fand reads the
+                                same file for its fan curve; point both at one path.
+                                Format: see disk_stats.h */
+    int disk_temp_max_age;   /* seconds before that file counts as no reading at all
+                                (0 = never expire) */
     char storage_path[256];  /* mountpoint whose usage the Storage widget shows;
                                 "/" (default) = the root filesystem. On TrueNAS the
                                 root is the read-only boot pool, so point this at a

@@ -438,6 +438,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Debug logging enabled\n");
     g_force_shutdown = config.force_shutdown;
     g_guest_shutdown_timeout = config.guest_shutdown_timeout;
+    /* opt-in temperatures for drives this host has no block device for (HBA
+     * passed through to a VM); off unless disk_temp_file is set */
+    disk_stats_set_external(config.disk_temp_file, config.disk_temp_max_age);
 
     /* Free the touchscreen from i2c-hid before anything else; harmless if the
      * module is blacklisted or the device id differs (it just logs). */
