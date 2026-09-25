@@ -79,17 +79,17 @@ static void check_external(void)
     disk_stats_set_external(path, 0);
     expect("max_age 0 never expires", disk_stats_external_max(&max_c), 1);
 
-    /* push transport: same format, arriving as an HTTP body */
+    /* the writer the SNMP poller uses: validates, then replaces the file atomically */
     char err[128] = "";
     int drives = 0;
     disk_stats_set_external(path, 120);
-    expect("push accepted", disk_stats_write_external("sdx=37\nsdy=*\n", &drives, err, sizeof(err)), 0);
-    expect("push drive count", drives, 2);
-    expect("pushed value readable", disk_stats_external_max(&max_c), 2);
-    expect("pushed temperature", max_c, 37);
-    expect("push rejects junk", disk_stats_write_external("hello", &drives, err, sizeof(err)), -1);
+    expect("write accepted", disk_stats_write_external("sdx=37\nsdy=*\n", &drives, err, sizeof(err)), 0);
+    expect("write drive count", drives, 2);
+    expect("written value readable", disk_stats_external_max(&max_c), 2);
+    expect("written temperature", max_c, 37);
+    expect("write rejects junk", disk_stats_write_external("hello", &drives, err, sizeof(err)), -1);
     disk_stats_set_external("", 0);
-    expect("push needs a configured file",
+    expect("write needs a configured file",
            disk_stats_write_external("sda=40\n", &drives, err, sizeof(err)), -2);
 
     /* merge into the drive list the panel and the web dashboard render: a name

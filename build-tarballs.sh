@@ -17,7 +17,7 @@ echo "Building version: $VERSION"
 
 [ -f ug-paneld ] || { echo "ug-paneld binary missing — run 'make' first" >&2; exit 1; }
 gcc -O2 -Wall -Iinclude -pthread -o ug-fand \
-    src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c \
+    src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c src/snmp.c \
     || { echo "ug-fand build failed" >&2; exit 1; }
 
 build_tarball() {

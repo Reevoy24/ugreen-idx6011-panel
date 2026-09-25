@@ -573,20 +573,6 @@ static void handle_settings(int fd, const http_req_t *req) {
     send_json(fd, 200, "{\"ok\":true}");
 }
 
-/* Push transport for the external drive-temperature source: the request body IS
- * the file (format in disk_stats.h), so a helper on the machine that actually
- * owns the drives needs nothing but curl. Password-gated like /api/power — these
- * readings steer the fans, so they are a control surface, not a statistic. */
-static void handle_disk_temps(int fd, const http_req_t *req) {
-    char err[128] = "";
-    int drives = 0;
-    int rc = disk_stats_write_external(req->body ? req->body : "", &drives, err, sizeof(err));
-    if (rc != 0) { send_error(fd, rc == -1 ? 400 : 500, err); return; }
-    char out[64];
-    snprintf(out, sizeof(out), "{\"ok\":true,\"drives\":%d}", drives);
-    send_json(fd, 200, out);
-}
-
 /* ---- router ---- */
 static void handle_request(int fd) {
     http_req_t req;
@@ -613,11 +599,6 @@ static void handle_request(int fd) {
         if (!is_post) send_error(fd, 405, NULL);
         else if (password_set() && !password_ok(&req)) send_auth_required(fd);
         else handle_settings(fd, &req);
-    } else if (strcmp(req.path, "/api/disk-temps") == 0) {
-        if (!is_post) send_error(fd, 405, NULL);
-        else if (!password_set()) send_error(fd, 403, "set api_password to enable the temperature push");
-        else if (!password_ok(&req)) send_auth_required(fd);
-        else handle_disk_temps(fd, &req);
     } else if (is_get) {
         serve_file(fd, req.path);
     } else {

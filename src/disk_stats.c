@@ -266,7 +266,7 @@ int disk_stats_write_external(const char *text, int *drives, char *err, size_t e
     }
     if (!w) { snprintf(err, errsz, "cannot write %s", ext_path); return -2; }
 
-    fprintf(w, "# pushed to the ug-paneld/ug-fand API\n");
+    fprintf(w, "# drive temperatures, rewritten on every update\n");
     for (int i = 0; i < n; i++) {
         fprintf(w, "%s=", ext[i].name);
         if (ext[i].temp_c >= 0) fprintf(w, "%.0f", ext[i].temp_c);
@@ -334,7 +334,7 @@ int disk_stats_collect(disk_stats_t *out)
         if (ext_used[i]) continue;
         disk_info_t *d = &out->disks[out->count++];
         snprintf(d->dev, sizeof(d->dev), "%.15s", ext[i].name);
-        d->is_nvme = strncmp(ext[i].name, "nvme", 4) == 0;
+        d->is_nvme = strstr(ext[i].name, "nvme") != NULL;   /* also "vm:nvme0n1" */
         d->size_tb = ext[i].size_tb;
         d->temp_c = ext[i].temp_c;
         d->online = 1;

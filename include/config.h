@@ -79,8 +79,9 @@ typedef struct {
                                 pool whose HBA is passed through to a VM: a helper
                                 over there keeps the file current and the panel lists
                                 those drives with the local ones. Normally NOT set
-                                here: it is taken from ug-fand's config, which is
-                                where the fan curve that needs it is configured.
+                                here: it is taken from ug-fand's config (disk_temp_file,
+                                or the default path when disk_temp_snmp is set), which
+                                is where the fan curve that needs it is configured.
                                 Format: see disk_stats.h */
     int disk_temp_max_age;   /* seconds before that file counts as no reading at all
                                 (0 = never expire); also inherited from ug-fand */

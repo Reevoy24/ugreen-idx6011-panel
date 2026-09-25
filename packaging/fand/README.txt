@@ -36,9 +36,10 @@ Configure
     interval=3          # seconds between updates
     cpu_*/sys_* curves  # TEMP:PERCENT points (see comments in the file)
 
-    disk_temp_file=     # drives this host cannot see (HBA passed to a VM):
-    disk_temp_max_age=  # a file a helper keeps current; older than max_age
-                        # seconds = no reading -> failsafe. See config.example.
+    disk_temp_snmp=     # IP of a TrueNAS VM that owns the pool disks (HBA
+                        # passed through): its SNMP agent reports their temps,
+                        # at no disk access. No answer for disk_temp_max_age
+                        # seconds -> failsafe. See config.example.
 
     Proxmox:  /etc/ug-fand/config        (hot-reloads on save)
     TrueNAS:  /mnt/<pool>/ug-fand/config -> then: sh /mnt/<pool>/ug-fand/start.sh

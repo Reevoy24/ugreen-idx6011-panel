@@ -39,6 +39,7 @@
 #include <pthread.h>
 #include "version.h"
 #include "fand_api.h"     /* optional web dashboard (pulls in the stat collectors) */
+#include "snmp.h"         /* drive temps from a VM's SNMP agent (disk_temp_snmp) */
 
 /* ---- EC interface ---- */
 #define EC_SC   0x66          /* command / status port */
@@ -271,9 +272,13 @@ typedef struct {
     char storage_path[256];    /* mountpoint the web Storage widget reports (default "/";
                                   on TrueNAS point at a data pool, e.g. /mnt/tank) */
     char disk_temp_file[256];  /* external drive-temperature source, "" = off (default).
-                                  For drives the host cannot see: a helper elsewhere
-                                  keeps the file current, see disk_stats.h */
+                                  For drives the host cannot see; format and rationale
+                                  in disk_stats.h */
     int disk_temp_max_age;     /* s before that file counts as no reading at all */
+    char disk_temp_snmp[64];   /* IP of a TrueNAS VM whose SNMP agent reports the
+                                  temperatures of its (passed-through) disks; ug-fand
+                                  polls it and keeps disk_temp_file current. "" = off */
+    char disk_temp_snmp_community[65]; /* SNMPv2c community, default "public" */
     curve_t cpu[MODE_COUNT];
     curve_t sys[MODE_COUNT];
 } fanconf_t;
@@ -340,6 +345,8 @@ static void config_defaults(fanconf_t *cf, int cli_force) {
     snprintf(cf->storage_path, sizeof(cf->storage_path), "/");
     cf->disk_temp_file[0] = '\0';
     cf->disk_temp_max_age = DEFAULT_DISK_TEMP_MAX_AGE;
+    cf->disk_temp_snmp[0] = '\0';
+    snprintf(cf->disk_temp_snmp_community, sizeof(cf->disk_temp_snmp_community), "public");
     static const point_t cs[] = {{0,14},{64,14},{74,35},{82,71}, {88,100}};
     static const point_t cd[] = {{0,15},{60,15},{70,38},{78,71}, {86,100}};
     static const point_t ct[] = {{0,25},{55,25},{66,66},{75,93}, {82,100}};
@@ -393,6 +400,10 @@ static void load_config(fanconf_t *cf, int cli_force) {
         } else if (!strcmp(key, "disk_temp_max_age")) {
             /* 0 = never expire (only for a source that cannot go stale) */
             int v = atoi(val); if (v == 0 || (v >= 10 && v <= 86400)) cf->disk_temp_max_age = v;
+        } else if (!strcmp(key, "disk_temp_snmp")) {
+            snprintf(cf->disk_temp_snmp, sizeof(cf->disk_temp_snmp), "%s", val);
+        } else if (!strcmp(key, "disk_temp_snmp_community")) {
+            snprintf(cf->disk_temp_snmp_community, sizeof(cf->disk_temp_snmp_community), "%s", val);
         }
         else if (!strcmp(key, "cpu_silent"))  parse_curve(val, &cf->cpu[MODE_SILENT]);
         else if (!strcmp(key, "cpu_default")) parse_curve(val, &cf->cpu[MODE_DEFAULT]);
@@ -402,7 +413,55 @@ static void load_config(fanconf_t *cf, int cli_force) {
         else if (!strcmp(key, "sys_turbo"))   parse_curve(val, &cf->sys[MODE_TURBO]);
     }
     fclose(f);
+    /* the SNMP poller needs somewhere to put what it reads: the same file every
+     * consumer (curve, failsafe, panel, web) already reads */
+    if (cf->disk_temp_snmp[0] && !cf->disk_temp_file[0])
+        snprintf(cf->disk_temp_file, sizeof(cf->disk_temp_file), "%s", DISK_EXT_DEFAULT_PATH);
     disk_stats_set_external(cf->disk_temp_file, cf->disk_temp_max_age);
+}
+
+/* ---- drive temperatures over SNMP (disks behind a passed-through controller) ----
+ * With the HBA handed to a TrueNAS VM the host cannot see the pool disks at all.
+ * Asking them ourselves (smartctl, drivetemp) is exactly what we must not do:
+ * every temperature read is a command to the drive, which can reset its
+ * spin-down timer or unpark its heads. TrueNAS already reads each disk every
+ * 5 minutes for its own graphs, and its SNMP agent serves those cached values —
+ * so polling the agent costs the disks nothing.
+ *
+ * A successful poll rewrites the external temperature file. A failed one writes
+ * nothing, so the file ages past disk_temp_max_age and the missing-sensor
+ * failsafe takes over — a dead agent never leaves the fans on a frozen number. */
+#define SNMP_POLL_SECS 30
+
+static void snmp_poll(const char *ip, const char *community) {
+    static time_t last = 0;
+    static int state = -1;                 /* last logged outcome: 1 ok, 0 failing */
+    static int last_count = -1;
+    static char last_err[160] = "";
+
+    if (!ip[0]) { last = 0; state = -1; last_count = -1; return; }
+    time_t now = time(NULL);
+    if (last != 0 && now - last < SNMP_POLL_SECS && now >= last) return;
+    last = now;
+
+    char text[2048], err[160] = "";
+    int n = snmp_truenas_disk_temps(ip, community, text, sizeof(text), err, sizeof(err));
+    if (n == 0)
+        snprintf(err, sizeof(err), "the agent lists no drive temperatures");
+    if (n > 0) {
+        int drives;
+        if (disk_stats_write_external(text, &drives, err, sizeof(err)) != 0) n = -1;
+    }
+
+    /* log state changes only: journal spam every 30 s helps nobody */
+    int ok = n > 0;
+    if (ok != state || (ok && n != last_count) || (!ok && strcmp(err, last_err) != 0)) {
+        if (ok) fprintf(stderr, "ug-fand: SNMP %s: reading %d drive(s)\n", ip, n);
+        else    fprintf(stderr, "ug-fand: SNMP %s: %s — drive temperatures will go stale\n", ip, err);
+        state = ok;
+        last_count = ok ? n : -1;
+        snprintf(last_err, sizeof(last_err), "%s", ok ? "" : err);
+    }
 }
 
 /* cpu_pct / sys_pct in the status file are fan speed in percent (0-100). */
@@ -568,6 +627,7 @@ int main(int argc, char **argv) {
             applied_cp = applied_sp = -1;   /* snap to the (possibly new) curves */
         }
 
+        snmp_poll(cf.disk_temp_snmp, cf.disk_temp_snmp_community);   /* no-op unless configured */
         int ct = cpu_temp(), st = sys_temp(cf.disk_interval);
 
         /* Unraid with every drive spun down: zero cooling demand, not a broken

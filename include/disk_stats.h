@@ -43,14 +43,19 @@ int disk_stats_unraid_max(int *max_c);
  * It exists for drives the host cannot see at all — most commonly a pool whose
  * HBA is passed through to a VM, where the disks live behind VFIO and the host
  * has neither a block device nor SMART for them, while the fans hang off the
- * host's EC. A helper in the VM keeps the file current; ug-fand regulates on it
- * and the panel lists those drives alongside the local ones.
+ * host's EC. Normally ug-fand writes it itself from the VM's SNMP agent
+ * (disk_temp_snmp, see snmp.h); anything else may write it too. ug-fand
+ * regulates on it and the panel lists those drives alongside the local ones.
  *
- * Because that helper can die (or its VM reboot) while the pool keeps heating,
+ * Because the writer can stop (or its VM reboot) while the pool keeps heating,
  * the file is only trusted while it is fresh: older than max_age seconds counts
  * as no reading at all, which trips the missing-sensor failsafe. */
 #define DISK_EXT_OFF   (-1)   /* no external file configured */
 #define DISK_EXT_STALE (-2)   /* configured, but missing / stale / unusable */
+
+/* where ug-fand's SNMP poller writes, and where the panel looks, unless
+ * disk_temp_file says otherwise */
+#define DISK_EXT_DEFAULT_PATH "/run/ug-fand/disk-temps"
 
 typedef struct {
     char name[16];
@@ -67,9 +72,9 @@ void disk_stats_set_external(const char *path, int max_age);
  * reported drive is spun down. */
 int disk_stats_external_max(int *max_c);
 
-/* Push transport (HTTP): validate `text` — the file format above — and write it
- * to the configured external file atomically. 0 on success and *drives set to
- * the accepted reading count; -1 when the body is unusable (the caller's fault),
+/* Validate `text` — the file format above — and write it to the configured
+ * external file atomically (ug-fand's SNMP poller uses this). 0 on success and
+ * *drives set to the accepted reading count; -1 when the text is unusable,
  * -2 when nothing is configured or the write failed. err gets the reason. */
 int disk_stats_write_external(const char *text, int *drives, char *err, size_t errsz);
 

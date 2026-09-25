@@ -1,4 +1,5 @@
 #include "config.h"
+#include "disk_stats.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -91,9 +92,16 @@ static int fand_config_get(const char *key, char *buf, size_t buf_size) {
 
 /* Fill in whatever config.json did not set from ug-fand's config. */
 static void disk_temp_from_fand(config_t *config, int json_set_max_age) {
-    if (!config->disk_temp_file[0])
+    if (!config->disk_temp_file[0]) {
         fand_config_get("disk_temp_file", config->disk_temp_file,
                         sizeof(config->disk_temp_file));
+        /* ug-fand's SNMP poller writes to the default path unless told otherwise */
+        char snmp[64];
+        if (!config->disk_temp_file[0] &&
+            fand_config_get("disk_temp_snmp", snmp, sizeof(snmp)) == 0 && snmp[0])
+            snprintf(config->disk_temp_file, sizeof(config->disk_temp_file), "%s",
+                     DISK_EXT_DEFAULT_PATH);
+    }
     if (!json_set_max_age) {
         char v[32];
         if (fand_config_get("disk_temp_max_age", v, sizeof(v)) == 0) {

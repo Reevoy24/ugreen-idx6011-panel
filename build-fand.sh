@@ -32,7 +32,7 @@ norm() { sed -i 's/\r$//' "$@"; }
 # fand_api.c + the shared stat collectors add the optional web dashboard; pthread
 # for the API thread. No external libs, so the static link stays clean.
 gcc -O2 -g0 -static -Wall -Wextra -Iinclude -pthread -o ug-fand \
-    src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c
+    src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c src/snmp.c
 strip ug-fand
 echo "Built static ug-fand ($(du -h ug-fand | cut -f1))"
 

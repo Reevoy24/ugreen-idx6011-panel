@@ -258,43 +258,42 @@ Delete a curve line to fall back to the built-in default.
 
 ### Drives the host cannot see
 
-With a SATA controller or HBA passed through to a VM (Proxmox plus a TrueNAS or Unraid guest, VFIO), the pool disks belong to the guest: the host has no `/dev/sd*` for them, no SMART and nothing for `drivetemp`, so `ug-fand` only ever sees the NVMe drives. That is backwards — scrubs, resilvers and long SMART tests heat the spinning disks while the NVMe sit idle — and running the daemon inside the VM is no answer either, because the fans hang off the *host's* EC (port I/O on `0x62`/`0x66`), which a guest cannot reach. Sensing and actuation end up on opposite sides of the passthrough.
+With a SATA controller or HBA passed through to a VM (Proxmox plus a TrueNAS guest, VFIO), the pool disks belong to the guest: the host has no `/dev/sd*` for them, no SMART and nothing for `drivetemp`, so `ug-fand` only ever sees the NVMe drives. That is backwards — scrubs, resilvers and long SMART tests heat the spinning disks while the NVMe sit idle — and running the daemon inside the VM is no answer either, because the fans hang off the *host's* EC (port I/O on `0x62`/`0x66`), which a guest cannot reach.
 
-`disk_temp_file` bridges them. Point it at a file that something with access to the drives keeps up to date, and it replaces `drivetemp` as the drive source: the `sys_*` curve, the `sys_crit` failsafe and the disk list then follow whichever is hotter, those drives or the local NVMe.
+`ug-fand` can take those temperatures from TrueNAS's SNMP agent instead. Two steps:
 
-```
-disk_temp_file=/run/ug-fand/disk-temps
-disk_temp_max_age=120
-```
+1. In TrueNAS, enable **System → Services → SNMP** (the community defaults to `public`).
+2. On the host, add the VM's IP address to `/etc/ug-fand/config`:
 
-The file is plain text, one line per drive:
+   ```
+   disk_temp_snmp=192.168.1.50
+   #disk_temp_snmp_community=public
+   ```
+
+That's all. The `sys_*` curve and the `sys_crit` failsafe then follow whichever is hotter, the pool disks or the local NVMe, and the pool disks show up on the display and the web dashboard as `vm:sda`, `vm:sdb`, … (ug-paneld reads the setting from `ug-fand`'s config; `config.json` needs no change).
+
+**Why SNMP, and not asking the disks directly:** every temperature reading is a command to the drive, and on many drives that resets the spin-down timer or unparks the heads — polled regularly, the disks would never go to sleep. TrueNAS already reads each disk every 5 minutes for its own graphs, and its SNMP agent serves exactly those cached values. Polling it costs the disks nothing, whatever the drive model. The price is latency: a reading can be up to about 10 minutes old, which is fine for the thermal mass of a hard disk and the same data TrueNAS's own temperature alerts work with.
+
+The address must be an IP (IPv4 or IPv6), not a host name. SNMPv2c only; keep the SNMP service on a trusted network, the community is the only credential.
+
+> [!IMPORTANT]
+> **No answer from the VM counts as a dead sensor, not a cool one.** When the agent has not answered for `disk_temp_max_age` seconds (default 120), `ug-fand` reports no disk temperature at all and the missing-sensor failsafe takes the fans to 100%. That is deliberate: a VM that goes down mid-scrub must not leave the fans regulating on a frozen number. So expect full fans while the storage VM boots or reboots. Raise `disk_temp_max_age` if that bothers you more than the risk does.
+
+<details>
+<summary><b>Other sources: the temperature file</b></summary>
+
+Under the hood the SNMP poller writes `/run/ug-fand/disk-temps`, and that file is what the fan curve, the failsafe and the drive list read. For a guest that is not TrueNAS, anything that can get at the temperatures can write it instead — set `disk_temp_file=` to its path (and leave `disk_temp_snmp` unset). One line per drive:
 
 ```
 sda=41          # whole °C
-sdb=39,16.0     # optional second field: capacity in TB, for the disk list
+sdb=39,16.0     # optional second field: capacity in TB, for the drive list
 sdc=*           # spun down or no reading — no cooling demand, not a dead sensor
-max=44          # optional aggregate, for a helper that only knows the hottest drive
+max=44          # optional aggregate, for a source that only knows the hottest drive
 ```
 
-A name the host also has locally just gets its temperature replaced; a name it has no block device for is added to the disk list as a drive of its own. Both keys live in `/etc/ug-fand/config` and ug-paneld reads them from there, so the path is only configured once — the drives appear on the display and the web dashboard without touching `config.json`.
+Write it atomically (temp file + rename). A name the host also has locally just gets its temperature replaced; a name it has no block device for is added to the drive list. The same freshness rule applies. Whatever writes it should avoid polling the disks itself, for the reason above.
 
-> [!IMPORTANT]
-> **A stale file counts as a dead sensor, not a cool one.** Once it is older than `disk_temp_max_age` seconds (default 120, `0` = never expire), `ug-fand` reports no disk temperature at all and the missing-sensor failsafe takes the fans to 100%. That is deliberate: a helper that died mid-scrub must not leave the fans regulating on a frozen number. So expect full fans while the storage VM reboots, and raise `disk_temp_max_age` if that bothers you more than the risk does.
-
-**Filling the file.** [`tools/ug-hddtemp-pull.sh`](tools/ug-hddtemp-pull.sh) does it from the host side: it ssh's into the guest, reads the temperatures there with `smartctl` (leaving spun-down drives asleep) and writes the file. Pull, not push — the credentials stay on the host, and the guest needs nothing but `sshd` and `smartctl`:
-
-```bash
-sh tools/ug-hddtemp-pull.sh -t root@truenas.lan          # once — for a cron job or systemd timer
-sh tools/ug-hddtemp-pull.sh -t root@truenas.lan -i 60    # or resident, every 60 s
-```
-
-To push from inside the guest instead, send the same content to the daemon's [web API](#web-dashboard) (needs `api_port` and `api_password`):
-
-```bash
-printf 'sda=41\nsdb=39\n' | curl -u :PASSWORD --data-binary @- http://<nas>:8080/api/disk-temps
-```
-
-A failed pull writes nothing at all, so the old file simply ages out into the failsafe rather than being replaced by a wrong number.
+</details>
 
 ### Monitoring
 
@@ -379,7 +378,6 @@ Add these two keys to `/etc/ug-paneld/config.json` (on TrueNAS and Unraid, edit 
 
 * **Monitoring is open** on the LAN. **Changing settings or fan mode** needs the password when `api_password` is set. **Restart and shutdown always need it** and are refused entirely when no password is set.
 * The legacy `GET/POST /backlight` endpoint still works (Home Assistant, see below).
-* `POST /api/disk-temps` takes drive temperatures for [drives the host cannot see](#drives-the-host-cannot-see). It needs the password like restart and shutdown do, since those readings steer the fans.
 
 > [!WARNING]
 > This is a control surface on a daemon running as root, over plain HTTP. **Use it on the LAN only and never port-forward it to the internet.** Set `api_password` and keep it on a trusted network. (ug-fand's thermal failsafe still forces full speed above the critical thresholds, so a bad curve cannot overheat the NAS.)
@@ -507,7 +505,7 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 | `power_button` | `auto` | Chassis power button handling. `auto` grabs the ACPI power button so the daemon owns it (logind resumes if ug-paneld exits); `off` leaves it to logind; or a specific `/dev/input/eventN` |
 | `boot_settle_secs` | `120` | Cold-boot settle: re-assert the backlight and hold off the idle timeout until the EC accepts it (panel lit), capped at this many seconds of uptime; 0 = off |
 | `state_file` | | Where panel/web settings are persisted; empty = `/etc/ug-paneld/state.json`. On TrueNAS/Unraid the installer points this (or the `UG_PANELD_STATE` env var) at the pool/flash so runtime changes survive a reboot |
-| `disk_temp_file` | from `ug-fand` | Opt-in file with temperatures for drives this host cannot see (an HBA passed through to a VM). Configure it in `/etc/ug-fand/config`, not here — the panel inherits it from there. Set it here only to make the panel use a different path. See [Drives the host cannot see](#drives-the-host-cannot-see) |
+| `disk_temp_file` | from `ug-fand` | Temperature file for drives this host cannot see (an HBA passed through to a VM). Configure it — or `disk_temp_snmp` — in `/etc/ug-fand/config`, not here: the panel inherits it from there. Set it here only to make the panel read a different file. See [Drives the host cannot see](#drives-the-host-cannot-see) |
 | `disk_temp_max_age` | from `ug-fand` | Seconds before that file counts as no reading at all (`0` = never expire); likewise inherited from `ug-fand`'s config |
 | `storage_path` | `/` | Mountpoint the Storage widget reports usage for. On TrueNAS the root is the read-only boot pool, so set this to a data pool (for example `/mnt/tank`) for useful numbers. `statvfs` of a pool mountpoint covers the whole pool, regardless of how many drives back it |
 | `drm_device` | auto | DRM device path, for example `/dev/dri/card0`; empty scans all (legacy key `drm_card` works) |

@@ -12,6 +12,11 @@ gcc -Iinclude $(pkg-config --cflags libdrm) \
     -o /tmp/stats-check
 /tmp/stats-check
 
+echo "=== snmp parser (ASan/UBSan) ==="
+gcc -Iinclude -g -fsanitize=address,undefined -fno-sanitize-recover=all \
+    test/snmp_check.c src/snmp.c -o /tmp/snmp-check
+/tmp/snmp-check
+
 echo "=== mockups ==="
 bash build-mockups.sh >/dev/null
 ls mockups/*.png | head

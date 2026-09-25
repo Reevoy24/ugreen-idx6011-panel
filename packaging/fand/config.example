@@ -46,26 +46,28 @@ interval=3
 #storage_path=/mnt/tank
 
 # Drives this host cannot see (opt-in, off by default). With an HBA passed
-# through to a VM the pool disks belong to the guest: no /dev/sd*, no SMART,
-# nothing for drivetemp — while the fans hang off THIS host's EC, which the
-# guest cannot reach. Point this at a file that a helper with access to the
-# drives keeps current and the sys_* curve follows the real HDD temperatures
-# again. Plain text, one line per drive:
-#     sda=41          whole degrees C
-#     sdb=39,16.0     optional second field: capacity in TB (for the disk list)
-#     sdc=*           spun down / no reading (no cooling demand)
-#     max=44          optional aggregate, if the helper only knows the hottest
-# tools/ug-hddtemp-pull.sh in the source tree is a ready-made host-side puller
-# (ssh + smartctl); a helper in the guest can also POST the same content to
-# /api/disk-temps on api_port. Set the same path in ug-paneld's config.json to
-# get those drives onto the display too.
-#disk_temp_file=/run/ug-fand/disk-temps
+# through to a TrueNAS VM the pool disks belong to the guest: no /dev/sd*, no
+# SMART, nothing for drivetemp — while the fans hang off THIS host's EC. Enable
+# System > Services > SNMP in TrueNAS and put the VM's IP address here; ug-fand
+# then follows the pool disks' temperatures (and the panel lists them as vm:sda,
+# vm:sdb, ...). IP only, no host names. SNMPv2c.
+#
+# This adds no disk access at all: TrueNAS reads each disk every 5 minutes for
+# its own graphs and the SNMP agent serves those cached values. (Asking the
+# disks directly — smartctl, drivetemp — can reset their spin-down timer.)
+#disk_temp_snmp=192.168.1.50
+#disk_temp_snmp_community=public
 
-# How long that file stays trustworthy (seconds; 0 = never expire, default 120).
-# Older than this counts as NO disk reading at all and trips the missing-sensor
-# failsafe (fans to 100%) — a helper that died mid-scrub must not leave the fans
-# regulating on a frozen number. Expect full fans while that VM reboots.
+# If the VM has not answered for this many seconds, its disks count as NOT
+# MONITORED and the missing-sensor failsafe takes the fans to 100% — so expect
+# full fans while the VM boots or reboots. Default 120; 0 = never expire.
 #disk_temp_max_age=120
+
+# Advanced: the file the SNMP poller writes and everything else reads
+# (default /run/ug-fand/disk-temps). Without disk_temp_snmp, any other source
+# may keep it current instead — one "sda=41" line per drive, "*" for a drive
+# without a reading. Written atomically; the same freshness rule applies.
+#disk_temp_file=/run/ug-fand/disk-temps
 
 # Fan curves: comma-separated  TEMP:SPEED  points — TEMP in degrees C, SPEED in
 # percent (0-100; 100 = full speed). The speed is interpolated between points

@@ -79,9 +79,9 @@ default: $(AOBJS) $(COBJS) $(MAINOBJ)
 # Bundles an optional web dashboard (fand_api.c + the shared stat collectors);
 # pthread for the API thread. Still no external libs, so it stays static-link-safe.
 FAND = ug-fand
-FAND_SRC = src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c
+FAND_SRC = src/ug_fand.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c src/snmp.c
 fand: $(FAND)
-$(FAND): $(FAND_SRC) include/fand_api.h include/version.h
+$(FAND): $(FAND_SRC) include/fand_api.h include/version.h include/disk_stats.h include/snmp.h
 	$(CC) -O2 -g0 -Wall -Wextra -Iinclude -pthread -o $(FAND) $(FAND_SRC)
 	@echo "Built $(FAND)"
 
