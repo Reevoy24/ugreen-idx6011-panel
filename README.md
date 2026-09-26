@@ -4,7 +4,7 @@ Touch dashboard, front-LED control and fan control for the UGREEN NASync iDX6011
 
 *Community project. Not affiliated with or endorsed by UGREEN.*
 
-[![Release](https://img.shields.io/badge/release-v1.7.5-2ea44f)](../../releases/latest)
+[![Release](https://img.shields.io/badge/release-v1.7.6-2ea44f)](../../releases/latest)
 ![Platforms](https://img.shields.io/badge/runs%20on-Proxmox%20·%20Debian%20·%20TrueNAS%20·%20Unraid-6f42c1)
 ![Field-tested](https://img.shields.io/badge/field--tested%20on-Proxmox%20VE-success)
 ![UI](https://img.shields.io/badge/UI-LVGL%209-ff6d00)
@@ -44,29 +44,29 @@ The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows s
 
 ## Install
 
-Installing **ug-paneld** gives you the touch dashboard **and** fan monitoring and control in one step, because fan control is bundled. The front LEDs are a separate, optional setup (see [Front panel LEDs](#front-panel-leds)). The commands below install **v1.7.4**. If a newer release exists, swap that version into the URL and filename (see the [releases page](../../releases)).
+Installing **ug-paneld** gives you the touch dashboard **and** fan monitoring and control in one step, because fan control is bundled. The front LEDs are a separate, optional setup (see [Front panel LEDs](#front-panel-leds)). The commands below install **v1.7.6**. If a newer release exists, swap that version into the URL and filename (see the [releases page](../../releases)).
 
 > [!NOTE]
 > **Which build do I need?**
 > * **iDX6011 Pro** (it has the front display): use the **panel** packages below.
-> * **non-Pro iDX6011** (it has no display): skip the panel and install the display-free [**ug-fand v1.1.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.1.0) build instead (`.deb` for Proxmox, tarballs for TrueNAS/Unraid). See [Fan control](#fan-control).
+> * **non-Pro iDX6011** (it has no display): skip the panel and install the display-free [**ug-fand v1.1.2**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.1.2) build instead (`.deb` for Proxmox, tarballs for TrueNAS/Unraid). See [Fan control](#fan-control).
 
 ### Proxmox / Debian
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/v1.7.4/ug-paneld_1.7.4_amd64.deb
-dpkg -i ug-paneld_1.7.4_amd64.deb
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/v1.7.6/ug-paneld_1.7.6_amd64.deb
+dpkg -i ug-paneld_1.7.6_amd64.deb
 ```
 
-This installs the binary and enables and starts the service. A no-blacklist variant (`ug-paneld_1.7.4_no-blacklist_amd64.deb`) is available if you would rather manage the `i2c-hid-acpi` module yourself.
+This installs the binary and enables and starts the service. A no-blacklist variant (`ug-paneld_1.7.6_no-blacklist_amd64.deb`) is available if you would rather manage the `i2c-hid-acpi` module yourself.
 
 ### TrueNAS SCALE
 
 The package installs onto one of your pools and registers a Post-Init script, so it starts on every boot without touching the read-only system area.
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/v1.7.4/ug-paneld_1.7.4_truenas_amd64.tar.gz
-tar xzf ug-paneld_1.7.4_truenas_amd64.tar.gz && cd ug-paneld
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/v1.7.6/ug-paneld_1.7.6_truenas_amd64.tar.gz
+tar xzf ug-paneld_1.7.6_truenas_amd64.tar.gz && cd ug-paneld
 sh install.sh /mnt/<your-pool>/ug-paneld
 ```
 
@@ -75,8 +75,8 @@ sh install.sh /mnt/<your-pool>/ug-paneld
 Everything persists on the flash drive and hooks into `/boot/config/go`.
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/v1.7.4/ug-paneld_1.7.4_unraid_amd64.tar.gz
-tar xzf ug-paneld_1.7.4_unraid_amd64.tar.gz && cd ug-paneld
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/v1.7.6/ug-paneld_1.7.6_unraid_amd64.tar.gz
+tar xzf ug-paneld_1.7.6_unraid_amd64.tar.gz && cd ug-paneld
 sh install.sh
 ```
 
@@ -163,7 +163,7 @@ It auto-detects the model. The **iDX6011 Pro** has 4 fans (CPU plus system). The
 > The bundled curves are conservative starting points. Writing fan registers can overheat the NAS if a curve is wrong, so verify the result on your hardware.
 
 > [!NOTE]
-> **Non-Pro iDX6011?** The panel packages in [Install](#install) are for the Pro and drive the display. The non-Pro iDX6011 has no panel, so install the display-free [**ug-fand v1.1.0**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.1.0) build instead (a `.deb` for Proxmox, tarballs for TrueNAS/Unraid, config persists across reboots and OS updates). Everything below applies to it too.
+> **Non-Pro iDX6011?** The panel packages in [Install](#install) are for the Pro and drive the display. The non-Pro iDX6011 has no panel, so install the display-free [**ug-fand v1.1.2**](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.1.2) build instead (a `.deb` for Proxmox, tarballs for TrueNAS/Unraid, config persists across reboots and OS updates). Everything below applies to it too.
 
 ### Setup
 
@@ -174,28 +174,28 @@ systemctl status ug-fand          # Proxmox / Debian
 cat /var/log/ug-fand.log          # TrueNAS / Unraid
 ```
 
-**Standalone (non-Pro, no panel):** download the display-free [ug-fand v1.1.0](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.1.0) build and install it. The commands install v1.1.0; swap in a newer version if one exists.
+**Standalone (non-Pro, no panel):** download the display-free [ug-fand v1.1.2](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/ug-fand-v1.1.2) build and install it. The commands install v1.1.2; swap in a newer version if one exists.
 
 Proxmox / Debian:
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/ug-fand-v1.1.0/ug-fand_1.1.0_amd64.deb
-dpkg -i ug-fand_1.1.0_amd64.deb
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/ug-fand-v1.1.2/ug-fand_1.1.2_amd64.deb
+dpkg -i ug-fand_1.1.2_amd64.deb
 ```
 
 TrueNAS SCALE:
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/ug-fand-v1.1.0/ug-fand_1.1.0_truenas_amd64.tar.gz
-tar xzf ug-fand_1.1.0_truenas_amd64.tar.gz && cd ug-fand
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/ug-fand-v1.1.2/ug-fand_1.1.2_truenas_amd64.tar.gz
+tar xzf ug-fand_1.1.2_truenas_amd64.tar.gz && cd ug-fand
 sh install.sh /mnt/<your-pool>/ug-fand
 ```
 
 Unraid:
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/ug-fand-v1.1.0/ug-fand_1.1.0_unraid_amd64.tar.gz
-tar xzf ug-fand_1.1.0_unraid_amd64.tar.gz && cd ug-fand
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/ug-fand-v1.1.2/ug-fand_1.1.2_unraid_amd64.tar.gz
+tar xzf ug-fand_1.1.2_unraid_amd64.tar.gz && cd ug-fand
 sh install.sh
 ```
 
