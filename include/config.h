@@ -2,6 +2,9 @@
 #define CONFIG_H
 
 #define CONFIG_FILE_PATH "/etc/ug-paneld/config.json"
+/* ug-fand's config: the panel reads the drive-temperature source from it and
+ * writes fan mode/curves to it */
+#define FAND_CONFIG_PATH "/etc/ug-fand/config"
 #define DEFAULT_POLL_RATE 2
 /* drive temps get their own, slower clock: off-Unraid every poll is a live
  * SMART query (drivetemp) that can audibly unpark HDD heads */
@@ -85,6 +88,8 @@ typedef struct {
                                 Format: see disk_stats.h */
     int disk_temp_max_age;   /* seconds before that file counts as no reading at all
                                 (0 = never expire); also inherited from ug-fand */
+    int disk_temp_file_json;    /* 1 = config.json set disk_temp_file itself */
+    int disk_temp_max_age_json; /* 1 = config.json set disk_temp_max_age itself */
     char storage_path[256];  /* mountpoint whose usage the Storage widget shows;
                                 "/" (default) = the root filesystem. On TrueNAS the
                                 root is the read-only boot pool, so point this at a
@@ -93,5 +98,10 @@ typedef struct {
 } config_t;
 
 int config_load(config_t *config);
+
+/* Re-resolve disk_temp_file / disk_temp_max_age from ug-fand's config (what
+ * config.json set itself is kept). For when ug-fand's config changes while the
+ * panel runs. */
+void config_disk_temp_refresh(config_t *config);
 
 #endif

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <pthread.h>
 
 #include "lvgl/lvgl.h"
@@ -190,6 +191,25 @@ static int fand_config_set_key(const char *key, const char *value) {
     pthread_mutex_unlock(&fand_lock);
     if (rc) fprintf(stderr, "fan: cannot write %s\n", path);
     return rc;
+}
+
+/* The drive-temperature source (disk_temp_snmp / disk_temp_file) is configured
+ * in ug-fand's config, which ug-fand hot-reloads. Follow its edits here too:
+ * without this, a line added at runtime made the fans follow the pool disks
+ * while the display and the web dashboard kept missing them until the panel
+ * was restarted (#10). Cheap — one stat() per drive poll. */
+static void follow_disk_temp_source(config_t *config) {
+    static time_t seen = (time_t)-1;
+    struct stat st;
+    time_t m = stat(FAND_CONFIG_PATH, &st) == 0 ? st.st_mtime : 0;
+    if (m == seen) return;
+    int first = (seen == (time_t)-1);
+    seen = m;
+    if (first) return;                      /* config_load() resolved it at startup */
+    config_disk_temp_refresh(config);
+    disk_stats_set_external(config->disk_temp_file, config->disk_temp_max_age);
+    fprintf(stderr, "Drive temperature source: %s\n",
+            config->disk_temp_file[0] ? config->disk_temp_file : "local drives only");
 }
 
 /* Write ug-fand's mode (from the on-device fan page). */
@@ -699,6 +719,7 @@ int main(int argc, char *argv[]) {
                         if (has_opnsense) opnsense_collect(&opn_stats);
                         if (last_disk_update == 0 ||
                             nowz - last_disk_update >= disk_interval) {
+                            follow_disk_temp_source(&config);
                             disk_stats_collect(&disks);
                             last_disk_update = nowz;
                         }
@@ -804,6 +825,7 @@ int main(int argc, char *argv[]) {
             }
 
             if (last_disk_update == 0 || now - last_disk_update >= disk_interval) {
+                follow_disk_temp_source(&config);
                 if (disk_stats_collect(&disks) == 0)
                     gui_update_disks(&disks);
                 last_disk_update = now;
