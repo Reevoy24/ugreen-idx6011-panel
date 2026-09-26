@@ -114,11 +114,11 @@ Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs*
 
 ### TrueNAS SCALE
 
-The LED tarball installs onto one of your pools and registers a Post-Init script, so the LEDs come up on every boot without touching the read-only system area:
+The LED tarball installs onto one of your pools and registers a Post-Init script, so the LEDs come up on every boot without touching the read-only system area. The version described here is currently a **beta** ([`leds-v1.2.0-beta2`](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/leds-v1.2.0-beta2)); the last stable, [`leds-v1.1.1`](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/leds-v1.1.1), predates the activity thresholds, the config file and the disk health colors below.
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/leds-v1.2.0/ugreen-leds_1.2.0_truenas_amd64.tar.gz
-tar xzf ugreen-leds_1.2.0_truenas_amd64.tar.gz && cd ugreen-leds
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/leds-v1.2.0-beta2/ugreen-leds_1.2.0.beta2_truenas_amd64.tar.gz
+tar xzf ugreen-leds_1.2.0.beta2_truenas_amd64.tar.gz && cd ugreen-leds
 sh install.sh /mnt/<your-pool>/ugreen-leds
 ```
 
@@ -134,9 +134,11 @@ COLOR_NETDEV_NORMAL="255 255 0"  # yellow LAN
 
 The key names match `/etc/ugreen-leds.conf` from the Proxmox setup above, so the vocabulary is the same on either platform. If the [web dashboard](#web-dashboard) is enabled you can pick the three main colors there instead of editing the file. Bays with no disk in them are switched off by default, so a half-populated NAS does not glow for empty slots — `COLOR_DISK_EMPTY` lights them anyway.
 
+**A disk's LED turns red when the system reports a problem with it**: a ZFS pool device that is not ONLINE or shows read, write or checksum errors, or a SMART alert TrueNAS raised for that disk (uncorrectable errors, a failed self-test, …). The monitor never queries the disks for this — a SMART query is a command to the drive and can reset its spin-down timer — it only reads state the system already has: the pool status from the kernel, and the alerts from TrueNAS's own scheduled SMART checks. The LED goes back to normal once the problem is gone (`zpool clear`, a replaced disk, or TrueNAS no longer raising the alert). `COLOR_DISK_FAIL` changes the color, `DISK_HEALTH_CHECK=0` turns it off.
+
 The **Status LEDs** and **night mode** rows in the panel settings work with this install too: ug-paneld looks for the tools in `/usr/local/bin`, then on the Unraid flash drive and on the pools (`/mnt/*/*/ugreen_leds_cli`). If you installed somewhere the search does not reach, point the daemon at it with `UG_PANELD_LEDS_DIR=/mnt/<pool>/<dir>`. Switching the LEDs off stops the activity monitor as well, and switching them back on re-runs `start.sh`, so your colors come back.
 
-Per-I/O triggers with SMART health colors still need the kernel module built for that exact kernel. That is moving forward upstream: the iDX protocol has been picked up in miskcoo's [`dev-idx601-series`](https://github.com/miskcoo/ugreen_leds_controller/tree/dev-idx601-series) branch, TrueNAS modules are now built in upstream CI, and prebuilt `led-ugreen.ko` files for recent TrueNAS releases live in [0x556c79/install_ugreen_leds_controller](https://github.com/0x556c79/install_ugreen_leds_controller) (tracked in [#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23)). Note that the kernel-module path does not make the LEDs any calmer: it blinks per I/O and per packet, with no activity threshold.
+Per-I/O blinking still needs the kernel module built for that exact kernel. That is moving forward upstream: the iDX protocol has been picked up in miskcoo's [`dev-idx601-series`](https://github.com/miskcoo/ugreen_leds_controller/tree/dev-idx601-series) branch, TrueNAS modules are now built in upstream CI, and prebuilt `led-ugreen.ko` files for recent TrueNAS releases live in [0x556c79/install_ugreen_leds_controller](https://github.com/0x556c79/install_ugreen_leds_controller) (tracked in [#23](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23)). Note that the kernel-module path does not make the LEDs any calmer: it blinks per I/O and per packet, with no activity threshold.
 
 ### Unraid
 

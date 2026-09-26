@@ -9,6 +9,13 @@
 # one a single ARP packet or a ZFS metadata commit is enough to keep an idle
 # NAS blinking forever — the counters are never truly still.
 #
+# A failing disk turns its LED red (COLOR_DISK_FAIL). The monitor never asks
+# the disks for that itself: every SMART query is a command to the drive,
+# which on many drives resets the spin-down timer or unparks the heads. It
+# reuses what the system already knows instead — the ZFS pool state (kernel
+# state, no disk access) and, on TrueNAS, the SMART alerts TrueNAS raises
+# from its own scheduled checks.
+#
 # Settings live in ugreen-leds-mon.conf next to this script (the installer
 # creates it from ugreen-leds-mon.conf.example and never overwrites it).
 
@@ -37,6 +44,10 @@ COLOR_NETDEV_ACTIVE=""
 BRIGHTNESS_NETDEV_LED=96
 BLINK_ON=300
 BLINK_OFF=200
+
+DISK_HEALTH_CHECK=1
+COLOR_DISK_FAIL="255 0 0"
+HEALTH_INTERVAL=60
 
 [ -f "$DIR/ugreen-leds-mon.conf" ] && . "$DIR/ugreen-leds-mon.conf"
 
@@ -165,6 +176,48 @@ update_led() {
     eval "$_iv=$_idle"
 }
 
+# ---- disk health, from state the system already keeps ----
+# Prints "<disk> <reason>" for every disk with a known problem. Neither source
+# sends anything to a disk.
+
+# ZFS: a leaf device that is not ONLINE (FAULTED, UNAVAIL, REMOVED, DEGRADED,
+# OFFLINE), or one with read/write/checksum errors. Spares show AVAIL/INUSE.
+zfs_problems() {
+    command -v zpool >/dev/null 2>&1 || return 0
+    zpool status -LP 2>/dev/null | awk '
+        $1 ~ /^\/dev\// {
+            bad = ($2 != "ONLINE" && $2 != "AVAIL" && $2 != "INUSE")
+            for (f = 3; f <= 5; f++) if ($f != "" && $f != "0") bad = 1
+            if (bad) print $1, "zfs:" $2 "(" $3 "/" $4 "/" $5 ")"
+        }' |
+    while read -r dev why; do
+        d=$(dev_to_disk "$dev")
+        [ -n "$d" ] && echo "$d $why"
+    done
+}
+
+# TrueNAS: its SMART alert source checks every disk itself (every 90 min in
+# 25.10) and raises SMARTUncorrectedErrors / SMARTFailedSelfTest / ... with the
+# disk name in args.name. Dismissed alerts still count — dismissing means "I
+# have seen it", not "the disk is fine"; the alert disappears on its own once
+# TrueNAS no longer finds the problem.
+smart_alert_problems() {
+    command -v midclt >/dev/null 2>&1 || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    midclt call alert.list 2>/dev/null | python3 -c '
+import json, sys
+try:
+    alerts = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for a in alerts if isinstance(alerts, list) else []:
+    klass = str(a.get("klass") or "")
+    args = a.get("args")
+    if klass.startswith("SMART") and isinstance(args, dict) and args.get("name"):
+        print(str(args["name"]).replace("/dev/", ""), "smart:" + klass)
+' 2>/dev/null
+}
+
 # Bays with nothing behind them: dark by default, so a half-populated NAS
 # does not glow for empty slots (start.sh lights all six to stop the boot
 # animation before the disks are known). COLOR_DISK_EMPTY lights them anyway.
@@ -179,6 +232,40 @@ while [ "$i" -le 6 ]; do
     i=$((i + 1))
 done
 
+# Re-read the health sources and mark each bay. A bay whose verdict changes
+# gets state -1, so the next pass rewrites its LED in the new color. midclt
+# starts a Python process, so the TrueNAS alerts are read only every 5th check
+# — TrueNAS itself refreshes them every 90 minutes anyway.
+smart_list=""
+health_round=0
+check_health() {
+    [ "$DISK_HEALTH_CHECK" = 1 ] || return 0
+    if [ $((health_round % 5)) = 0 ]; then
+        smart_list=$(smart_alert_problems)
+    fi
+    health_round=$((health_round + 1))
+    problems=$(zfs_problems)
+    [ -n "$smart_list" ] && problems="$problems
+$smart_list"
+    i=1
+    for d in $DISKS; do
+        why=$(echo "$problems" | awk -v d="$d" '$1 == d { printf "%s ", $2 }')
+        new=0
+        [ -n "$why" ] && new=1
+        eval "old=\$bad_d$i"
+        if [ "$new" != "$old" ]; then
+            eval "bad_d$i=$new"
+            eval "st_d$i=-1"
+            if [ "$new" = 1 ]; then
+                echo "ugreen-leds-mon: $d (disk$i) needs attention: $why— LED red"
+            else
+                echo "ugreen-leds-mon: $d (disk$i) healthy again"
+            fi
+        fi
+        i=$((i + 1))
+    done
+}
+
 # prime counters; state -1 forces an initial solid write per LED
 i=1
 set -- $(disk_io_all)
@@ -186,6 +273,7 @@ for d in $DISKS; do
     eval "prev_d$i=${1:-0}"
     eval "st_d$i=-1"
     eval "idle_d$i=0"
+    eval "bad_d$i=0"
     shift 2>/dev/null || true
     i=$((i + 1))
 done
@@ -197,6 +285,12 @@ for n in $NICS; do
     i=$((i + 1))
 done
 
+if [ "$DISK_HEALTH_CHECK" = 1 ]; then
+    echo "ugreen-leds-mon: disk health: zfs$(command -v midclt >/dev/null 2>&1 && echo ' + TrueNAS SMART alerts'), every ${HEALTH_INTERVAL}s"
+    check_health
+fi
+health_wait=0
+
 while :; do
     i=1
     set -- $(disk_io_all)
@@ -206,14 +300,20 @@ while :; do
         eval "prev=\$prev_d$i"
         delta=$((cur - prev))
         [ "$delta" -lt 0 ] && delta=0          # counter reset
+        eval "bad=\$bad_d$i"
+        if [ "$bad" = 1 ]; then
+            c_act="$COLOR_DISK_FAIL"; c_idle="$COLOR_DISK_FAIL"   # still blinks on activity, in red
+        else
+            c_act="$COLOR_DISK_ACTIVE"; c_idle="$COLOR_DISK_HEALTH"
+        fi
         if [ "$DISK_ACTIVITY" = 1 ]; then
             update_led "disk$i" $((delta / 2)) "$DISK_THRESHOLD_KB" \
-                "st_d$i" "idle_d$i" "$COLOR_DISK_ACTIVE" \
-                "$COLOR_DISK_HEALTH" "$BRIGHTNESS_DISK_LEDS"
+                "st_d$i" "idle_d$i" "$c_act" \
+                "$c_idle" "$BRIGHTNESS_DISK_LEDS"
         else
             eval "st=\$st_d$i"
             if [ "$st" != 0 ]; then
-                set_solid "disk$i" "$COLOR_DISK_HEALTH" "$BRIGHTNESS_DISK_LEDS"
+                set_solid "disk$i" "$c_idle" "$BRIGHTNESS_DISK_LEDS"
                 eval "st_d$i=0"
             fi
         fi
@@ -243,6 +343,14 @@ while :; do
         eval "prev_n$i=$cur"
         i=$((i + 1))
     done
+
+    if [ "$DISK_HEALTH_CHECK" = 1 ]; then
+        health_wait=$((health_wait + INTERVAL))
+        if [ "$health_wait" -ge "$HEALTH_INTERVAL" ]; then
+            health_wait=0
+            check_health
+        fi
+    fi
 
     sleep "$INTERVAL"
 done

@@ -66,6 +66,13 @@ the LEDs static.
 Bays with no disk behind them are switched off, so a half-populated NAS
 does not glow for empty slots; set COLOR_DISK_EMPTY to light them anyway.
 
+Disk health: a disk's LED turns red (COLOR_DISK_FAIL) when the system
+reports a problem with it — a ZFS pool device that is not ONLINE or has
+read/write/checksum errors, or on TrueNAS a SMART alert for that disk. The
+disks are never queried for this (a SMART query can reset a drive's
+spin-down timer); only the pool state and TrueNAS's own alerts are read.
+It clears once the problem is gone. DISK_HEALTH_CHECK=0 turns it off.
+
 Bay mapping is auto-detected (all sd* in /sys/block, sorted, minus the
 disk the OS boots from) — verify by generating I/O on one disk and
 watching which LED blinks, and set DISKS explicitly if the order is wrong.

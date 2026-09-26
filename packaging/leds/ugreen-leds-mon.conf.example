@@ -54,6 +54,21 @@ NET_THRESHOLD_KB=64
 # workload from flickering the LED between blinking and solid.
 IDLE_HOLD=2
 
+# =========== disk health ===========
+
+# Turn a disk's LED red when the system reports a problem with it: a ZFS pool
+# device that is not ONLINE or has read/write/checksum errors, and on TrueNAS
+# any SMART alert TrueNAS raised for the disk (uncorrectable errors, failed
+# self-test, ...). The disks themselves are never queried for this — a SMART
+# query can reset a drive's spin-down timer — only state the system already
+# has. The LED goes back to normal once the problem is gone (zpool clear, or
+# TrueNAS no longer raising the alert).
+DISK_HEALTH_CHECK=1
+COLOR_DISK_FAIL="255 0 0"
+
+# Seconds between health checks (cheap; TrueNAS alerts are read every 5th).
+HEALTH_INTERVAL=60
+
 # =========== disk and NIC mapping ===========
 
 # Bay order disk1..disk6. Empty = auto (all sd* in /sys/block, sorted).
