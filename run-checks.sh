@@ -17,6 +17,12 @@ gcc -Iinclude -g -fsanitize=address,undefined -fno-sanitize-recover=all \
     test/snmp_check.c src/snmp.c -o /tmp/snmp-check
 /tmp/snmp-check
 
+echo "=== fan temperature path (failsafe on a lost sensor) ==="
+gcc -Iinclude -pthread -fsanitize=address,undefined \
+    test/fand_check.c src/fand_api.c src/system_stats.c src/net_stats.c src/disk_stats.c src/snmp.c \
+    -o /tmp/fand-check
+/tmp/fand-check
+
 echo "=== mockups ==="
 bash build-mockups.sh >/dev/null
 ls mockups/*.png | head

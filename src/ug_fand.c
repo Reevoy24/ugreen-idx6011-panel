@@ -251,6 +251,22 @@ static int sys_temp(int disk_max_age) {
     return hwmon_temp_max("acpitz");
 }
 
+/* EMA-smooth a reading so brief CPU spikes don't make the fans ramp up and
+ * down. Returns the smoothed whole degrees, or -1 when there is no reading —
+ * which the caller turns into the missing-sensor failsafe.
+ *
+ * A reading that goes away drops its average instead of keeping it. The old
+ * code held the last value, so a sensor lost mid-run left the curve computing
+ * from a frozen temperature, and the failsafe only ever fired for a sensor that
+ * was missing from the start (#10: a rebooting storage VM left the fans at 37%
+ * while the pool went unmonitored). The average restarts from the first
+ * reading once the sensor is back. */
+static int smooth_temp(double *ema, int raw) {
+    if (raw >= 0) *ema = *ema < 0 ? raw : *ema + (raw - *ema) * 0.2;
+    else          *ema = -1;
+    return *ema < 0 ? -1 : (int)(*ema + 0.5);
+}
+
 /* ---- fan curves (temp -> speed%) ---- */
 #define CURVE_MAX 12
 typedef struct { int temp; int pct; } point_t;   /* temp in C, fan speed in % */
@@ -401,9 +417,9 @@ static void load_config(fanconf_t *cf, int cli_force) {
             /* 0 = never expire (only for a source that cannot go stale) */
             int v = atoi(val); if (v == 0 || (v >= 10 && v <= 86400)) cf->disk_temp_max_age = v;
         } else if (!strcmp(key, "disk_temp_snmp")) {
-            snprintf(cf->disk_temp_snmp, sizeof(cf->disk_temp_snmp), "%s", val);
+            snprintf(cf->disk_temp_snmp, sizeof(cf->disk_temp_snmp), "%.63s", val);   /* an IP: 45 chars max */
         } else if (!strcmp(key, "disk_temp_snmp_community")) {
-            snprintf(cf->disk_temp_snmp_community, sizeof(cf->disk_temp_snmp_community), "%s", val);
+            snprintf(cf->disk_temp_snmp_community, sizeof(cf->disk_temp_snmp_community), "%.64s", val);   /* SNMP_COMMUNITY_MAX */
         }
         else if (!strcmp(key, "cpu_silent"))  parse_curve(val, &cf->cpu[MODE_SILENT]);
         else if (!strcmp(key, "cpu_default")) parse_curve(val, &cf->cpu[MODE_DEFAULT]);
@@ -636,11 +652,8 @@ int main(int argc, char **argv) {
         int st_show = st;
         if (st == TEMP_ASLEEP) { st = 0; st_show = -1; }
 
-        /* EMA-smooth so brief CPU spikes don't make the fans ramp up and down. */
-        if (ct >= 0) cpu_ema = cpu_ema < 0 ? ct : cpu_ema + (ct - cpu_ema) * 0.2;
-        if (st >= 0) sys_ema = sys_ema < 0 ? st : sys_ema + (st - sys_ema) * 0.2;
-        int cts = cpu_ema < 0 ? -1 : (int)(cpu_ema + 0.5);
-        int sts = sys_ema < 0 ? -1 : (int)(sys_ema + 0.5);
+        int cts = smooth_temp(&cpu_ema, ct);
+        int sts = smooth_temp(&sys_ema, st);
 
         int cp = cts < 0 ? SPEED_FULL : curve_pct(&cf.cpu[cf.mode], cts);  /* percent */
         int sp = sts < 0 ? SPEED_FULL : curve_pct(&cf.sys[cf.mode], sts);
