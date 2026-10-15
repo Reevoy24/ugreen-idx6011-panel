@@ -36,11 +36,11 @@ The iDX6011 Pro has a 258×960 touch display on the front. Under UGOS it shows s
 |----------|:---------------:|:-----------:|:----------:|
 | **Proxmox / Debian** | ✅ field-tested | ✅ field-tested | ✅ field-tested |
 | **TrueNAS SCALE** | ✅ confirmed | ✅ verified | ✅ confirmed |
-| **Unraid** | display ✅ / touch ❌ | ✅ | ❌ |
+| **Unraid** | display ✅ / touch ❌ | ✅ | ⚠️ 7.3.x, see [notes](#unraid-1) |
 
 - **Proxmox / Debian** is the reference platform. Everything is tested on real hardware (a newer-revision iDX6011 Pro).
 - **TrueNAS SCALE** ships the identical binaries. The display, touch and fan control are confirmed on real TrueNAS hardware (a user reported smooth swiping, full touch coverage, idle sleep and working web stats; fan install, reboot persistence and mode switching all work). The front LEDs are confirmed too, including full color control ([#9](../../issues/9)).
-- **Unraid** runs the display fine, since it goes over i915/DRM rather than I2C, but touch and the front LEDs do not work on the stock kernel. Unraid omits the Intel SoC I2C stack this Meteor Lake board needs (`intel_lpss` for the touch bus, and the pinctrl/SMBus pieces for the LED bus), so neither I2C bus comes up. The fix is a custom Unraid kernel with `CONFIG_PINCTRL_METEORLAKE` and `CONFIG_MFD_INTEL_LPSS_*`, not a different LED driver. See [`packaging/unraid/README.txt`](packaging/unraid/README.txt) for the custom-kernel notes.
+- **Unraid** runs the display fine, since it goes over i915/DRM rather than I2C, but touch does not work on the stock kernel: Unraid omits the Intel SoC I2C stack this Meteor Lake board needs (`intel_lpss` for the touch bus). Older Unraid releases did not bring up the LED bus either; on 7.3.x community plugins drive the LEDs, see [Unraid LEDs](#unraid-1). For touch, either build a custom Unraid kernel with `CONFIG_PINCTRL_METEORLAKE` and `CONFIG_MFD_INTEL_LPSS_*`, or load the LPSS modules out of tree the way [noodlemctwoodle's plugin](https://github.com/noodlemctwoodle/unraid-ugreen-idx6011-pro) does. See [`packaging/unraid/README.txt`](packaging/unraid/README.txt) for the custom-kernel notes.
 
 ## Install
 
@@ -95,7 +95,7 @@ gh attestation verify ug-paneld_1.7.6_amd64.deb -R Reevoy24/ugreen-idx6011-panel
 
 ## Front panel LEDs
 
-The 9 RGB status LEDs (power, 2× LAN, 6× disk) are driven by a separate MCU whose protocol differs from older UGREEN models. It was reverse-engineered in [miskcoo/ugreen_leds_controller#93](https://github.com/miskcoo/ugreen_leds_controller/issues/93) and implemented in [klein0r's fork](https://github.com/klein0r/ugreen_leds_controller) (all credit to them).
+The 9 RGB status LEDs (power, 2× LAN, 6× disk; the non-Pro iDX6011 has a single LAN LED) are driven by a separate MCU whose protocol differs from older UGREEN models. It was reverse-engineered in [miskcoo/ugreen_leds_controller#93](https://github.com/miskcoo/ugreen_leds_controller/issues/93) and implemented in [klein0r's fork](https://github.com/klein0r/ugreen_leds_controller) (all credit to them).
 
 ### Proxmox / Debian
 
@@ -142,12 +142,18 @@ Per-I/O blinking still needs the kernel module built for that exact kernel. That
 
 ### Unraid
 
-Reported **not working** on the iDX6011. The front-LED MCU lives on the i801 SMBus, and the stock Unraid kernel does not bring that bus up on this Meteor Lake board (the same missing Intel I2C/pinctrl stack that disables touch, see [Platform support](#platform-support)). Neither the kernel driver nor the userspace tool can reach the MCU. The fix is a custom kernel, not a different LED driver. The upstream plugin issue [ich777/unraid-ugreenleds-driver#8](https://github.com/ich777/unraid-ugreenleds-driver/issues/8) is closed, so a plugin fork will not help here.
+Not tested by us. On older Unraid releases the LED bus (the i801 SMBus) did not come up on this Meteor Lake board, so the LEDs were unreachable ([ich777/unraid-ugreenleds-driver#8](https://github.com/ich777/unraid-ugreenleds-driver/issues/8)). On **Unraid 7.3.x** that changed: two community plugins now drive the front LEDs there with the same SMBus protocol, and are the better fit on Unraid because they hook into its array and disk-spin-down state:
+
+- [noodlemctwoodle/unraid-ugreen-idx6011-pro](https://github.com/noodlemctwoodle/unraid-ugreen-idx6011-pro) for the Pro, which also brings up the touch display (it ships the missing Intel LPSS modules out of tree)
+- [omgapuppy/unraid-ugreen-idx6011-led-fan](https://github.com/omgapuppy/unraid-ugreen-idx6011-led-fan), LEDs only, for the Pro and the non-Pro
+
+Our Unraid LED tarball should work on 7.3.x as well, but nobody has confirmed it yet.
 
 <details>
 <summary><b>LED notes: bay order, LAN order, manual control</b></summary>
 
-* **Bay order:** the default ata-based disk-to-LED mapping is not yet verified on the iDX6011 Pro. Generate I/O on one disk and check that the right bay blinks. If the order is wrong, run `ugreen-detect-disks` and switch `/etc/ugreen-leds.conf` to `MAPPING_METHOD=serial`.
+* **non-Pro iDX6011:** it has one LAN LED, so its bay LEDs sit one position over (UGREEN's own driver source lists the same layout). The setup script and the TrueNAS/Unraid package detect the model and account for that. Override the detection with `LED_LAYOUT=pro|nonpro` in `ugreen-leds-mon.conf`.
+* **Bay order:** the six bays hang off two SATA controllers, wired differently per model. Pro: ASMedia ports → bays 1, 2, 5, 6 and Intel ports → bays 3, 4 (from [noodlemctwoodle's Unraid plugin](https://github.com/noodlemctwoodle/unraid-ugreen-idx6011-pro)). Non-Pro: ASMedia → bays 1–4, Intel → bays 5–6 ([aoreskovic](https://github.com/0x556c79/install_ugreen_leds_controller/issues/23), [omgapuppy](https://github.com/omgapuppy/unraid-ugreen-idx6011-led-fan)). Both installs find the controllers at every start, so a changing `ataN` numbering or PCI address cannot shift the bays. To check it: on TrueNAS/Unraid run `sh ugreen-leds-mon.sh --show-map` (and `--identify <bay>` to blink one bay blue); on Proxmox `journalctl -u ugreen-diskiomon` shows the detected `iDX6011 bay ports`. If a bay is still wrong, set `DISKS=` (TrueNAS/Unraid) or switch `/etc/ugreen-leds.conf` to `MAPPING_METHOD=serial` (Proxmox), and please open an issue.
 * **LAN port order:** if LAN1 and LAN2 are swapped, set `NETLED_IFACES="<nic1> <nic2>"` in `/etc/default/ugreen-idx-netled` (Proxmox) or `NICS="..."` in `ugreen-leds-mon.conf` (TrueNAS/Unraid).
 * **LEDs blinking on an idle NAS (TrueNAS/Unraid):** the activity monitor only blinks once traffic crosses a threshold per poll, because the counters are never truly still — ZFS commits, logs and background broadcast traffic (ARP, mDNS, an open web UI) keep ticking. Raise `DISK_THRESHOLD_KB` / `NET_THRESHOLD_KB` in `ugreen-leds-mon.conf` if the LEDs still flicker while idle, lower them if they feel unresponsive, or set `DISK_ACTIVITY=0` / `NET_ACTIVITY=0` for plain static LEDs. The OS disk is left out of the auto-detected bay list for the same reason (`SKIP_BOOT_DISK`).
 * **Manual control:** the CLI tool and the kernel module conflict. Stop the LED services and `rmmod led_ugreen` before using `ugreen_leds_cli` by hand.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup-ugreen-leds.sh — UGREEN iDX6011 Pro: enable the front panel LEDs on Proxmox/Debian
+# setup-ugreen-leds.sh — UGREEN iDX6011 (Pro): enable the front panel LEDs on Proxmox/Debian
 #
 # Background: without UGOS, the LED MCU (Holtek HT32F52231, I2C 0x3a on the SMBus I801
 # adapter) runs an autonomous left-to-right rolling animation. This script takes over:
@@ -13,6 +13,8 @@
 # Credits: https://github.com/klein0r/ugreen_leds_controller (fork with iDX6011 Pro support)
 #          https://github.com/miskcoo/ugreen_leds_controller (original driver + scripts)
 #          https://github.com/miskcoo/ugreen_leds_controller/issues/93 (protocol findings)
+#          Bay wiring: noodlemctwoodle/unraid-ugreen-idx6011-pro (Pro), aoreskovic in
+#          0x556c79/install_ugreen_leds_controller#23 and omgapuppy/unraid-ugreen-idx6011-led-fan (non-Pro)
 #
 # Run AS ROOT directly on the Proxmox/Debian host (not inside a VM/LXC):
 #   bash setup-ugreen-leds.sh
@@ -33,6 +35,16 @@ command -v apt-get >/dev/null 2>&1 \
 
 product="$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)"
 log "DMI product_name: '${product:-<empty>}'  kernel: $(uname -r)"
+
+# The non-Pro iDX6011 has the same LED MCU but only ONE LAN LED, so its bays
+# start one register earlier: what the driver calls network_stat2/netdev2 is
+# bay 1, disk1..5 are bays 2..6 and disk6 is not wired to anything.
+case "$product" in
+    *iDX6011*Pro*) LAYOUT=pro ;;
+    *iDX6011*)     LAYOUT=nonpro ;;
+    *)             LAYOUT=pro ;;
+esac
+echo "LED layout: $LAYOUT"
 
 log "Installing packages"
 apt-get update -qq || true
@@ -90,9 +102,17 @@ export UGREEN_MODEL=idx6011
 ugreen_leds_cli all -status || fail "LED controller not responding (0x3a on i2c-$bus)."
 
 # Sane default state, in case the kernel module part is skipped or fails below
-ugreen_leds_cli power -on -color 255 255 255 -brightness 144
+if [[ $LAYOUT == nonpro ]]; then
+    STATIC_LEDS='ugreen_leds_cli power -on -color 255 255 255 -brightness 144
+ugreen_leds_cli netdev -on -color 255 255 255 -brightness 96
+ugreen_leds_cli netdev2 disk1 disk2 disk3 disk4 disk5 -on -color 255 255 255 -brightness 64
+ugreen_leds_cli disk6 -off'
+else
+    STATIC_LEDS='ugreen_leds_cli power -on -color 255 255 255 -brightness 144
 ugreen_leds_cli netdev netdev2 -on -color 255 255 255 -brightness 96
-ugreen_leds_cli disk1 disk2 disk3 disk4 disk5 disk6 -on -color 255 255 255 -brightness 64
+ugreen_leds_cli disk1 disk2 disk3 disk4 disk5 disk6 -on -color 255 255 255 -brightness 64'
+fi
+eval "$STATIC_LEDS"
 
 if [[ $HEADERS_OK -eq 1 && "$product" == *iDX6011* ]]; then
     log "Installing the led-ugreen kernel module via DKMS"
@@ -116,6 +136,58 @@ EOF
     log "Installing scripts + services"
     install -m 755 "$SRC_DIR/scripts/ugreen-probe-leds"   /usr/bin/ugreen-probe-leds
     install -m 755 "$SRC_DIR/scripts/ugreen-diskiomon"    /usr/bin/ugreen-diskiomon
+    # Upstream diskiomon has no iDX6011 entry, so teach it the bay wiring. The
+    # bays hang off an ASMedia ASM1164 (4 ports) and the Intel chipset (2):
+    #   Pro      ASMedia -> bays 1 2 5 6, Intel -> bays 3 4
+    #   non-Pro  ASMedia -> bays 1 2 3 4, Intel -> bays 5 6
+    # The ports are looked up at every start by PCI vendor, not hardcoded as
+    # ataN, because the ASMedia's bus address moves between boots and BIOS
+    # versions. The non-Pro also has only one LAN LED, so its bay LEDs start
+    # at network_stat2.
+    cat > /tmp/ugreen-diskiomon-idx.$$ <<'EOF'
+        iDX6011*)   # added by setup-ugreen-leds.sh
+            echo "Found UGREEN ${product_name}"
+            if [[ "${product_name}" == *Pro* ]]; then
+                _idx_asm=(1 2 5 6); _idx_intel=(3 4)
+            else
+                _idx_asm=(1 2 3 4); _idx_intel=(5 6)
+                led_map=(network_stat2 disk1 disk2 disk3 disk4 disk5)
+            fi
+            _idx_ata=()
+            _idx_seen=""
+            for _idx_dev in /sys/bus/pci/devices/*; do
+                _idx_ports=$(ls -1 "$_idx_dev" 2>/dev/null | grep -xE 'ata[0-9]+' | sort -V)
+                [[ -n "$_idx_ports" ]] || continue
+                case "$(cat "$_idx_dev/vendor" 2>/dev/null)" in
+                    0x1b21) _idx_v=asm;   _idx_bays=("${_idx_asm[@]}") ;;
+                    0x8086) _idx_v=intel; _idx_bays=("${_idx_intel[@]}") ;;
+                    *) continue ;;
+                esac
+                [[ "$_idx_seen" == *"$_idx_v"* ]] && continue
+                _idx_seen+=" $_idx_v"
+                _idx_i=0
+                for _idx_p in $_idx_ports; do
+                    (( _idx_i < ${#_idx_bays[@]} )) || break
+                    _idx_ata[${_idx_bays[$_idx_i]} - 1]=$_idx_p
+                    _idx_i=$((_idx_i + 1))
+                done
+            done
+            if (( ${#_idx_ata[@]} > 0 )); then
+                ata_map=()
+                hctl_map=()
+                for _idx_i in 0 1 2 3 4 5; do
+                    _idx_p=${_idx_ata[$_idx_i]:-none}
+                    ata_map+=("$_idx_p")
+                    if [[ $_idx_p == none ]]; then hctl_map+=(none); else hctl_map+=("$(( ${_idx_p#ata} - 1 )):0:0:0"); fi
+                done
+                echo "iDX6011 bay ports: ${ata_map[*]}"
+            fi
+            ;;
+EOF
+    sed -i '/case "\${product_name}" in/r /tmp/ugreen-diskiomon-idx.'$$ /usr/bin/ugreen-diskiomon
+    rm -f /tmp/ugreen-diskiomon-idx.$$
+    grep -qF 'iDX6011*)   # added by setup-ugreen-leds.sh' /usr/bin/ugreen-diskiomon \
+        || echo "WARNING: could not add the iDX6011 bay map to ugreen-diskiomon (upstream changed?)"
     install -m 755 "$SRC_DIR/scripts/ugreen-detect-disks" /usr/bin/ugreen-detect-disks
     [[ -f /etc/ugreen-leds.conf ]] || install -m 644 "$SRC_DIR/scripts/ugreen-leds.conf" /etc/ugreen-leds.conf
     install -m 644 "$SRC_DIR/scripts/systemd/ugreen-probe-leds.service" /etc/systemd/system/
@@ -125,8 +197,9 @@ EOF
     # "netdev"; the iDX module registers network_stat + network_stat2 instead.
     cat > /usr/local/bin/ugreen-idx-netled <<'EOF'
 #!/bin/bash
-# Binds the two LAN LEDs of the iDX6011 Pro to the physical NICs via the netdev trigger
-# and sets the power LED. Override the NIC order via /etc/default/ugreen-idx-netled:
+# Binds the LAN LEDs (two on the iDX6011 Pro, one on the iDX6011) to the physical NICs
+# via the netdev trigger and sets the power LED. Override the NIC order via
+# /etc/default/ugreen-idx-netled:
 #   NETLED_IFACES="enp2s0 enp3s0"
 NETLED_IFACES=""
 [[ -f /etc/default/ugreen-idx-netled ]] && . /etc/default/ugreen-idx-netled
@@ -139,7 +212,21 @@ fi
 read -r -a nics <<< "$NETLED_IFACES"
 
 leds=(network_stat network_stat2)
-for i in 0 1; do
+case "$(cat /sys/class/dmi/id/product_name 2>/dev/null)" in
+    *iDX6011*Pro*) ;;
+    *iDX6011*)
+        # non-Pro: a single LAN LED (network_stat2 is disk bay 1 there and
+        # belongs to ugreen-diskiomon). It follows the first port with a link.
+        leds=(network_stat)
+        for n in "${nics[@]}"; do
+            if [[ "$(cat "/sys/class/net/$n/carrier" 2>/dev/null)" == 1 ]]; then
+                nics=("$n")
+                break
+            fi
+        done
+        ;;
+esac
+for i in "${!leds[@]}"; do
     led="/sys/class/leds/${leds[$i]}"
     [[ -d "$led" ]] || continue
     nic="${nics[$i]:-}"
@@ -166,7 +253,7 @@ EOF
 
     cat > /etc/systemd/system/ugreen-idx-netled.service <<'EOF'
 [Unit]
-Description=UGREEN iDX6011 Pro: LAN/Power LED setup (netdev trigger)
+Description=UGREEN iDX6011: LAN/Power LED setup (netdev trigger)
 After=ugreen-probe-leds.service
 Requires=ugreen-probe-leds.service
 
@@ -198,7 +285,8 @@ EOF
     echo "  - LAN LEDs blink on traffic (ugreen-idx-netled; fix the port order in"
     echo "    /etc/default/ugreen-idx-netled if needed: NETLED_IFACES=\"...\")"
     echo
-    echo "NOTE on bay mapping: MAPPING_METHOD=ata is unverified on the iDX6011 Pro."
+    echo "NOTE on bay mapping: bays are matched to SATA ports by controller"
+    echo "  (journalctl -u ugreen-diskiomon shows 'iDX6011 bay ports: ...')."
     echo "  Verify: generate I/O on one disk and check the right bay blinks."
     echo "  If swapped: run 'ugreen-detect-disks' and switch /etc/ugreen-leds.conf"
     echo "  to MAPPING_METHOD=serial with your serial list."
@@ -207,19 +295,19 @@ EOF
     echo "  (systemctl stop ugreen-diskiomon ugreen-idx-netled; rmmod led_ugreen)."
 else
     log "Kernel module skipped — installing static boot service (CLI variant)"
-    cat > /usr/local/bin/ugreen-leds-static <<'EOF'
+    cat > /usr/local/bin/ugreen-leds-static <<EOF
 #!/bin/bash
-# Stops the rolling animation at boot and sets a static LED state (CLI variant).
+# Stops the rolling animation at boot and sets a static LED state (CLI variant,
+# $LAYOUT front panel).
 export UGREEN_MODEL=idx6011
-/usr/local/bin/ugreen_leds_cli power -on -color 255 255 255 -brightness 144
-/usr/local/bin/ugreen_leds_cli netdev netdev2 -on -color 255 255 255 -brightness 96
-/usr/local/bin/ugreen_leds_cli disk1 disk2 disk3 disk4 disk5 disk6 -on -color 255 255 255 -brightness 64
+export PATH=/usr/local/bin:\$PATH
+$STATIC_LEDS
 EOF
     chmod 755 /usr/local/bin/ugreen-leds-static
 
     cat > /etc/systemd/system/ugreen-leds-static.service <<'EOF'
 [Unit]
-Description=UGREEN iDX6011 Pro: static front LEDs (CLI, stops rolling animation)
+Description=UGREEN iDX6011: static front LEDs (CLI, stops rolling animation)
 After=systemd-modules-load.service
 
 [Service]

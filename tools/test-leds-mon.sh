@@ -53,7 +53,13 @@ EOF
     MON=$!
     sleep 2
 }
-stop_mon() { kill "$MON" 2>/dev/null; wait "$MON" 2>/dev/null; }
+# kill via the pid file too: a monitor started from a function runs as a
+# child of the backgrounded subshell, so killing $MON alone orphans it
+stop_mon() {
+    [ -f "$T/pid" ] && kill "$(cat "$T/pid")" 2>/dev/null
+    pkill -P "$MON" 2>/dev/null
+    kill "$MON" 2>/dev/null; wait "$MON" 2>/dev/null
+}
 burn()     { dd if=/dev/zero of=/tmp/ledmon-burn bs=1M count=800 conv=fsync 2>/dev/null; }
 unburn()   { rm -f /tmp/ledmon-burn; sync; sleep 4; }
 
@@ -199,6 +205,131 @@ sleep 2
 grep -q "falling back" "$T/mon.log" && pass "the fallback is reported in the log"                                     || fail "the fallback is reported in the log"
 check '^disk1 -on ' "bay 1 is still driven rather than dark"
 stop_mon
+
+echo
+echo "== case 10: non-Pro layout — bay 1 is netdev2, one LAN LED, disk6 unwired"
+start_mon "LED_LAYOUT=nonpro"
+check '^netdev2 -on -color 255 255 255 -brightness 64$' "bay 1 is driven through netdev2"
+check '^netdev -on -color 255 255 255 -brightness 96$' "the single LAN LED is netdev"
+check '^disk1 -off$' "empty bay 2 (disk1) is switched off"
+check '^disk5 -off$' "empty bay 6 (disk5) is switched off"
+check '^disk6 -off$' "the unwired disk6 register is switched off"
+check_not '^disk1 -on' "disk1 is not treated as bay 1"
+: > "$T/calls.log"
+burn
+wait_for '^netdev2 -color 255 255 255 -blink 300 200$' "a burst blinks bay 1 (netdev2)"
+stop_mon
+unburn
+
+echo
+echo "== case 11: non-Pro start.sh"
+rm -rf "$T"; mkdir -p "$T"
+cat > "$T/ugreen_leds_cli" <<'EOF'
+#!/bin/sh
+echo "$@" >> /tmp/ledmon-test/calls.log
+EOF
+chmod 755 "$T/ugreen_leds_cli"
+cp "$(dirname "$SRC")/truenas/start.sh" "$T/"
+echo "LED_LAYOUT=nonpro" > "$T/ugreen-leds-mon.conf"
+dash "$T/start.sh" >> "$T/mon.log" 2>&1
+check '^netdev -on -color 255 255 255 -brightness 96$' "start.sh lights the single LAN LED"
+check '^netdev2 disk1 disk2 disk3 disk4 disk5 -on ' "start.sh lights the six bays"
+check '^disk6 -off$' "start.sh switches the unwired register off"
+check_not '^netdev netdev2' "start.sh does not give bay 1 the LAN color"
+
+# ---- bay wiring: a fake PCI tree with the two SATA controllers --------------
+# $1 = Intel chipset ports, $2 = ASMedia ports, $3 = port the test disk is on.
+# diskstats are still read for the real disk name.
+fake_hw() {
+    rm -rf "$T"; mkdir -p "$T/sysblock" "$T/pci/0000:00:17.0" "$T/pci/0000:5a:00.0" "$T/pci/0000:00:02.0"
+    cat > "$T/ugreen_leds_cli" <<'EOS'
+#!/bin/sh
+echo "$@" >> /tmp/ledmon-test/calls.log
+EOS
+    chmod 755 "$T/ugreen_leds_cli"
+    cp "$SRC" "$T/"
+    echo 0x8086 > "$T/pci/0000:00:02.0/vendor"            # Intel GPU: no SATA ports, ignored
+    echo 0x8086 > "$T/pci/0000:00:17.0/vendor"
+    echo 0x1b21 > "$T/pci/0000:5a:00.0/vendor"
+    for p in $1; do mkdir "$T/pci/0000:00:17.0/$p"; done
+    for p in $2; do mkdir "$T/pci/0000:5a:00.0/$p"; done
+    case " $1 " in *" $3 "*) c=0000:00:17.0 ;; *) c=0000:00:1c.0/0000:5a:00.0 ;; esac
+    ln -s "../devices/pci0000:00/$c/$3/host9/target9:0:0/9:0:0:0/block/$DISK" "$T/sysblock/$DISK"
+}
+run_hw() {                          # $1 = layout, $2 = extra args for the script
+    { echo "INTERVAL=1"; echo "LED_LAYOUT=$1"; echo "SKIP_BOOT_DISK=0"; echo "NICS=\"$NIC\""; } > "$T/ugreen-leds-mon.conf"
+    UGREEN_LEDS_CLI="$T/ugreen_leds_cli" UGREEN_LEDS_PIDFILE="$T/pid" \
+    UGREEN_SYS_BLOCK="$T/sysblock" UGREEN_SYS_PCI="$T/pci" UGREEN_IDENTIFY_SECS=1 \
+        dash "$T/ugreen-leds-mon.sh" ${2:-} > "$T/mon.log" 2>&1
+}
+
+echo
+echo "== case 12: non-Pro — ASMedia ports are bays 1-4, so ata5 is bay 3 (LED disk2)"
+fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata5
+run_hw nonpro &
+MON=$!
+sleep 2
+grep -q "disks: - - $DISK - - - " "$T/mon.log" && pass "the disk is listed as bay 3" || fail "the disk is listed as bay 3"
+check '^disk2 -on -color 255 255 255 -brightness 64$' "bay 3 (disk2) gets the disk"
+check '^netdev2 -off$' "empty bay 1 is switched off"
+check '^disk1 -off$' "empty bay 2 is switched off"
+: > "$T/calls.log"
+burn
+wait_for '^disk2 -color 255 255 255 -blink 300 200$' "a burst blinks bay 3"
+check_not '^netdev2 .*-blink' "the empty bay 1 does not blink"
+stop_mon
+unburn
+
+echo
+echo "== case 13: Pro — ASMedia ports are bays 1 2 5 6, Intel ports bays 3 4"
+fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata5
+run_hw pro &
+MON=$!; sleep 2
+grep -q "disks: - - - - $DISK - " "$T/mon.log" && pass "ASMedia port 3 is bay 5" || fail "ASMedia port 3 is bay 5"
+check '^disk5 -on -color 255 255 255 -brightness 64$' "bay 5 is driven through disk5"
+stop_mon
+fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata2
+run_hw pro &
+MON=$!; sleep 2
+grep -q "disks: - - - $DISK - - " "$T/mon.log" && pass "Intel port 2 is bay 4" || fail "Intel port 2 is bay 4"
+stop_mon
+
+echo
+echo "== case 14: ataN numbering flips (ASMedia probed first) — bays follow the controller"
+fake_hw "ata5 ata6" "ata1 ata2 ata3 ata4" ata5
+run_hw pro &
+MON=$!; sleep 2
+grep -q "disks: - - $DISK - - - " "$T/mon.log" && pass "Intel's first port is still bay 3 on the Pro" || fail "Intel's first port is still bay 3 on the Pro"
+stop_mon
+fake_hw "ata5 ata6" "ata1 ata2 ata3 ata4" ata5
+run_hw nonpro &
+MON=$!; sleep 2
+grep -q "disks: - - - - $DISK - " "$T/mon.log" && pass "Intel's first port is still bay 5 on the non-Pro" || fail "Intel's first port is still bay 5 on the non-Pro"
+stop_mon
+fake_hw "ata1 ata2" "ata10 ata9 ata11 ata12" ata10
+run_hw pro &
+MON=$!; sleep 2
+grep -q "disks: - $DISK - - - - " "$T/mon.log" && pass "ports sort numerically (ata9 before ata10)" || fail "ports sort numerically (ata9 before ata10)"
+stop_mon
+
+echo
+echo "== case 15: --show-map and --identify"
+fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata5
+run_hw nonpro --show-map
+cat "$T/mon.log" | sed 's/^/      /'
+grep -qE "^3 +disk2 +ata5 +$DISK" "$T/mon.log" && pass "show-map lists bay 3 with its LED, port and disk" || fail "show-map lists bay 3 with its LED, port and disk"
+grep -qE "^1 +netdev2 +ata3 +- +\(empty\)" "$T/mon.log" && pass "show-map lists the empty bay 1" || fail "show-map lists the empty bay 1"
+[ -f "$T/pid" ] && fail "show-map leaves no pid file" || pass "show-map leaves no pid file"
+check_not '.' "show-map does not touch any LED"
+[ -s "$T/calls.log" ] && sed 's/^/      wrote: /' "$T/calls.log"
+: > "$T/calls.log"
+run_hw nonpro "--identify 3"
+check '^disk2 -color 0 0 255 -blink 150 150$' "identify blinks bay 3 blue"
+check '^disk2 -on -color 255 255 255 -brightness 64$' "identify puts the bay back to its idle color"
+: > "$T/calls.log"
+run_hw nonpro "--identify 1"
+check '^netdev2 -off$' "identify switches an empty bay back off"
+run_hw nonpro "--identify 7"; [ $? = 2 ] && pass "identify rejects bay 7" || fail "identify rejects bay 7"
 
 echo
 if [ "$FAILED" = 0 ]; then echo "all checks passed"; else echo "$FAILED check(s) FAILED"; fi

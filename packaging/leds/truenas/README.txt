@@ -73,9 +73,17 @@ disks are never queried for this (a SMART query can reset a drive's
 spin-down timer); only the pool state and TrueNAS's own alerts are read.
 It clears once the problem is gone. DISK_HEALTH_CHECK=0 turns it off.
 
-Bay mapping is auto-detected (all sd* in /sys/block, sorted, minus the
-disk the OS boots from) — verify by generating I/O on one disk and
-watching which LED blinks, and set DISKS explicitly if the order is wrong.
+Works on the iDX6011 Pro and the non-Pro iDX6011; the model is detected
+automatically (LED_LAYOUT). The non-Pro has only one LAN LED, so its bay
+LEDs sit one position over — the monitor accounts for that.
+
+Bay mapping is automatic: each disk lands on its own bay LED, found through
+the SATA controller and port it hangs off (the OS disk is left out). Check
+it, and find a bay on the front, with:
+    sh ugreen-leds-mon.sh --show-map
+    sh ugreen-leds-mon.sh --identify 3      # bay 3 blinks blue for 10 s
+If a bay is wrong, set DISKS in ugreen-leds-mon.conf ("-" marks an empty
+bay) and please report it.
 Monitor log: /var/log/ugreen-leds-mon.log
 
 Details and the full Proxmox/Debian setup (kernel module, per-I/O

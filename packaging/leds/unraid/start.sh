@@ -1,5 +1,5 @@
 #!/bin/sh
-# UGREEN iDX6011 Pro front LEDs (static variant) — Unraid launcher.
+# UGREEN iDX6011 (Pro) front LEDs (static variant) — Unraid launcher.
 # Called from /boot/config/go at boot (via sh; the flash drive is FAT and
 # cannot hold exec bits). Copies the CLI off the flash, then stops the
 # rolling boot animation and sets a static LED state. Colors, brightness
@@ -18,6 +18,7 @@ COLOR_NETDEV_NORMAL="255 255 255"
 BRIGHTNESS_NETDEV_LED=96
 COLOR_DISK_HEALTH="255 255 255"
 BRIGHTNESS_DISK_LEDS=64
+LED_LAYOUT=auto
 [ -f "$PERSIST/ugreen-leds-mon.conf" ] && . "$PERSIST/ugreen-leds-mon.conf"
 
 modprobe i2c-dev 2>/dev/null
@@ -26,8 +27,23 @@ modprobe i2c-i801 2>/dev/null
 export UGREEN_MODEL=idx6011
 # the color variables are "R G B" and must word-split into three arguments
 "$BIN" power -on -color $COLOR_POWER -brightness "$BRIGHTNESS_POWER"
-"$BIN" netdev netdev2 -on -color $COLOR_NETDEV_NORMAL -brightness "$BRIGHTNESS_NETDEV_LED"
-"$BIN" disk1 disk2 disk3 disk4 disk5 disk6 -on -color $COLOR_DISK_HEALTH -brightness "$BRIGHTNESS_DISK_LEDS"
+# The non-Pro has one LAN LED, so "netdev2" is its bay 1 and disk6 is unwired.
+if [ "$LED_LAYOUT" = auto ]; then
+    case "$(cat /sys/class/dmi/id/product_name 2>/dev/null)" in
+        *iDX6011*Pro*) LED_LAYOUT=pro ;;
+        *iDX6011*)     LED_LAYOUT=nonpro ;;
+        *)             LED_LAYOUT=pro ;;
+    esac
+fi
+export LED_LAYOUT
+if [ "$LED_LAYOUT" = nonpro ]; then
+    "$BIN" netdev -on -color $COLOR_NETDEV_NORMAL -brightness "$BRIGHTNESS_NETDEV_LED"
+    "$BIN" netdev2 disk1 disk2 disk3 disk4 disk5 -on -color $COLOR_DISK_HEALTH -brightness "$BRIGHTNESS_DISK_LEDS"
+    "$BIN" disk6 -off
+else
+    "$BIN" netdev netdev2 -on -color $COLOR_NETDEV_NORMAL -brightness "$BRIGHTNESS_NETDEV_LED"
+    "$BIN" disk1 disk2 disk3 disk4 disk5 disk6 -on -color $COLOR_DISK_HEALTH -brightness "$BRIGHTNESS_DISK_LEDS"
+fi
 
 # live activity monitor: disk/network LEDs blink on activity via the MCU's
 # hardware blink mode — pure userspace, no kernel module, survives updates.

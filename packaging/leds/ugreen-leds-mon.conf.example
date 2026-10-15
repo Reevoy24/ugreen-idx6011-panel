@@ -1,4 +1,4 @@
-# Front-LED settings for the UGREEN iDX6011 Pro (static variant).
+# Front-LED settings for the UGREEN iDX6011 / iDX6011 Pro (static variant).
 # Copy of this file is created as ugreen-leds-mon.conf on install and is
 # never overwritten by a later install — edit that one, not this example.
 # Read by both start.sh (base state at boot) and ugreen-leds-mon.sh
@@ -71,11 +71,27 @@ HEALTH_INTERVAL=60
 
 # =========== disk and NIC mapping ===========
 
-# Bay order disk1..disk6. Empty = auto (all sd* in /sys/block, sorted).
-# Verify by generating I/O on one disk and watching which LED blinks.
+# Which front panel this is: "pro" (iDX6011 Pro: two LAN LEDs), "nonpro"
+# (iDX6011: one LAN LED, so every bay LED sits one register earlier) or
+# "auto" to tell them apart by the DMI product name.
+LED_LAYOUT=auto
+
+# Disks in bay order, bay 1 first; "-" marks an empty bay, e.g. "sdc - sda".
+# Empty = auto: every disk lands on its own bay's LED, found through the SATA
+# controller and port it hangs off. Check the result with
+#   sh ugreen-leds-mon.sh --show-map
+# and light a single bay to find it on the front with
+#   sh ugreen-leds-mon.sh --identify 3
 DISKS=""
 
-# LAN1 LAN2. Empty = auto (physical NICs, sorted).
+# SATA port behind each bay, bay 1 first, e.g. "ata3 ata4 ata1 ata2 ata5 ata6".
+# Empty = worked out from the controllers, which is what you want: ataN
+# numbers can change between boots, the controller wiring cannot. Only set
+# this if --show-map gets your bays wrong (and please report that).
+BAY_ATA=""
+
+# LAN1 LAN2. Empty = auto (physical NICs, sorted). On the non-Pro both
+# ports share its single LAN LED.
 NICS=""
 
 # Leave the OS disk out of the auto-detected bay list (it is never idle).
