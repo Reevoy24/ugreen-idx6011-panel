@@ -14,14 +14,40 @@ typedef struct {
     float size_tb;    /* 0 = unknown (external sources may omit it) */
     float temp_c;     /* < 0 = unknown */
     int online;
+    int bay;          /* front bay 1-6 on an iDX6011 (see disk_stats_bay_of), 0 = none */
+    char model[32];   /* from sysfs, "" when unknown */
 } disk_info_t;
 
 typedef struct {
     int count;
     disk_info_t disks[DISK_MAX];
+    unsigned bays_passthrough;   /* bit n-1 = bay n sits behind a SATA controller
+                                    handed to a VM (vfio-pci): the host sees no
+                                    disk there, but the bay is not empty */
 } disk_stats_t;
 
 int disk_stats_collect(disk_stats_t *out);
+
+/* ---- front drive bays (iDX6011 / iDX6011 Pro) ----
+ * The six bays hang off two SATA controllers, an ASMedia ASM1164 (4 ports)
+ * and the Intel chipset (2 ports), wired differently per model:
+ *     Pro      ASMedia ports -> bays 1 2 5 6, Intel ports -> bays 3 4
+ *     non-Pro  ASMedia ports -> bays 1 2 3 4, Intel ports -> bays 5 6
+ * The controllers are found by PCI vendor and their ports taken in order,
+ * never by PCI address or ataN number: both change between boots. The same
+ * table lives in packaging/leds/ugreen-leds-mon.sh and in the diskiomon patch
+ * of tools/setup-ugreen-leds.sh; keep the three in sync. */
+#define BAY_LAYOUT_NONE   0   /* not an iDX6011: no bay map */
+#define BAY_LAYOUT_PRO    1
+#define BAY_LAYOUT_NONPRO 2
+#define BAY_COUNT         6
+
+/* From the DMI product name, cached. UG_BAY_LAYOUT=pro|nonpro overrides it. */
+int disk_stats_bay_layout(void);
+/* "pro", "nonpro" or NULL */
+const char *disk_stats_bay_layout_name(void);
+/* Bay 1-6 a SATA disk (kernel name, e.g. "sdc") sits in, 0 = not in a bay. */
+int disk_stats_bay_of(const char *dev);
 
 /* Unraid only: drive temps as already collected by emhttpd
  * (/var/local/emhttp/disks.ini) — reading them costs no disk I/O, unlike

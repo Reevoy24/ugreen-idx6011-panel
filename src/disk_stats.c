@@ -285,6 +285,220 @@ int disk_stats_write_external(const char *text, int *drives, char *err, size_t e
     return 0;
 }
 
+/* ---- front drive bays (table and reasoning in disk_stats.h) ---- */
+
+/* UG_SYSFS_ROOT lets the unit test point the bay code at a fake sysfs tree */
+static const char *sysfs_root(void)
+{
+    const char *r = getenv("UG_SYSFS_ROOT");
+    return r ? r : "";
+}
+
+static int bay_layout = -1;
+
+int disk_stats_bay_layout(void)
+{
+    if (bay_layout >= 0) return bay_layout;
+    const char *ov = getenv("UG_BAY_LAYOUT");
+    if (ov && strcmp(ov, "pro") == 0)    return bay_layout = BAY_LAYOUT_PRO;
+    if (ov && strcmp(ov, "nonpro") == 0) return bay_layout = BAY_LAYOUT_NONPRO;
+
+    char product[96] = "";
+    FILE *fp = fopen("/sys/class/dmi/id/product_name", "r");
+    if (fp) {
+        if (!fgets(product, sizeof(product), fp)) product[0] = 0;
+        fclose(fp);
+    }
+    if (!strstr(product, "iDX6011")) bay_layout = BAY_LAYOUT_NONE;
+    else bay_layout = strstr(product, "Pro") ? BAY_LAYOUT_PRO : BAY_LAYOUT_NONPRO;
+    return bay_layout;
+}
+
+const char *disk_stats_bay_layout_name(void)
+{
+    switch (disk_stats_bay_layout()) {
+    case BAY_LAYOUT_PRO:    return "pro";
+    case BAY_LAYOUT_NONPRO: return "nonpro";
+    default:                return NULL;
+    }
+}
+
+typedef struct { int ata; int bay; } port_bay_t;
+
+static int cmp_int(const void *a, const void *b)
+{
+    return *(const int *)a - *(const int *)b;
+}
+
+/* The ataN ports directly under one PCI device, ascending. */
+static int pci_ata_ports(const char *devdir, int *ports, int max)
+{
+    DIR *d = opendir(devdir);
+    if (!d) return 0;
+    int n = 0;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL && n < max) {
+        int num;
+        char tail;
+        if (sscanf(e->d_name, "ata%d%c", &num, &tail) == 1) ports[n++] = num;
+    }
+    closedir(d);
+    qsort(ports, n, sizeof(ports[0]), cmp_int);
+    return n;
+}
+
+static int read_hex(const char *path, unsigned *out)
+{
+    FILE *fp = fopen(path, "r");
+    if (!fp) return -1;
+    int ok = fscanf(fp, "%x", out) == 1;
+    fclose(fp);
+    return ok ? 0 : -1;
+}
+
+/* Which ataN feeds which bay on this unit. A controller handed to a VM
+ * (bound to vfio-pci) has no ataN ports on the host at all; its bays are
+ * reported in *passthrough instead (bit n-1 = bay n), so they do not read
+ * as empty. */
+static int bay_port_map(port_bay_t *map, unsigned *passthrough)
+{
+    static const int asm_pro[]    = { 1, 2, 5, 6 }, intel_pro[]    = { 3, 4 };
+    static const int asm_nonpro[] = { 1, 2, 3, 4 }, intel_nonpro[] = { 5, 6 };
+    if (passthrough) *passthrough = 0;
+    int layout = disk_stats_bay_layout();
+    if (layout == BAY_LAYOUT_NONE) return 0;
+    const int *asm_bays   = layout == BAY_LAYOUT_PRO ? asm_pro : asm_nonpro;
+    const int *intel_bays = layout == BAY_LAYOUT_PRO ? intel_pro : intel_nonpro;
+
+    char base[256];
+    snprintf(base, sizeof(base), "%s/sys/bus/pci/devices", sysfs_root());
+    DIR *d = opendir(base);
+    if (!d) return 0;
+    int n = 0, seen_asm = 0, seen_intel = 0;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (e->d_name[0] == '.') continue;
+        char devdir[512], path[600];
+        snprintf(devdir, sizeof(devdir), "%s/%s", base, e->d_name);
+        int ports[16];
+        int np = pci_ata_ports(devdir, ports, 16);
+
+        /* a SATA controller by PCI class (0x0106xx), or by its ports */
+        unsigned class = 0;
+        snprintf(path, sizeof(path), "%s/class", devdir);
+        int is_sata = (read_hex(path, &class) == 0 && (class >> 8) == 0x0106) || np > 0;
+        if (!is_sata) continue;
+
+        unsigned vendor = 0;
+        snprintf(path, sizeof(path), "%s/vendor", devdir);
+        if (read_hex(path, &vendor) != 0) continue;
+
+        const int *bays;
+        int nb;
+        if (vendor == 0x1b21 && !seen_asm)        { bays = asm_bays;   nb = 4; seen_asm = 1; }
+        else if (vendor == 0x8086 && !seen_intel) { bays = intel_bays; nb = 2; seen_intel = 1; }
+        else continue;   /* first controller of each kind only */
+
+        char drv[600], target[256];
+        snprintf(drv, sizeof(drv), "%s/driver", devdir);
+        ssize_t len = readlink(drv, target, sizeof(target) - 1);
+        if (len > 0) {
+            target[len] = 0;
+            const char *name = strrchr(target, '/');
+            if (strcmp(name ? name + 1 : target, "vfio-pci") == 0) {
+                for (int i = 0; i < nb; i++)
+                    if (passthrough) *passthrough |= 1u << (bays[i] - 1);
+                continue;
+            }
+        }
+        for (int i = 0; i < np && i < nb; i++) {
+            map[n].ata = ports[i];
+            map[n].bay = bays[i];
+            n++;
+        }
+    }
+    closedir(d);
+    return n;
+}
+
+/* ataN of a disk, from its sysfs path (../devices/pci.../0000:57:00.0/ata3/host2/...) */
+static int disk_ata_port(const char *dev)
+{
+    char link[256], target[512];
+    snprintf(link, sizeof(link), "%s/sys/block/%.15s", sysfs_root(), dev);
+    ssize_t len = readlink(link, target, sizeof(target) - 1);
+    if (len <= 0) return -1;
+    target[len] = 0;
+    for (const char *p = strstr(target, "/ata"); p; p = strstr(p + 1, "/ata")) {
+        int num;
+        char slash;
+        if (sscanf(p, "/ata%d%c", &num, &slash) == 2 && slash == '/') return num;
+    }
+    return -1;
+}
+
+static int bay_lookup(const port_bay_t *map, int n, const char *dev)
+{
+    int ata = disk_ata_port(dev);
+    for (int i = 0; ata >= 0 && i < n; i++)
+        if (map[i].ata == ata) return map[i].bay;
+    return 0;
+}
+
+int disk_stats_bay_of(const char *dev)
+{
+    port_bay_t map[BAY_COUNT];
+    int n = bay_port_map(map, NULL);
+    return bay_lookup(map, n, dev);
+}
+
+/* Drive model, without sending the drive a command (which could spin it up).
+ * Preferred: the name udev gave it under /dev/disk/by-id ("ata-<model>_<serial>",
+ * from the identify data read at probe time), because sysfs cuts the model to
+ * the 16 bytes of the SCSI inquiry field ("WDC WD60EZRZ-00G"). */
+static int model_from_by_id(const char *dev, char *out, size_t n)
+{
+    DIR *d = opendir("/dev/disk/by-id");
+    if (!d) return 0;
+    struct dirent *e;
+    int found = 0;
+    while (!found && (e = readdir(d)) != NULL) {
+        if (strncmp(e->d_name, "ata-", 4) != 0 || strstr(e->d_name, "-part")) continue;
+        char link[300], target[128];
+        snprintf(link, sizeof(link), "/dev/disk/by-id/%s", e->d_name);
+        ssize_t len = readlink(link, target, sizeof(target) - 1);
+        if (len <= 0) continue;
+        target[len] = 0;
+        const char *base = strrchr(target, '/');
+        if (!base || strcmp(base + 1, dev) != 0) continue;
+
+        char name[256];
+        snprintf(name, sizeof(name), "%s", e->d_name + 4);
+        char *serial = strrchr(name, '_');   /* the serial is the last field */
+        if (serial && serial != name) *serial = 0;
+        for (char *p = name; *p; p++) if (*p == '_') *p = ' ';
+        snprintf(out, n, "%.*s", (int)n - 1, name);   /* cut to the field on purpose */
+        found = 1;
+    }
+    closedir(d);
+    return found;
+}
+
+static void read_model(const char *dev, char *out, size_t n)
+{
+    char path[96];
+    out[0] = 0;
+    if (model_from_by_id(dev, out, n)) return;
+    snprintf(path, sizeof(path), "/sys/block/%.15s/device/model", dev);
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+    if (fgets(out, (int)n, fp)) {
+        size_t l = strlen(out);
+        while (l > 0 && isspace((unsigned char)out[l - 1])) out[--l] = 0;
+    }
+    fclose(fp);
+}
+
 static int cmp_name(const void *a, const void *b)
 {
     return strcmp(((const disk_info_t *)a)->dev, ((const disk_info_t *)b)->dev);
@@ -306,6 +520,9 @@ int disk_stats_collect(disk_stats_t *out)
     DIR *dir = opendir("/sys/block");
     if (!dir) return -1;
 
+    port_bay_t bays[BAY_COUNT];
+    int bays_n = bay_port_map(bays, &out->bays_passthrough);   /* once per pass, not per disk */
+
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL && out->count < DISK_MAX) {
         int nvme = is_nvme_disk(ent->d_name);
@@ -325,6 +542,8 @@ int disk_stats_collect(disk_stats_t *out)
         else
             d->temp_c = read_temp_c(ent->d_name);
         d->online = 1;
+        if (!nvme) d->bay = bay_lookup(bays, bays_n, ent->d_name);
+        read_model(ent->d_name, d->model, sizeof(d->model));
     }
     closedir(dir);
 

@@ -101,6 +101,24 @@ select { background: var(--btn); color: var(--text); border: 0.5px solid rgba(25
 .gdot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; flex: none; }
 .gdot.off { background: var(--inactive); }
 
+/* front drive bays: one tile per bay, click to blink its LED */
+.bays { padding: 10px; margin-bottom: 10px; }
+.bgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.bay { display: flex; flex-direction: column; gap: 3px; min-width: 0; text-align: left; font: inherit; color: var(--text); background: var(--panel); border: 0.5px solid transparent; border-radius: 10px; padding: 9px 11px; }
+button.bay { cursor: pointer; transition: border-color .15s; }
+button.bay:hover, button.bay:focus-visible { border-color: var(--cyan); outline: none; }
+.bay.empty { opacity: .5; }
+.bay.vm .bm { color: var(--muted); font-style: italic; }
+.bay .bh { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--muted); }
+.bay .bn { color: var(--text); font-weight: 500; }
+.bay .bm, .bay .bs { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bay .bm { font-size: 13px; }
+.bay .bs { font-size: 11px; color: var(--muted); min-height: 1.2em; }
+.bay.blink { border-color: #3d7bff; animation: bayblink .6s step-end infinite; }
+@keyframes bayblink { 50% { border-color: transparent; } }
+.bhint { font-size: 11px; color: var(--muted); margin: 9px 2px 1px; }
+@media (max-width: 520px) { .bgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* expandable rows (Proxmox guest list) */
 .exp summary { list-style: none; cursor: pointer; }
 .exp summary::-webkit-details-marker { display: none; }

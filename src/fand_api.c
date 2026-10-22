@@ -414,7 +414,7 @@ static void handle_stats(int fd) {
     for (int i = 0; i < s.disks.count; i++) {
         disk_info_t *d = &s.disks.disks[i];
         jappend(&b, "%s{\"dev\":", i ? "," : ""); jstr(&b, d->dev);
-        jappend(&b, ",\"is_nvme\":%s,\"idx\":%d,\"size_tb\":%.1f,",
+        jappend(&b, ",\"is_nvme\":%s,\"idx\":%d,\"size_tb\":%.3f,",
                 d->is_nvme ? "true" : "false", d->idx, d->size_tb);
         if (d->temp_c >= 0) jappend(&b, "\"temp_c\":%.0f,", d->temp_c);
         else                jappend(&b, "\"temp_c\":null,");

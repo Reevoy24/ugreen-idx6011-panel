@@ -3,6 +3,7 @@
 // reuse the device's wording (src/i18n.c) where they exist.
 export const STRINGS = {
   en: {
+    bay: "Bay", bay_empty: "Empty", bay_vm: "Passed through to a VM", identify_hint: "Click a bay to blink its LED blue for 10 seconds", identify_on: "Bay {n} is blinking blue",
     led_colors: "LED colors", led_power: "Power", led_disks: "Disks", led_network: "Network",
     title: "iDX6011 Pro", subtitle: "Panel · Web", online: "Online", offline: "Panel offline",
     sec_overview: "Overview", sec_fan: "Fan control", sec_storage: "Storage", storage_mount: "Mountpoint",
@@ -24,6 +25,7 @@ export const STRINGS = {
     daemon_offline: "Fan daemon not running",
   },
   de: {
+    bay: "Einschub", bay_empty: "Leer", bay_vm: "An VM durchgereicht", identify_hint: "Klicke auf einen Einschub, damit seine LED 10 Sekunden blau blinkt", identify_on: "Einschub {n} blinkt blau",
     led_colors: "LED-Farben", led_power: "Power", led_disks: "Festplatten", led_network: "Netzwerk",
     title: "iDX6011 Pro", subtitle: "Panel · Web", online: "Online", offline: "Panel offline",
     sec_overview: "Übersicht", sec_fan: "Lüftersteuerung", sec_storage: "Speicher", storage_mount: "Mountpoint",
@@ -45,6 +47,7 @@ export const STRINGS = {
     daemon_offline: "Lüfter-Daemon läuft nicht",
   },
   es: {
+    bay: "Bahía", bay_empty: "Vacía", bay_vm: "Asignada a una VM", identify_hint: "Haz clic en una bahía para que su LED parpadee en azul durante 10 segundos", identify_on: "La bahía {n} parpadea en azul",
     led_colors: "Colores LED", led_power: "Encendido", led_disks: "Discos", led_network: "Red",
     title: "iDX6011 Pro", sec_overview: "Resumen", sec_fan: "Ventiladores", sec_storage: "Almacenamiento", storage_mount: "Punto de montaje",
     sec_network: "Red", sec_services: "Servicios", sec_settings: "Ajustes", sec_power: "Energía",
@@ -59,6 +62,7 @@ export const STRINGS = {
     daemon_offline: "El daemon de ventiladores no está activo",
   },
   fr: {
+    bay: "Baie", bay_empty: "Vide", bay_vm: "Transmise à une VM", identify_hint: "Cliquez sur une baie pour faire clignoter sa LED en bleu pendant 10 secondes", identify_on: "La baie {n} clignote en bleu",
     led_colors: "Couleurs LED", led_power: "Alimentation", led_disks: "Disques", led_network: "Réseau",
     title: "iDX6011 Pro", sec_overview: "Aperçu", sec_fan: "Ventilateurs", sec_storage: "Stockage", storage_mount: "Point de montage",
     sec_network: "Réseau", sec_services: "Services", sec_settings: "Réglages", sec_power: "Alimentation",
@@ -73,6 +77,7 @@ export const STRINGS = {
     daemon_offline: "Le démon des ventilateurs n'est pas actif",
   },
   pt: {
+    bay: "Baia", bay_empty: "Vazia", bay_vm: "Passada para uma VM", identify_hint: "Clique numa baia para o LED dela piscar a azul durante 10 segundos", identify_on: "A baia {n} está a piscar a azul",
     led_colors: "Cores do LED", led_power: "Energia", led_disks: "Discos", led_network: "Rede",
     title: "iDX6011 Pro", sec_overview: "Visão geral", sec_fan: "Ventoinhas", sec_storage: "Armazenamento", storage_mount: "Ponto de montagem",
     sec_network: "Rede", sec_services: "Serviços", sec_settings: "Definições", sec_power: "Energia",
@@ -87,6 +92,7 @@ export const STRINGS = {
     daemon_offline: "O daemon das ventoinhas não está em execução",
   },
   id: {
+    bay: "Slot", bay_empty: "Kosong", bay_vm: "Diteruskan ke VM", identify_hint: "Klik slot agar LED-nya berkedip biru selama 10 detik", identify_on: "Slot {n} berkedip biru",
     led_colors: "Warna LED", led_power: "Daya", led_disks: "Disk", led_network: "Jaringan",
     title: "iDX6011 Pro", sec_overview: "Ringkasan", sec_fan: "Kontrol Kipas", sec_storage: "Penyimpanan", storage_mount: "Titik mount",
     sec_network: "Jaringan", sec_services: "Layanan", sec_settings: "Pengaturan", sec_power: "Daya",

@@ -376,6 +376,7 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
     if (has_leds)
         snprintf(g_snap.led_night_window, sizeof(g_snap.led_night_window), "%s", leds_night_window());
     g_snap.has_led_colors = has_leds && leds_colors_supported();
+    g_snap.has_identify = has_leds && leds_can_identify();
     if (g_snap.has_led_colors) leds_get_colors(&g_snap.led_colors);
     g_snap.wp_count = gui_wallpaper_options(g_snap.wp_opts, API_WP_MAX, &g_snap.wp_cur);
     g_snap.storage_count = system_stats_list_mounts(g_snap.storage_opts, STORAGE_OPT_MAX,
@@ -647,6 +648,9 @@ int main(int argc, char *argv[]) {
                     leds_set_colors(&lc);
                 break;
             }
+            case API_CMD_LEDS_IDENTIFY:
+                leds_identify(cmd.arg_int);   /* backgrounded, returns at once */
+                break;
             case API_CMD_SET_TIMEZONE:
                 if (cmd.arg_str[0]) setenv("TZ", cmd.arg_str, 1);
                 else unsetenv("TZ");

@@ -27,6 +27,8 @@ let pveOpen = false; // remember the Proxmox expand state across polls
 let hasPanel = true; // false when served by ug-fand (no display): hide display-only controls
 let brandFixed = false;
 let editing = false, editDomain = "cpu", editMode = "default", editPoints = [];
+let identBay = 0, identUntil = 0; // the bay whose LED is blinking for "identify"
+const BAYS = 6;
 
 const t = (k) => (STRINGS[lang] || STRINGS.en)[k] ?? STRINGS.en[k] ?? k;
 const $ = (id) => document.getElementById(id);
@@ -95,6 +97,8 @@ function uptimeStr(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
   return `${d}d ${h}h ${m}m`;
 }
+// same rule as the panel (gui.c): GB below 1 TB, so a 128 GB drive is not "0.1 TB"
+const sizeStr = (tb) => (tb >= 1 ? tb.toFixed(1) + " TB" : Math.round(tb * 1000) + " GB");
 function metric(k, v) { return `<div class="m"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
 function setBar(id, rpm, dom) {
   setText(id, rpm == null ? "--" : rpm);
@@ -164,11 +168,18 @@ function render(s) {
   document.querySelectorAll("#modes .seg").forEach((b) => b.classList.toggle("on", b.dataset.mode === activeMode));
   if (!editing) drawPlot(fan);
 
-  /* storage */
+  /* storage: on an iDX6011 the front bays get a tile each; the list below
+   * keeps whatever does not sit in a bay (NVMe, externally reported drives) */
   const dk = s.disks || { items: [] };
-  $("disks").innerHTML = (dk.items || []).map((x) =>
-    `<div class="row"><span class="l"><span class="gdot${x.online ? "" : " off"}"></span>${x.dev}${x.size_tb > 0 ? " · " + x.size_tb.toFixed(1) + " TB" : ""}</span><span>${x.temp_c == null ? "--" : Math.round(x.temp_c) + " °C"}</span></div>`
-  ).join("") || `<div class="row"><span class="l">—</span></div>`;
+  const items = dk.items || [];
+  const showBays = !!caps.bay_layout;
+  toggle("bays", showBays);
+  if (showBays) renderBays(items, !!caps.has_identify, dk.bays_passthrough || []);
+  const listed = showBays ? items.filter((x) => !(x.bay > 0)) : items;
+  $("disks").innerHTML = listed.map((x) =>
+    `<div class="row"><span class="l"><span class="gdot${x.online ? "" : " off"}"></span>${esc(x.dev)}${x.size_tb > 0 ? " · " + sizeStr(x.size_tb) : ""}</span><span>${x.temp_c == null ? "--" : Math.round(x.temp_c) + " °C"}</span></div>`
+  ).join("") || (showBays ? "" : `<div class="row"><span class="l">—</span></div>`);
+  toggle("disks", !showBays || listed.length > 0);
 
   /* network */
   const net = s.net || { ifaces: [] };
@@ -486,7 +497,45 @@ function buildSelects() {
   if (tz) tz.innerHTML = TIMEZONES.map((z) => `<option value="${z}">${z}</option>`).join("");
 }
 
+function bayTile(n, d, canIdentify, passedThrough) {
+  const tag = canIdentify ? "button" : "div";
+  const blinking = identBay === n && Date.now() < identUntil;
+  // behind a SATA controller handed to a VM the host sees no disk, yet the bay is not empty
+  const vm = !d && passedThrough;
+  const cls = "bay" + (d ? "" : vm ? " vm" : " empty") + (blinking ? " blink" : "");
+  const temp = d && d.temp_c != null ? Math.round(d.temp_c) + " °C" : "";
+  const name = d ? esc(d.model || d.dev) : t(vm ? "bay_vm" : "bay_empty");
+  const sub = d ? (d.size_tb > 0 ? sizeStr(d.size_tb) + " · " : "") + esc(d.dev) : "";
+  const tip = (d ? esc(d.model || d.dev) + "&#10;" : "") + (canIdentify ? t("identify_hint") : "");
+  const attrs = (canIdentify ? ` type="button"` : "") + (tip ? ` title="${tip.replace(/"/g, "&quot;")}"` : "");
+  return `<${tag} class="${cls}" data-bay="${n}"${attrs}>` +
+    `<span class="bh"><span class="bn">${t("bay")} ${n}</span><span>${temp}</span></span>` +
+    `<span class="bm">${name}</span><span class="bs">${sub}</span></${tag}>`;
+}
+
+function renderBays(items, canIdentify, passthrough) {
+  let h = "";
+  for (let n = 1; n <= BAYS; n++) h += bayTile(n, items.find((x) => x.bay === n), canIdentify, passthrough.includes(n));
+  $("bays-grid").innerHTML = h;
+  toggle("bays-hint", canIdentify);
+}
+
+async function identifyBay(n) {
+  try {
+    if (!(await postJSON("/api/leds/identify", { bay: n }))) return; // password prompt cancelled
+    identBay = n;
+    identUntil = Date.now() + 10000;
+    toast(t("identify_on").replace("{n}", n), true);
+    if (last) render(last);
+    setTimeout(() => { if (last && Date.now() >= identUntil) render(last); }, 10100);
+  } catch (e) { toast(e.message); }
+}
+
 function wireControls() {
+  $("bays-grid").addEventListener("click", (e) => {
+    const b = e.target.closest("button.bay");
+    if (b) identifyBay(parseInt(b.dataset.bay, 10));
+  });
   $("set-brightness").addEventListener("input", (e) => setText("set-brightness-v", e.target.value + "%"));
   $("set-brightness").addEventListener("change", (e) => postSettings({ brightness: parseInt(e.target.value, 10) }));
   $("set-timeout").addEventListener("change", (e) => postSettings({ backlight_timeout: parseInt(e.target.value, 10) }));

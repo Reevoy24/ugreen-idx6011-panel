@@ -36,6 +36,7 @@ typedef struct {
     char language[8], wallpaper[32], led_night_window[16];
     char led_night_start[8], led_night_end[8], timezone[40];
     int  has_led_colors;      /* 0 = no LED config we can edit, hide the row */
+    int  has_identify;        /* 1 = a bay LED can be blinked to find it (leds_identify) */
     leds_colors_t led_colors;
 
     /* wallpaper options */
@@ -77,7 +78,8 @@ typedef enum {
     API_CMD_SET_NIGHT_WINDOW,
     API_CMD_SET_TIMEZONE,
     API_CMD_SET_STORAGE,
-    API_CMD_SET_LED_COLORS
+    API_CMD_SET_LED_COLORS,
+    API_CMD_LEDS_IDENTIFY       /* arg_int = bay 1-6 */
 } api_cmd_type_t;
 
 typedef struct {

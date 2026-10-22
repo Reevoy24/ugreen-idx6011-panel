@@ -526,12 +526,17 @@ static void handle_stats(int fd) {
     for (int i = 0; i < s.disks.count; i++) {
         disk_info_t *d = &s.disks.disks[i];
         jappend(&b, "%s{\"dev\":", i ? "," : ""); jstr(&b, d->dev);
-        jappend(&b, ",\"is_nvme\":%s,\"idx\":%d,\"size_tb\":%.1f,",
+        jappend(&b, ",\"is_nvme\":%s,\"idx\":%d,\"size_tb\":%.3f,",
                 d->is_nvme ? "true" : "false", d->idx, d->size_tb);
         if (d->temp_c >= 0) jappend(&b, "\"temp_c\":%.0f,", d->temp_c);
         else                jappend(&b, "\"temp_c\":null,");
-        jappend(&b, "\"online\":%s}", d->online ? "true" : "false");
+        jappend(&b, "\"online\":%s,\"bay\":%d,\"model\":", d->online ? "true" : "false", d->bay);
+        jstr(&b, d->model);
+        jappend(&b, "}");
     }
+    jappend(&b, "],\"bays_passthrough\":[");
+    for (int n = 1, first = 1; n <= BAY_COUNT; n++)
+        if (s.disks.bays_passthrough & (1u << (n - 1))) { jappend(&b, "%s%d", first ? "" : ",", n); first = 0; }
     jappend(&b, "]},");
 
     if (s.has_pve) {
@@ -610,9 +615,14 @@ static void handle_stats(int fd) {
     for (int i = 0; i < s.storage_count; i++) { jappend(&b, "%s", i ? "," : ""); jstr(&b, s.storage_opts[i]); }
     jappend(&b, "]},");
 
-    jappend(&b, "\"caps\":{\"has_pve\":%s,\"has_opnsense\":%s,\"has_leds\":%s,\"has_gpu\":%s,\"has_touch\":%s}}",
+    const char *bay_layout = disk_stats_bay_layout_name();
+    jappend(&b, "\"caps\":{\"has_pve\":%s,\"has_opnsense\":%s,\"has_leds\":%s,\"has_gpu\":%s,\"has_touch\":%s,"
+                "\"has_identify\":%s,\"bay_layout\":",
             s.has_pve ? "true" : "false", s.has_opnsense ? "true" : "false",
-            s.has_leds ? "true" : "false", s.has_gpu ? "true" : "false", s.has_touch ? "true" : "false");
+            s.has_leds ? "true" : "false", s.has_gpu ? "true" : "false", s.has_touch ? "true" : "false",
+            s.has_identify ? "true" : "false");
+    if (bay_layout) jstr(&b, bay_layout); else jappend(&b, "null");
+    jappend(&b, "}}");
 
     send_json(fd, 200, out);
 }
@@ -808,6 +818,24 @@ static void handle_fan_mode(int fd, const http_req_t *req) {
     send_json(fd, 200, "{\"ok\":true}");
 }
 
+/* POST {"bay":N}: blink that bay's LED blue for a few seconds to find it.
+ * The main loop does the work; it is backgrounded and returns at once. */
+static void handle_leds_identify(int fd, const http_req_t *req) {
+    pthread_mutex_lock(&snap_lock);
+    int can = snap.has_identify;
+    pthread_mutex_unlock(&snap_lock);
+    if (!can) { send_error(fd, 409, "no LED control or no known bay layout on this system"); return; }
+
+    int bay = 0;
+    if (json_get_int(req->body ? req->body : "", "bay", &bay) != 0 || bay < 1 || bay > BAY_COUNT) {
+        send_error(fd, 400, "bay must be 1-6");
+        return;
+    }
+    api_cmd_t c = { .type = API_CMD_LEDS_IDENTIFY, .arg_int = bay };
+    if (api_cmd_push(&c) != 0) { send_error(fd, 503, "busy, try again"); return; }
+    send_json(fd, 200, "{\"ok\":true}");
+}
+
 static void handle_power(int fd, const http_req_t *req) {
     const char *j = req->body ? req->body : "";
     char action[16];
@@ -919,6 +947,10 @@ static void handle_request(int fd) {
         if (!is_post) send_error(fd, 405, NULL);
         else if (password_set() && !password_ok(&req)) send_auth_required(fd);
         else handle_fan_mode(fd, &req);
+    } else if (strcmp(req.path, "/api/leds/identify") == 0) {
+        if (!is_post) send_error(fd, 405, NULL);
+        else if (password_set() && !password_ok(&req)) send_auth_required(fd);
+        else handle_leds_identify(fd, &req);
     } else if (strcmp(req.path, "/api/power") == 0) {
         if (!is_post) send_error(fd, 405, NULL);
         else if (!password_set()) send_error(fd, 403, "set api_password to enable remote power control");

@@ -1,4 +1,5 @@
 #include "leds.h"
+#include "disk_stats.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -382,6 +383,78 @@ int leds_set_colors(const leds_colors_t *c)
         snprintf(cmd, sizeof(cmd), "sh %s >/dev/null 2>&1", static_script);
         run(cmd);
     }
+    return 0;
+}
+
+/* ---- locate a bay from the front ---------------------------------------
+ *
+ * The LED names follow the Pro's front in both the kernel module and the CLI.
+ * The non-Pro has one LAN LED fewer, so there its bay 1 is the "second LAN"
+ * LED and every other bay sits one name lower. */
+static void bay_led_name(int bay, int sysfs, char *out, size_t n)
+{
+    if (disk_stats_bay_layout() == BAY_LAYOUT_NONPRO) {
+        if (bay == 1) snprintf(out, n, "%s", sysfs ? "network_stat2" : "netdev2");
+        else          snprintf(out, n, "disk%d", bay - 1);
+    } else {
+        snprintf(out, n, "disk%d", bay);
+    }
+}
+
+int leds_can_identify(void)
+{
+    return backend != BACKEND_NONE && disk_stats_bay_layout() != BAY_LAYOUT_NONE;
+}
+
+int leds_identify(int bay)
+{
+    if (!leds_can_identify() || bay < 1 || bay > BAY_COUNT) return -1;
+
+    char led[16];
+    char cmd[1600];
+    int lit = effective();
+    fprintf(stderr, "leds: identify bay %d\n", bay);
+
+    if (backend == BACKEND_SYSFS) {
+        /* The module blinks in hardware (blink_type). Afterwards a running
+         * diskiomon re-initialises every LED it owns, which restores this one
+         * too; with the monitor stopped (LEDs off) the LED goes dark again.
+         * Writing 255 first: the module skips a 0 that matches its cache. */
+        bay_led_name(bay, 1, led, sizeof(led));
+        snprintf(cmd, sizeof(cmd),
+                 "(L=/sys/class/leds/%s; echo none > $L/trigger; echo '0 0 255' > $L/color; "
+                 "echo 255 > $L/brightness; echo 'blink 150 150' > $L/blink_type; sleep 10; "
+                 "echo none > $L/blink_type; "
+                 "if systemctl is-active -q ugreen-diskiomon.service; "
+                 "then systemctl restart ugreen-diskiomon.service; "
+                 "else echo 255 > $L/brightness; echo 0 > $L/brightness; fi) >/dev/null 2>&1 &",
+                 led);
+    } else {
+        /* The static install's monitor knows the bay map and puts the LED
+         * back in its idle color itself; without it (plain CLI install) the
+         * install's start script re-applies everything. */
+        char dir[512], mon[600];
+        snprintf(dir, sizeof(dir), "%s", static_script);
+        char *slash = strrchr(dir, '/');
+        if (slash) *slash = '\0';
+        snprintf(mon, sizeof(mon), "%s/ugreen-leds-mon.sh", dir);
+        bay_led_name(bay, 0, led, sizeof(led));
+        char after[700];
+        if (!lit)
+            snprintf(after, sizeof(after), "UGREEN_MODEL=idx6011 '%s' %s -off", cli_path, led);
+        else if (!path_exists(mon) && path_exists(static_script))
+            snprintf(after, sizeof(after), "sh '%s'", static_script);
+        else
+            snprintf(after, sizeof(after), ":");
+        if (path_exists(mon))
+            snprintf(cmd, sizeof(cmd), "(sh '%s' --identify %d; %s) >/dev/null 2>&1 &",
+                     mon, bay, after);
+        else
+            snprintf(cmd, sizeof(cmd),
+                     "(UGREEN_MODEL=idx6011 '%s' %s -color 0 0 255 -blink 150 150; sleep 10; %s) "
+                     ">/dev/null 2>&1 &", cli_path, led, after);
+    }
+    run(cmd);
     return 0;
 }
 
