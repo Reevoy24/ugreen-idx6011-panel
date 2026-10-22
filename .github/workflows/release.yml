@@ -135,6 +135,16 @@ jobs:
         with:
           name: release-artifacts
 
+      # Beta versions carry a "~" (dpkg's pre-release marker), which GitHub
+      # turns into "." in release asset names. Rename to the published name
+      # first, so SHA256SUMS and the attestations match the downloaded files
+      # (`sha256sum -c` otherwise finds nothing to check). dpkg reads the
+      # version from the package itself, not from the file name.
+      - name: Use the published file names
+        run: |
+          shopt -s nullglob
+          for f in *~*.deb *~*.tar.gz; do mv -v -- "$f" "${f//\~/.}"; done
+
       # A leds-v* release has no .deb, so an unmatched glob must not abort.
       - name: Generate checksums
         run: |
