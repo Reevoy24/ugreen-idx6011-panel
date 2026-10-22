@@ -21,6 +21,22 @@ BRIGHTNESS_DISK_LEDS=64
 COLOR_NETDEV_NORMAL="255 255 255"
 BRIGHTNESS_NETDEV_LED=96
 
+# Optional: tell disks and network apart at a glance. Everything is white by
+# default (like UGOS); uncomment for blue disks. Red stays reserved for a
+# failing disk (COLOR_DISK_FAIL below).
+#COLOR_DISK_HEALTH="0 80 255"
+
+# Optional: let the LAN LEDs show the negotiated link speed instead of
+# COLOR_NETDEV_NORMAL, so a port that fell back to 1G stands out. No link =
+# LED off. On the non-Pro, whose single LAN LED serves both ports, the
+# fastest port with a link sets the color.
+NETDEV_COLOR_BY_SPEED=0
+COLOR_NIC_10G="0 255 0"         # green
+COLOR_NIC_5G="255 0 255"        # magenta
+COLOR_NIC_2G5="255 90 0"        # orange
+COLOR_NIC_1G="255 200 0"        # yellow
+COLOR_NIC_OTHER="255 255 255"   # 100M and anything else
+
 # Color while blinking on activity (empty = same color as when idle).
 COLOR_DISK_ACTIVE=""
 COLOR_NETDEV_ACTIVE=""

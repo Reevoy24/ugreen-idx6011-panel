@@ -330,6 +330,72 @@ check '^disk2 -on -color 255 255 255 -brightness 64$' "identify puts the bay bac
 run_hw nonpro "--identify 1"
 check '^netdev2 -off$' "identify switches an empty bay back off"
 run_hw nonpro "--identify 7"; [ $? = 2 ] && pass "identify rejects bay 7" || fail "identify rejects bay 7"
+# Interrupted the way Ctrl+C does it: the signal hits the whole process group,
+# the sleep included (TERM here, since a backgrounded job cannot trap INT)
+: > "$T/calls.log"
+UGREEN_LEDS_CLI="$T/ugreen_leds_cli" UGREEN_SYS_BLOCK="$T/sysblock" UGREEN_SYS_PCI="$T/pci" \
+UGREEN_IDENTIFY_SECS=30 setsid dash "$T/ugreen-leds-mon.sh" --identify 3 > "$T/mon.log" 2>&1 &
+IDP=$!
+sleep 1
+kill -TERM -- "-$IDP" 2>/dev/null
+n=0; while kill -0 "$IDP" 2>/dev/null && [ $n -lt 10 ]; do sleep 0.3; n=$((n + 1)); done
+wait "$IDP" 2>/dev/null; rc=$?
+check '^disk2 -on -color 255 255 255 -brightness 64$' "an interrupted identify restores the bay"
+[ "$rc" = 130 ] && pass "an interrupted identify exits 130" || fail "an interrupted identify exits 130 (got $rc)"
+
+echo
+echo "== case 17: NETDEV_COLOR_BY_SPEED colors the LAN LEDs by link speed"
+fake_net() {   # name operstate speed
+    mkdir -p "$T/net/$1/statistics"
+    echo 0 > "$T/net/$1/statistics/rx_bytes"; echo 0 > "$T/net/$1/statistics/tx_bytes"
+    echo "$2" > "$T/net/$1/operstate"; echo "$3" > "$T/net/$1/speed"
+}
+run_net() {    # layout
+    { echo "INTERVAL=1"; echo "LED_LAYOUT=$1"; echo "DISKS=\"$DISK\""; echo 'NICS="eth0 eth1"'; echo "NETDEV_COLOR_BY_SPEED=1"; } > "$T/ugreen-leds-mon.conf"
+    UGREEN_LEDS_CLI="$T/ugreen_leds_cli" UGREEN_LEDS_PIDFILE="$T/pid" UGREEN_SYS_NET="$T/net" \
+        dash "$T/ugreen-leds-mon.sh" > "$T/mon.log" 2>&1 &
+    MON=$!
+    sleep 2
+}
+fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata5
+fake_net eth0 up 10000; fake_net eth1 down -1
+run_net pro
+check '^netdev -on -color 0 255 0 -brightness 96$' "10G port is green"
+check '^netdev2 -off$' "a port without link is dark"
+check_not '^netdev2 -on' "the dark port is not lit"
+: > "$T/calls.log"
+echo 1000 > "$T/net/eth0/speed"
+wait_for '^netdev -on -color 255 200 0 -brightness 96$' "a fallback to 1G turns it yellow"
+stop_mon
+fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata5
+fake_net eth0 down -1; fake_net eth1 up 2500
+run_net nonpro
+check '^netdev -on -color 255 90 0 -brightness 96$' "non-Pro: the single LAN LED shows the linked 2.5G port"
+stop_mon
+
+echo
+echo "== case 16: a disk appearing while running re-reads the bays (same pid, same pid file)"
+OTHER=$(ls /sys/block | grep '^sd' | grep -v "^$DISK$" | sort | head -1)
+if [ -z "$OTHER" ]; then
+    echo "  SKIP  need a second sd* disk on this host"
+else
+    fake_hw "ata1 ata2" "ata3 ata4 ata5 ata6" ata5
+    run_hw nonpro &
+    MON=$!; sleep 2
+    PID1=$(cat "$T/pid" 2>/dev/null)
+    grep -q "disks: - - $DISK - - - " "$T/mon.log" && pass "starts with one disk in bay 3" || fail "starts with one disk in bay 3"
+    : > "$T/calls.log"
+    ln -s "../devices/pci0000:00/0000:00:1c.0/0000:5a:00.0/ata3/host9/target9:0:0/9:0:0:0/block/$OTHER" "$T/sysblock/$OTHER"
+    sleep 3
+    grep -q "disks changed" "$T/mon.log" && pass "the new disk is noticed" || fail "the new disk is noticed"
+    grep -q "disks: $OTHER - $DISK - - - " "$T/mon.log" && pass "the new disk lands in bay 1" || fail "the new disk lands in bay 1"
+    check '^netdev2 -on -color 255 255 255 -brightness 64$' "bay 1 (netdev2) is lit for it"
+    [ "$(cat "$T/pid" 2>/dev/null)" = "$PID1" ] && pass "pid file still names the running monitor" || fail "pid file still names the running monitor"
+    kill -0 "$PID1" 2>/dev/null && pass "the monitor survived its own restart" || fail "the monitor survived its own restart"
+    stop_mon
+    n=0; while kill -0 "$PID1" 2>/dev/null && [ $n -lt 6 ]; do sleep 0.5; n=$((n + 1)); done   # exits once its sleep returns
+    kill -0 "$PID1" 2>/dev/null && fail "the restarted monitor still stops cleanly" || pass "the restarted monitor still stops cleanly"
+fi
 
 echo
 if [ "$FAILED" = 0 ]; then echo "all checks passed"; else echo "$FAILED check(s) FAILED"; fi

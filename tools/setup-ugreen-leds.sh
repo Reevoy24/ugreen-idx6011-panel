@@ -88,14 +88,70 @@ echo "SMBus I801 = i2c-$bus"
 
 log "Fetching sources ($REPO_URL)"
 if [[ -d "$SRC_DIR/.git" ]]; then
+    git -C "$SRC_DIR" checkout -- cli/ugreen_leds.cpp 2>/dev/null || true   # drop our patch before updating
     git -C "$SRC_DIR" pull --ff-only || true
 else
     git clone --depth 1 "$REPO_URL" "$SRC_DIR" || fail "git clone failed."
 fi
 
+# The CLI's "is the MCU still animating?" probe wrote brightness 0 to register 0 --
+# the power LED -- on every call, so any LED command switched the power LED off.
+# Same patch as tools/patches/klein0r-cli-power-probe.patch (embedded: this script
+# is downloaded on its own). If upstream changed that code, build it unpatched.
+log "Patching the CLI (keeps the power LED on)"
+cat > /tmp/ugreen-cli-power-probe.patch <<'PATCH'
+diff --git a/cli/ugreen_leds.cpp b/cli/ugreen_leds.cpp
+index 73c1d81..52df6b6 100644
+--- a/cli/ugreen_leds.cpp
++++ b/cli/ugreen_leds.cpp
+@@ -37,11 +37,25 @@ ugreen_leds_t::model_t ugreen_leds_t::detect_model() {
+ // Detected by sending a no-op write (set brightness to current value) to reg 0 and checking
+ // the MCU's acknowledgement register 0x80. In animation mode the MCU ignores host writes,
+ // so 0x80 stays != 1.
++//
++// ugreen-idx6011-panel: reg 0 is the power LED, and the probe used to send brightness 0
++// rather than the current value, so every CLI call switched the power LED off. Read the
++// current brightness first (status block at 0x81 + reg) and write exactly that back. If
++// the status cannot be read, the MCU is most likely still animating and ignores the write
++// anyway, so falling back to 0 changes nothing.
++static bool verify_checksum(const std::vector<uint8_t>& data);
++
+ bool ugreen_leds_t::needs_init_idx6011() {
+-    uint16_t sum = 0xa1 + 0x01; // cmd=0x01, all params=0
++    uint8_t cur = 0;
++    for (int i = 0; i < 3; i++) {
++        auto st = _i2c.read_block_data(0x81, 0xb);
++        if (st.size() == 0xb && verify_checksum(st) && st[0] <= 3) { cur = st[1]; break; }
++        std::this_thread::sleep_for(std::chrono::milliseconds(5));
++    }
++    uint16_t sum = 0xa1 + 0x01 + cur; // cmd=0x01 (brightness), p1=current brightness
+     std::vector<uint8_t> probe {
+         0xa0, 0x01, 0x00, 0x00,
+-        0x01, 0x00, 0x00, 0x00, 0x00,
++        0x01, cur, 0x00, 0x00, 0x00,
+         (uint8_t)((sum >> 8) & 0xff),
+         (uint8_t)(sum & 0xff)
+     };
+PATCH
+if git -C "$SRC_DIR" apply --check /tmp/ugreen-cli-power-probe.patch 2>/dev/null; then
+    git -C "$SRC_DIR" apply /tmp/ugreen-cli-power-probe.patch && echo "applied"
+else
+    echo "WARNING: the CLI patch does not apply (upstream changed?) - building unpatched; the power LED may go dark"
+fi
+rm -f /tmp/ugreen-cli-power-probe.patch
+
 log "Building and installing the CLI tool"
 make -C "$SRC_DIR/cli" -j"$(nproc)" || fail "CLI build failed."
 install -m 755 "$SRC_DIR/cli/ugreen_leds_cli" /usr/local/bin/ugreen_leds_cli
+
+# On a re-run (e.g. to repair after a kernel update) the kernel module still
+# holds the LED controller, and the CLI cannot open it next to the driver.
+# Release it; the module is reloaded and the services restarted further down.
+if grep -q '^led_ugreen ' /proc/modules; then   # not lsmod|grep -q: pipefail + SIGPIPE
+    log "Releasing the LED controller from the kernel module (re-run)"
+    systemctl stop ugreen-diskiomon.service ugreen-idx-netled.service 2>/dev/null || true
+    rmmod led_ugreen || fail "Cannot unload led_ugreen (in use?)."
+fi
 
 log "Taking over the MCU (stops the rolling animation) + reading status"
 export UGREEN_MODEL=idx6011
@@ -190,8 +246,40 @@ EOF
         || echo "WARNING: could not add the iDX6011 bay map to ugreen-diskiomon (upstream changed?)"
     install -m 755 "$SRC_DIR/scripts/ugreen-detect-disks" /usr/bin/ugreen-detect-disks
     [[ -f /etc/ugreen-leds.conf ]] || install -m 644 "$SRC_DIR/scripts/ugreen-leds.conf" /etc/ugreen-leds.conf
+    grep -q '^NETDEV_COLOR_BY_SPEED=' /etc/ugreen-leds.conf || cat >> /etc/ugreen-leds.conf <<'EOF'
+
+# ---- added by setup-ugreen-leds.sh (iDX6011, read by ugreen-idx-netled) ----
+# 1 = each LAN LED shows its negotiated link speed instead of COLOR_NETDEV_NORMAL
+# (set when the LED setup starts: boot, or LEDs switched on in the panel)
+NETDEV_COLOR_BY_SPEED=0
+COLOR_NIC_10G="0 255 0"         # green
+COLOR_NIC_5G="255 0 255"        # magenta
+COLOR_NIC_2G5="255 90 0"        # orange
+COLOR_NIC_1G="255 200 0"        # yellow
+COLOR_NIC_OTHER="255 255 255"   # 100M and anything else
+EOF
     install -m 644 "$SRC_DIR/scripts/systemd/ugreen-probe-leds.service" /etc/systemd/system/
     install -m 644 "$SRC_DIR/scripts/systemd/ugreen-diskiomon.service"  /etc/systemd/system/
+
+    # ugreen-diskiomon maps disks to bay LEDs by device name, once, at start. A
+    # pulled, swapped or re-inserted drive comes back under a new name, so re-read
+    # the bays whenever a SATA disk comes or goes. The rescan unit waits a few
+    # seconds first, so a burst of events (several drives, or one drive settling)
+    # ends in a single restart; try-restart leaves a stopped monitor alone, so it
+    # never lights the LEDs while the panel has them off (night mode).
+    cat > /etc/systemd/system/ugreen-diskiomon-rescan.service <<'EOF'
+[Unit]
+Description=UGREEN iDX6011: re-read the disk bays after a drive was added or removed
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/systemctl try-restart ugreen-diskiomon.service
+EOF
+    cat > /etc/udev/rules.d/99-ugreen-diskiomon-rescan.rules <<'EOF'
+ACTION=="add|remove", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", KERNEL=="sd[a-z]*", RUN+="/usr/bin/systemctl --no-block start ugreen-diskiomon-rescan.service"
+EOF
+    udevadm control --reload || true
 
     # Our own LAN/power LED unit: the upstream netdevmon variants hardcode the LED name
     # "netdev"; the iDX module registers network_stat + network_stat2 instead.
@@ -201,8 +289,32 @@ EOF
 # via the netdev trigger and sets the power LED. Override the NIC order via
 # /etc/default/ugreen-idx-netled:
 #   NETLED_IFACES="enp2s0 enp3s0"
+# Colors come from /etc/ugreen-leds.conf (COLOR_NETDEV_NORMAL, COLOR_POWER — the same
+# keys the panel's web dashboard edits). NETDEV_COLOR_BY_SPEED=1 there colors each LAN
+# LED by its negotiated link speed instead (COLOR_NIC_*); this is applied whenever the
+# LED setup starts (boot, LEDs switched on), as Linux sends no event on a speed change.
 NETLED_IFACES=""
+COLOR_NETDEV_NORMAL="255 255 255"
+COLOR_POWER="255 255 255"
+NETDEV_COLOR_BY_SPEED=0
+COLOR_NIC_10G="0 255 0"
+COLOR_NIC_5G="255 0 255"
+COLOR_NIC_2G5="255 90 0"
+COLOR_NIC_1G="255 200 0"
+COLOR_NIC_OTHER="255 255 255"
+[[ -f /etc/ugreen-leds.conf ]] && . /etc/ugreen-leds.conf
 [[ -f /etc/default/ugreen-idx-netled ]] && . /etc/default/ugreen-idx-netled
+
+nic_color() {
+    [[ "$NETDEV_COLOR_BY_SPEED" == 1 ]] || { echo "$COLOR_NETDEV_NORMAL"; return; }
+    case "$(cat "/sys/class/net/$1/speed" 2>/dev/null)" in
+        10000) echo "$COLOR_NIC_10G" ;;
+        5000)  echo "$COLOR_NIC_5G" ;;
+        2500)  echo "$COLOR_NIC_2G5" ;;
+        1000)  echo "$COLOR_NIC_1G" ;;
+        *)     echo "$COLOR_NIC_OTHER" ;;
+    esac
+}
 
 if [[ -z "$NETLED_IFACES" ]]; then
     NETLED_IFACES="$(for n in /sys/class/net/*; do
@@ -231,11 +343,15 @@ for i in "${!leds[@]}"; do
     [[ -d "$led" ]] || continue
     nic="${nics[$i]:-}"
     if [[ -n "$nic" ]]; then
+        # color and brightness first: the netdev trigger then switches the LED
+        # by the link state itself (a brightness written after it would light
+        # a port that has no link)
+        echo none > "$led/trigger"
+        nic_color "$nic" > "$led/color" 2>/dev/null
+        echo 160 > "$led/brightness"
         echo netdev  > "$led/trigger"
         echo "$nic"  > "$led/device_name"
         echo 1 > "$led/link"; echo 1 > "$led/tx"; echo 1 > "$led/rx"
-        echo "255 255 255" > "$led/color" 2>/dev/null
-        echo 160 > "$led/brightness"
     else
         echo none > "$led/trigger"
         echo 0    > "$led/brightness"
@@ -244,7 +360,7 @@ done
 
 if [[ -d /sys/class/leds/power ]]; then
     echo none > /sys/class/leds/power/trigger
-    echo "255 255 255" > /sys/class/leds/power/color 2>/dev/null
+    echo "$COLOR_POWER" > /sys/class/leds/power/color 2>/dev/null
     echo 160 > /sys/class/leds/power/brightness
 fi
 exit 0

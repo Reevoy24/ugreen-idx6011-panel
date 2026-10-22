@@ -48,7 +48,10 @@ fi
 # not slip through and keep running.
 if [ "$MODE" = run ]; then
     PIDFILE="${UGREEN_LEDS_PIDFILE:-/var/run/ugreen-leds-mon.pid}"
-    [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+    # (after a re-exec on a disk change the pid file already holds our own pid)
+    if [ -f "$PIDFILE" ] && [ "$(cat "$PIDFILE")" != "$$" ]; then
+        kill "$(cat "$PIDFILE")" 2>/dev/null
+    fi
     echo $$ > "$PIDFILE"
     # INT/TERM must exit explicitly: sh runs the handler only after the
     # current sleep returns, and a handler that just falls through would
@@ -78,6 +81,12 @@ BRIGHTNESS_DISK_LEDS=64
 COLOR_NETDEV_NORMAL="255 255 255"
 COLOR_NETDEV_ACTIVE=""
 BRIGHTNESS_NETDEV_LED=96
+NETDEV_COLOR_BY_SPEED=0
+COLOR_NIC_10G="0 255 0"
+COLOR_NIC_5G="255 0 255"
+COLOR_NIC_2G5="255 90 0"
+COLOR_NIC_1G="255 200 0"
+COLOR_NIC_OTHER="255 255 255"
 BLINK_ON=300
 BLINK_OFF=200
 
@@ -86,6 +95,8 @@ COLOR_DISK_FAIL="255 0 0"
 HEALTH_INTERVAL=60
 
 [ -f "$DIR/ugreen-leds-mon.conf" ] && . "$DIR/ugreen-leds-mon.conf"
+AUTO_DISKS=0
+[ -z "$DISKS" ] && AUTO_DISKS=1
 
 # the active colors default to the idle ones (blink, same color)
 [ -n "$COLOR_DISK_ACTIVE" ] || COLOR_DISK_ACTIVE="$COLOR_DISK_HEALTH"
@@ -95,6 +106,7 @@ UGREEN_MODEL=idx6011
 export UGREEN_MODEL
 SYS_BLOCK="${UGREEN_SYS_BLOCK:-/sys/block}"
 SYS_PCI="${UGREEN_SYS_PCI:-/sys/bus/pci/devices}"
+SYS_NET="${UGREEN_SYS_NET:-/sys/class/net}"
 PRODUCT="$(cat /sys/class/dmi/id/product_name 2>/dev/null)"
 
 # The CLI names the LEDs after the Pro's front: power, netdev, netdev2,
@@ -245,7 +257,7 @@ if [ -z "$DISKS" ]; then
     [ -n "$dropped" ] && echo "ugreen-leds-mon: not watching: $dropped(OS disk / EXCLUDE_DISKS; set SKIP_BOOT_DISK=0 to keep it)"
 fi
 if [ -z "$NICS" ]; then
-    NICS="$(for n in /sys/class/net/*; do
+    NICS="$(for n in "$SYS_NET"/*; do
                 [ -e "$n/device" ] && basename "$n"
             done | sort | head -2 | tr '\n' ' ')"
 fi
@@ -277,11 +289,36 @@ disk_io_all() {
 nic_io() {
     _sum=0
     for _n in $(echo "$1" | tr ',' ' '); do
-        r=$(cat "/sys/class/net/$_n/statistics/rx_bytes" 2>/dev/null || echo 0)
-        t=$(cat "/sys/class/net/$_n/statistics/tx_bytes" 2>/dev/null || echo 0)
+        r=$(cat "$SYS_NET/$_n/statistics/rx_bytes" 2>/dev/null || echo 0)
+        t=$(cat "$SYS_NET/$_n/statistics/tx_bytes" 2>/dev/null || echo 0)
         _sum=$((_sum + r + t))
     done
     echo "$_sum"
+}
+
+# NETDEV_COLOR_BY_SPEED=1: the LAN LED shows the negotiated link speed, so a
+# port that fell back to 1G stands out (idea and colors by just-apaz, #9).
+# $1 as for nic_io; a shared LED shows its fastest port. Sets _ncol to an
+# "R G B" triplet, or "off" when no port has a link. Builtins only (every poll).
+speed_color() {
+    _best=-1
+    _ifs=$IFS; IFS=,
+    for _n in $1; do
+        _op=""; { read -r _op < "$SYS_NET/$_n/operstate"; } 2>/dev/null
+        [ "$_op" = up ] || continue
+        _sp=""; { read -r _sp < "$SYS_NET/$_n/speed"; } 2>/dev/null
+        case "$_sp" in ''|*[!0-9]*) _sp=0 ;; esac
+        [ "$_sp" -gt "$_best" ] && _best=$_sp
+    done
+    IFS=$_ifs
+    case "$_best" in
+        -1)    _ncol=off ;;
+        10000) _ncol=$COLOR_NIC_10G ;;
+        5000)  _ncol=$COLOR_NIC_5G ;;
+        2500)  _ncol=$COLOR_NIC_2G5 ;;
+        1000)  _ncol=$COLOR_NIC_1G ;;
+        *)     _ncol=$COLOR_NIC_OTHER ;;
+    esac
 }
 
 # $2 is an "R G B" triplet and must word-split into three CLI arguments.
@@ -313,16 +350,21 @@ fi
 # in its idle color here rather than waiting for the monitor to do it.
 if [ "$MODE" = identify ]; then
     led=$(bay_led "$IDENT_BAY")
+    identify_restore() {
+        if [ "$(bay_disk "$IDENT_BAY")" != - ]; then
+            set_solid "$led" "$COLOR_DISK_HEALTH" "$BRIGHTNESS_DISK_LEDS"
+        elif [ -n "$COLOR_DISK_EMPTY" ]; then
+            set_solid "$led" "$COLOR_DISK_EMPTY" "$BRIGHTNESS_DISK_LEDS"
+        else
+            "$CLI" "$led" -off >/dev/null 2>&1
+        fi
+    }
+    # Ctrl+C (or a kill) must not leave the bay blinking blue
+    trap 'identify_restore; exit 130' INT TERM
     echo "blinking bay $IDENT_BAY ($led, disk: $(bay_disk "$IDENT_BAY")) blue for 10 s"
     "$CLI" "$led" -color 0 0 255 -blink 150 150 >/dev/null 2>&1
     sleep "${UGREEN_IDENTIFY_SECS:-10}"
-    if [ "$(bay_disk "$IDENT_BAY")" != - ]; then
-        set_solid "$led" "$COLOR_DISK_HEALTH" "$BRIGHTNESS_DISK_LEDS"
-    elif [ -n "$COLOR_DISK_EMPTY" ]; then
-        set_solid "$led" "$COLOR_DISK_EMPTY" "$BRIGHTNESS_DISK_LEDS"
-    else
-        "$CLI" "$led" -off >/dev/null 2>&1
-    fi
+    identify_restore
     exit 0
 fi
 
@@ -479,7 +521,28 @@ if [ "$DISK_HEALTH_CHECK" = 1 ]; then
 fi
 health_wait=0
 
+# The bay map is built once, from the disks present at start. A pulled,
+# swapped or re-inserted drive changes the set of sd* devices (and often its
+# own name), so start over with a fresh map when that happens. Builtins only:
+# this runs on every poll.
+sd_signature() {
+    _sig=""
+    for _b in "$SYS_BLOCK"/sd*; do
+        { [ -e "$_b" ] || [ -L "$_b" ]; } && _sig="$_sig ${_b##*/}"
+    done
+}
+sd_signature
+sd_start="$_sig"
+
 while :; do
+    if [ "$AUTO_DISKS" = 1 ]; then
+        sd_signature
+        if [ "$_sig" != "$sd_start" ]; then
+            echo "ugreen-leds-mon: disks changed (${sd_start# } -> ${_sig# }), re-reading the bays"
+            exec sh "$0"
+        fi
+    fi
+
     i=1
     set -- $(disk_io_all)
     for d in $DISKS; do
@@ -519,14 +582,30 @@ while :; do
         eval "prev=\$prev_n$i"
         delta=$((cur - prev))
         [ "$delta" -lt 0 ] && delta=0
+        n_norm="$COLOR_NETDEV_NORMAL"; n_act="$COLOR_NETDEV_ACTIVE"
+        if [ "$NETDEV_COLOR_BY_SPEED" = 1 ]; then
+            speed_color "$n"
+            eval "oldcol=\$col_n$i"
+            if [ "$_ncol" != "$oldcol" ]; then
+                eval "col_n$i=\"\$_ncol\""
+                eval "st_n$i=-1"                 # rewrite the LED in the new color
+                [ "$_ncol" = off ] && "$CLI" "$led" -off >/dev/null 2>&1
+            fi
+            if [ "$_ncol" = off ]; then           # no link: stays dark
+                eval "prev_n$i=$cur"
+                i=$((i + 1))
+                continue
+            fi
+            n_norm="$_ncol"; n_act="$_ncol"
+        fi
         if [ "$NET_ACTIVITY" = 1 ]; then
             update_led "$led" $((delta / 1024)) "$NET_THRESHOLD_KB" \
-                "st_n$i" "idle_n$i" "$COLOR_NETDEV_ACTIVE" \
-                "$COLOR_NETDEV_NORMAL" "$BRIGHTNESS_NETDEV_LED"
+                "st_n$i" "idle_n$i" "$n_act" \
+                "$n_norm" "$BRIGHTNESS_NETDEV_LED"
         else
             eval "st=\$st_n$i"
             if [ "$st" != 0 ]; then
-                set_solid "$led" "$COLOR_NETDEV_NORMAL" "$BRIGHTNESS_NETDEV_LED"
+                set_solid "$led" "$n_norm" "$BRIGHTNESS_NETDEV_LED"
                 eval "st_n$i=0"
             fi
         fi

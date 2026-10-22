@@ -20,6 +20,13 @@ git clone --quiet https://github.com/klein0r/ugreen_leds_controller "$WORK/ulc"
 git -C "$WORK/ulc" checkout --quiet "$PIN"
 echo "pinned at: $(git -C "$WORK/ulc" rev-parse HEAD)"
 
+# Our fixes on top of the pinned code (see each patch's comment):
+#   klein0r-cli-power-probe.patch — every CLI call switched the power LED off
+for p in "$(cd "$(dirname "$0")" && pwd)"/patches/klein0r-cli-*.patch; do
+    git -C "$WORK/ulc" apply "$p"
+    echo "applied: $(basename "$p")"
+done
+
 make -C "$WORK/ulc/cli" >/dev/null
 file "$WORK/ulc/cli/ugreen_leds_cli"
 sha256sum "$WORK/ulc/cli/ugreen_leds_cli"
