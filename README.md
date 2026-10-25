@@ -114,11 +114,11 @@ Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs*
 
 ### TrueNAS SCALE
 
-The LED tarball installs onto one of your pools and registers a Post-Init script, so the LEDs come up on every boot without touching the read-only system area. The version described here is currently a **beta** ([`leds-v1.2.0-beta5`](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/leds-v1.2.0-beta5)); the last stable, [`leds-v1.1.1`](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/leds-v1.1.1), predates the activity thresholds, the config file and the disk health colors below.
+The LED tarball installs onto one of your pools and registers a Post-Init script, so the LEDs come up on every boot without touching the read-only system area. The commands below install [`leds-v1.2.0`](https://github.com/Reevoy24/ugreen-idx6011-panel/releases/tag/leds-v1.2.0). Upgrading works the same way and keeps your settings.
 
 ```bash
-wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/leds-v1.2.0-beta5/ugreen-leds_1.2.0.beta5_truenas_amd64.tar.gz
-tar xzf ugreen-leds_1.2.0.beta5_truenas_amd64.tar.gz && cd ugreen-leds
+wget https://github.com/Reevoy24/ugreen-idx6011-panel/releases/download/leds-v1.2.0/ugreen-leds_1.2.0_truenas_amd64.tar.gz
+tar xzf ugreen-leds_1.2.0_truenas_amd64.tar.gz && cd ugreen-leds
 sh install.sh /mnt/<your-pool>/ugreen-leds
 ```
 
