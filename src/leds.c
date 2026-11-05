@@ -29,6 +29,8 @@ static int start_min = 21 * 60;
 static int end_min = 8 * 60;
 /* sized for the worst-case "%02d" expansion so -Wformat-truncation is happy */
 static char window_str[48] = "21:00-08:00";
+static int identify_secs = 10;
+static time_t identify_until[BAY_COUNT + 1];  /* per bay, 0 = not blinking */
 
 static const char *sysfs_leds[] = {
     "power", "network_stat", "network_stat2",
@@ -223,7 +225,7 @@ static void apply(int on)
 
 static int in_window(const struct tm *tm)
 {
-    if (start_min == end_min) return 0;
+    if (start_min == end_min) return 1;   /* a window of 24 h: never lit */
     int t = tm->tm_hour * 60 + tm->tm_min;
     if (start_min < end_min)
         return t >= start_min && t < end_min;
@@ -406,14 +408,44 @@ int leds_can_identify(void)
     return backend != BACKEND_NONE && disk_stats_bay_layout() != BAY_LAYOUT_NONE;
 }
 
+void leds_set_identify_secs(int secs) { identify_secs = secs; }
+int  leds_identify_secs(void)         { return identify_secs; }
+
+/* One LED as the CLI reports it:
+ * "disk1: status = on, brightness = 64, color = RGB(255, 0, 0)". */
+typedef struct { int on, brightness, r, g, b; } led_state_t;
+
+static int cli_read_led(const char *led, led_state_t *st)
+{
+    char cmd[640], line[128], mode[16];
+    snprintf(cmd, sizeof(cmd), "UGREEN_MODEL=idx6011 '%s' %s -status 2>/dev/null",
+             cli_path, led);
+    FILE *p = popen(cmd, "r");
+    if (!p) return -1;
+    int got = 0;
+    while (got != 5 && fgets(line, sizeof(line), p))
+        got = sscanf(line, "%*[^:]: status = %15[^,], brightness = %d, color = RGB(%d, %d, %d)",
+                     mode, &st->brightness, &st->r, &st->g, &st->b);
+    pclose(p);
+    if (got != 5) return -1;
+    st->on = strcmp(mode, "off") != 0;
+    return 0;
+}
+
 int leds_identify(int bay)
 {
     if (!leds_can_identify() || bay < 1 || bay > BAY_COUNT) return -1;
 
+    /* Still blinking: the running restore covers this click too, and a second
+     * run would read the blue back as the LED's own color. */
+    time_t now = time(NULL);
+    if (now < identify_until[bay]) return 0;
+    identify_until[bay] = now + identify_secs + 2;
+
     char led[16];
-    char cmd[1600];
+    char cmd[2200];
     int lit = effective();
-    fprintf(stderr, "leds: identify bay %d\n", bay);
+    fprintf(stderr, "leds: identify bay %d for %d s\n", bay, identify_secs);
 
     if (backend == BACKEND_SYSFS) {
         /* The module blinks in hardware (blink_type). Afterwards a running
@@ -423,36 +455,51 @@ int leds_identify(int bay)
         bay_led_name(bay, 1, led, sizeof(led));
         snprintf(cmd, sizeof(cmd),
                  "(L=/sys/class/leds/%s; echo none > $L/trigger; echo '0 0 255' > $L/color; "
-                 "echo 255 > $L/brightness; echo 'blink 150 150' > $L/blink_type; sleep 10; "
+                 "echo 255 > $L/brightness; echo 'blink 150 150' > $L/blink_type; sleep %d; "
                  "echo none > $L/blink_type; "
                  "if systemctl is-active -q ugreen-diskiomon.service; "
                  "then systemctl restart ugreen-diskiomon.service; "
                  "else echo 255 > $L/brightness; echo 0 > $L/brightness; fi) >/dev/null 2>&1 &",
-                 led);
+                 led, identify_secs);
     } else {
         /* The static install's monitor knows the bay map and puts the LED
-         * back in its idle color itself; without it (plain CLI install) the
-         * install's start script re-applies everything. */
+         * back in its idle color itself; without it the install's start
+         * script re-applies everything. A bare CLI has neither, so its LED
+         * is read first and written back afterwards, color and brightness
+         * too: the next "all -on" would light it blue otherwise. If that
+         * read fails, off still beats blinking on forever. */
         char dir[512], mon[600];
         snprintf(dir, sizeof(dir), "%s", static_script);
         char *slash = strrchr(dir, '/');
         if (slash) *slash = '\0';
         snprintf(mon, sizeof(mon), "%s/ugreen-leds-mon.sh", dir);
         bay_led_name(bay, 0, led, sizeof(led));
-        char after[700];
-        if (!lit)
+        int have_mon = path_exists(mon);
+        int bare = !have_mon && !path_exists(static_script);
+        led_state_t st;
+        char after[800];
+        if (bare && cli_read_led(led, &st) == 0)
+            snprintf(after, sizeof(after),
+                     "UGREEN_MODEL=idx6011 '%s' %s -color %d %d %d -brightness %d %s",
+                     cli_path, led, st.r, st.g, st.b, st.brightness,
+                     lit && st.on ? "-on" : "-off");
+        else if (!lit || bare)
             snprintf(after, sizeof(after), "UGREEN_MODEL=idx6011 '%s' %s -off", cli_path, led);
-        else if (!path_exists(mon) && path_exists(static_script))
+        else if (!have_mon)
             snprintf(after, sizeof(after), "sh '%s'", static_script);
         else
             snprintf(after, sizeof(after), ":");
-        if (path_exists(mon))
-            snprintf(cmd, sizeof(cmd), "(sh '%s' --identify %d; %s) >/dev/null 2>&1 &",
-                     mon, bay, after);
+        /* Full brightness whatever the LED was set to, or a dimmed bay is
+         * hard to spot; the monitor's own restore sets it back. */
+        if (have_mon)
+            snprintf(cmd, sizeof(cmd),
+                     "(UGREEN_MODEL=idx6011 '%s' %s -brightness 255; "
+                     "UGREEN_IDENTIFY_SECS=%d sh '%s' --identify %d; %s) >/dev/null 2>&1 &",
+                     cli_path, led, identify_secs, mon, bay, after);
         else
             snprintf(cmd, sizeof(cmd),
-                     "(UGREEN_MODEL=idx6011 '%s' %s -color 0 0 255 -blink 150 150; sleep 10; %s) "
-                     ">/dev/null 2>&1 &", cli_path, led, after);
+                     "(UGREEN_MODEL=idx6011 '%s' %s -color 0 0 255 -brightness 255 -blink 150 150; "
+                     "sleep %d; %s) >/dev/null 2>&1 &", cli_path, led, identify_secs, after);
     }
     run(cmd);
     return 0;
@@ -492,6 +539,7 @@ int leds_user_on(void)       { return user_on; }
 int leds_night_enabled(void) { return night_on; }
 int leds_effective_on(void)  { return effective(); }
 const char *leds_night_window(void) { return window_str; }
+const char *leds_night_label(void)  { return start_min == end_min ? "24 h" : window_str; }
 
 void leds_toggle(void)
 {

@@ -377,6 +377,7 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
         snprintf(g_snap.led_night_window, sizeof(g_snap.led_night_window), "%s", leds_night_window());
     g_snap.has_led_colors = has_leds && leds_colors_supported();
     g_snap.has_identify = has_leds && leds_can_identify();
+    g_snap.identify_secs = leds_identify_secs();
     if (g_snap.has_led_colors) leds_get_colors(&g_snap.led_colors);
     g_snap.wp_count = gui_wallpaper_options(g_snap.wp_opts, API_WP_MAX, &g_snap.wp_cur);
     g_snap.storage_count = system_stats_list_mounts(g_snap.storage_opts, STORAGE_OPT_MAX,
@@ -515,6 +516,7 @@ int main(int argc, char *argv[]) {
     /* Front LED rows appear only when the LED setup exists on this host
      * (led-ugreen kernel module or ugreen_leds_cli; tools/setup-ugreen-leds.sh). */
     int has_leds = leds_init(ui_state.led_night_start, ui_state.led_night_end);
+    leds_set_identify_secs(config.led_identify_secs);
     if (has_leds) {
         leds_startup(ui_state.leds_on, ui_state.led_night);
         fprintf(stderr, "Front LED control enabled (night window %s)\n",

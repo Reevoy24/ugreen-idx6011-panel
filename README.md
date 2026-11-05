@@ -110,7 +110,7 @@ The rolling animation stops immediately, disk LEDs show activity and health, and
 
 Colors live in `/etc/ugreen-leds.conf` (`COLOR_POWER`, `COLOR_DISK_HEALTH`, `COLOR_NETDEV_NORMAL`, plus health and standby colors the kernel module can show). The setup script only writes that file when it does not exist yet, so your edits survive a re-run; restart `ugreen-diskiomon` to apply them. The three main colors are also editable in the [web dashboard](#web-dashboard) under **LED colors**.
 
-Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs** on/off row and a **night mode** row, which turns the LEDs off automatically between `led_night_start` and `led_night_end` (default 21:00 to 08:00). Turning them on during the window overrides it until the window ends.
+Once the setup is installed, the ug-paneld settings panel gains a **Status LEDs** on/off row and a **night mode** row, which turns the LEDs off automatically between `led_night_start` and `led_night_end` (default 21:00 to 08:00). Setting both to the same time keeps them off all 24 hours. Turning them on during the window overrides it until the window ends, or with a 24-hour window until you turn them off again or the daemon restarts.
 
 ### TrueNAS SCALE
 
@@ -387,7 +387,7 @@ This is opt-in. Add `api_port` to `config.json` and ug-paneld serves a browser d
 
 Add these two keys to `/etc/ug-paneld/config.json` (on TrueNAS and Unraid, edit the copy on your pool or flash drive instead, see [Configuration](#configuration)), restart ug-paneld, then open `http://<nas-ip>:8080`. The running ug-paneld version is shown in the dashboard footer, which is handy when filing an issue.
 
-* **Drive bays:** the Storage section shows the six front bays with the drive in each (model, size, temperature), matched to the bay by its SATA controller port. With the [front LEDs](#front-panel-leds) set up, clicking a bay blinks its LED blue for 10 seconds, so you can find a drive before you pull it (`POST /api/leds/identify` with `{"bay":N}`).
+* **Drive bays:** the Storage section shows the six front bays with the drive in each (model, size, temperature), matched to the bay by its SATA controller port. With the [front LEDs](#front-panel-leds) set up, clicking a bay blinks its LED blue at full brightness for 10 seconds (`led_identify_secs`), so you can find a drive before you pull it (`POST /api/leds/identify` with `{"bay":N}`).
 * **Monitoring is open** on the LAN. **Changing settings or fan mode** needs the password when `api_password` is set. **Restart and shutdown always need it** and are refused entirely when no password is set.
 * The legacy `GET/POST /backlight` endpoint still works (Home Assistant, see below).
 * **Page does not load from another device, but `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/` on the NAS prints `200`?** Then a firewall is in the way, most often the Proxmox firewall: once it is enabled it only lets its own services through. Allow the port from your LAN only, under *Datacenter → (node) → Firewall → Add*: direction `in`, action `ACCEPT`, protocol `tcp`, dest. port `8080`, source your LAN (e.g. `192.168.178.0/24`). Or add it to `/etc/pve/nodes/<node>/host.fw` under `[RULES]`:
@@ -495,7 +495,7 @@ A fresh install seeds `/etc/ug-paneld/config.json` (existing files are never ove
 
 The **web dashboard is off by default** (`api_port: 0`); set a port to enable it (see [Web dashboard](#web-dashboard)). To show the OPNsense gauges, add `opnsense_url`, `opnsense_key` and `opnsense_secret` (and optionally `wan_interface` and `wan_max_mbps`). The seed file above is a starter set; the full list of keys is in the table below.
 
-Settings you change on the display or in the web UI (brightness, timeout, wallpaper, language, LEDs, clock format, timezone) persist separately in `state.json`, so your `config.json` is never rewritten. On **Proxmox / Debian** that file lives in `/etc/ug-paneld/`. On **TrueNAS SCALE and Unraid** the system area is rebuilt every boot, so the installer points the daemon's state file at the pool or flash drive (via the `state_file` key or the `UG_PANELD_STATE` env var), and runtime changes survive a reboot there too. The fan mode is separate: it lives in `/etc/ug-fand/config`, which is also ephemeral on those platforms, but with the bundled install a mode or curve change is mirrored to the pool/flash `fand-config`, so it survives a reboot as well.
+Settings you change on the display or in the web UI (brightness, timeout, wallpaper, language, LEDs, clock format, timezone) persist separately in `state.json`, so your `config.json` is never rewritten. `state.json` wins: once it exists, a value for one of these keys in `config.json` is only the default and no longer has any effect, so change those settings in the UI (or edit `state.json` while the daemon is stopped). On **Proxmox / Debian** that file lives in `/etc/ug-paneld/`. On **TrueNAS SCALE and Unraid** the system area is rebuilt every boot, so the installer points the daemon's state file at the pool or flash drive (via the `state_file` key or the `UG_PANELD_STATE` env var), and runtime changes survive a reboot there too. The fan mode is separate: it lives in `/etc/ug-fand/config`, which is also ephemeral on those platforms, but with the bundled install a mode or curve change is mirrored to the pool/flash `fand-config`, so it survives a reboot as well.
 
 <details>
 <summary><b>All config keys</b></summary>
@@ -506,14 +506,15 @@ Settings you change on the display or in the web UI (brightness, timeout, wallpa
 | `disk_interval` | `30` | How often to poll drive temperatures (seconds, 5-3600). On Unraid they come from emhttpd's `disks.ini` (no disk I/O, spun-down drives stay asleep); elsewhere every poll is a real SMART query per drive (`drivetemp`), which audibly unparks HDD heads — hence the separate, slower clock |
 | `brightness` | `100` | Backlight brightness (1-100) |
 | `backlight_timeout` | `30` | Seconds before the screen sleeps (0 = never) |
-| `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing it on the panel saves to `state.json` and overrides this; set it here for a reboot-stable default (useful on TrueNAS, where `state.json` is not restored after a reboot) |
+| `language` | `en` | UI language default: `en`, `de`, `es`, `fr`, `pt`, or `id`. Changing it on the panel saves to `state.json` and overrides this; set it here as the default for a fresh install |
 | `sleep_brightness` | `0` | Backlight % while asleep; `0` is fully off (tap-to-wake still works) |
 | `clock_24h` | `1` | Panel clock format: `1` = 24h, `0` = 12h (AM/PM); editable from the web UI |
 | `wallpaper` | | Active wallpaper: a built-in name, `custom`, `none`, or empty for auto (custom if uploaded, else none); editable from the panel/web |
 | `leds_on` | `1` | Front LEDs on (`1`) or off (`0`) |
 | `led_night` | `0` | Front-LED night mode enabled (`1` = LEDs off during the night window) |
-| `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`); editable from the web UI |
-| `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`); editable from the web UI |
+| `led_night_start` | `21:00` | Front-LED night window start (`HH:MM`); editable from the web UI, which then overrides this through `state.json` |
+| `led_night_end` | `08:00` | Front-LED night window end (`HH:MM`); same as above. The same time as `led_night_start` means all 24 hours |
+| `led_identify_secs` | `10` | How long a bay LED blinks when you click the bay in the web dashboard (seconds, 1-3600) |
 | `timezone` | | Panel time zone, for example `Europe/Berlin` (empty = system default); editable from the web UI. Affects the panel clock and night window only, not the system |
 | `api_port` | `0` | Web dashboard and control API port (0 = disabled). See [Web dashboard](#web-dashboard) |
 | `api_password` | | Web dashboard password (empty = controls open on LAN; restart/shutdown always require it) |

@@ -28,6 +28,7 @@ let hasPanel = true; // false when served by ug-fand (no display): hide display-
 let brandFixed = false;
 let editing = false, editDomain = "cpu", editMode = "default", editPoints = [];
 let identBay = 0, identUntil = 0; // the bay whose LED is blinking for "identify"
+let identSecs = 10; // how long it blinks; the panel reports it, ug-fand has no LEDs
 const BAYS = 6;
 
 const t = (k) => (STRINGS[lang] || STRINGS.en)[k] ?? STRINGS.en[k] ?? k;
@@ -39,7 +40,7 @@ const esc = (s) => String(s).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;
 
 function applyI18n() {
   document.documentElement.lang = lang;
-  document.querySelectorAll("[data-i18n]").forEach((e) => { e.textContent = t(e.dataset.i18n); });
+  document.querySelectorAll("[data-i18n]").forEach((e) => { e.textContent = t(e.dataset.i18n).replace("{s}", identSecs); });
 }
 
 /* One-time rebrand when served by ug-fand (no display): the shared markup reads
@@ -173,6 +174,7 @@ function render(s) {
   const dk = s.disks || { items: [] };
   const items = dk.items || [];
   const showBays = !!caps.bay_layout;
+  if (caps.identify_secs && caps.identify_secs !== identSecs) { identSecs = caps.identify_secs; applyI18n(); }
   toggle("bays", showBays);
   if (showBays) renderBays(items, !!caps.has_identify, dk.bays_passthrough || []);
   const listed = showBays ? items.filter((x) => !(x.bay > 0)) : items;
@@ -434,7 +436,7 @@ function paintNightWindow(stx) {
   const w = stx && stx.led_night_window;
   if (!w) { setText("night-window", ""); return; }
   const p = w.split("-");
-  setText("night-window", "(" + fmtTime(p[0]) + "–" + fmtTime(p[1]) + ")");
+  setText("night-window", p[0] === p[1] ? "(24 h)" : "(" + fmtTime(p[0]) + "–" + fmtTime(p[1]) + ")");
 }
 function renderWallpapers(wp) {
   const box = $("wp-options");
@@ -506,7 +508,7 @@ function bayTile(n, d, canIdentify, passedThrough) {
   const temp = d && d.temp_c != null ? Math.round(d.temp_c) + " °C" : "";
   const name = d ? esc(d.model || d.dev) : t(vm ? "bay_vm" : "bay_empty");
   const sub = d ? (d.size_tb > 0 ? sizeStr(d.size_tb) + " · " : "") + esc(d.dev) : "";
-  const tip = (d ? esc(d.model || d.dev) + "&#10;" : "") + (canIdentify ? t("identify_hint") : "");
+  const tip = (d ? esc(d.model || d.dev) + "&#10;" : "") + (canIdentify ? t("identify_hint").replace("{s}", identSecs) : "");
   const attrs = (canIdentify ? ` type="button"` : "") + (tip ? ` title="${tip.replace(/"/g, "&quot;")}"` : "");
   return `<${tag} class="${cls}" data-bay="${n}"${attrs}>` +
     `<span class="bh"><span class="bn">${t("bay")} ${n}</span><span>${temp}</span></span>` +
@@ -524,10 +526,10 @@ async function identifyBay(n) {
   try {
     if (!(await postJSON("/api/leds/identify", { bay: n }))) return; // password prompt cancelled
     identBay = n;
-    identUntil = Date.now() + 10000;
+    identUntil = Date.now() + identSecs * 1000;
     toast(t("identify_on").replace("{n}", n), true);
     if (last) render(last);
-    setTimeout(() => { if (last && Date.now() >= identUntil) render(last); }, 10100);
+    setTimeout(() => { if (last && Date.now() >= identUntil) render(last); }, identSecs * 1000 + 100);
   } catch (e) { toast(e.message); }
 }
 

@@ -1228,7 +1228,7 @@ void gui_leds_refresh(void)
         lv_label_set_text(led_sub, tr(leds_effective_on() ? TR_ON : TR_OFF));
     if (led_night_sub)
         lv_label_set_text(led_night_sub,
-            leds_night_enabled() ? leds_night_window() : tr(TR_OFF));
+            leds_night_enabled() ? leds_night_label() : tr(TR_OFF));
 }
 
 static void leds_btn_cb(lv_event_t *e)

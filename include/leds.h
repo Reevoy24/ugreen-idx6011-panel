@@ -19,8 +19,10 @@
  *           there) — UG_PANELD_LEDS_DIR overrides the search.
  *
  * The night window (config: led_night_start/led_night_end) turns the LEDs
- * off between two times of day. Toggling them back on during the window
- * overrides it until the window ends; the next night they go off again. */
+ * off between two times of day; the same time twice means all 24 hours.
+ * Toggling them back on during the window overrides it until the window
+ * ends; the next night they go off again. A 24 h window never ends, so there
+ * the override holds until the LEDs are toggled off or the daemon restarts. */
 
 /* The three LED colors the settings UI exposes, as "R G B" strings. They
  * live in the LED config the active backend reads (/etc/ugreen-leds.conf for
@@ -45,17 +47,22 @@ int  leds_user_on(void);        /* persisted intent (the master switch) */
 int  leds_night_enabled(void);
 int  leds_effective_on(void);   /* what the hardware should show right now */
 const char *leds_night_window(void); /* e.g. "21:00-08:00" */
+const char *leds_night_label(void);  /* the same for display, "24 h" when start == end */
 
 void leds_toggle(void);           /* LED row tapped */
 void leds_set_night(int enabled); /* night mode row tapped */
 void leds_set_window(const char *start, const char *end); /* change the night window times "HH:MM" */
 
-/* Find a drive bay from the front: its LED blinks blue for 10 s, then goes
- * back to what it showed (or stays off while the LEDs are off). Runs in the
- * background and returns at once. Needs an LED backend and a known bay layout
- * (disk_stats_bay_layout). Returns 0 when started, -1 otherwise. */
+/* Find a drive bay from the front: its LED blinks blue at full brightness
+ * for leds_identify_secs() (config: led_identify_secs), then goes back to what
+ * it showed (or stays off while the LEDs are off). Runs in the background and
+ * returns at once; a bay that is already blinking is left alone. Needs an LED
+ * backend and a known bay layout (disk_stats_bay_layout). Returns 0 when
+ * started, -1 otherwise. */
 int  leds_can_identify(void);
 int  leds_identify(int bay);
+void leds_set_identify_secs(int secs);
+int  leds_identify_secs(void);
 
 /* Periodic re-evaluation (call ~once per second; cheap). Re-detects a late
  * backend (kernel module registering after daemon start) and applies night

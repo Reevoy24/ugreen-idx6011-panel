@@ -617,10 +617,10 @@ static void handle_stats(int fd) {
 
     const char *bay_layout = disk_stats_bay_layout_name();
     jappend(&b, "\"caps\":{\"has_pve\":%s,\"has_opnsense\":%s,\"has_leds\":%s,\"has_gpu\":%s,\"has_touch\":%s,"
-                "\"has_identify\":%s,\"bay_layout\":",
+                "\"has_identify\":%s,\"identify_secs\":%d,\"bay_layout\":",
             s.has_pve ? "true" : "false", s.has_opnsense ? "true" : "false",
             s.has_leds ? "true" : "false", s.has_gpu ? "true" : "false", s.has_touch ? "true" : "false",
-            s.has_identify ? "true" : "false");
+            s.has_identify ? "true" : "false", s.identify_secs);
     if (bay_layout) jstr(&b, bay_layout); else jappend(&b, "null");
     jappend(&b, "}}");
 

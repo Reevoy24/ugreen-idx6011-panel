@@ -146,6 +146,7 @@ int config_load(config_t *config) {
     config->api_password[0] = '\0';
     snprintf(config->led_night_start, sizeof(config->led_night_start), "21:00");
     snprintf(config->led_night_end, sizeof(config->led_night_end), "08:00");
+    config->led_identify_secs = 10;
     config->timezone[0] = '\0';
     config->force_shutdown = 0;
     config->guest_shutdown_timeout = DEFAULT_GUEST_SHUTDOWN_TIMEOUT;
@@ -210,6 +211,9 @@ int config_load(config_t *config) {
     json_get_str(json, "api_password", config->api_password, sizeof(config->api_password));
     json_get_str(json, "led_night_start", config->led_night_start, sizeof(config->led_night_start));
     json_get_str(json, "led_night_end", config->led_night_end, sizeof(config->led_night_end));
+    json_get_int(json, "led_identify_secs", &config->led_identify_secs);
+    if (config->led_identify_secs < 1) config->led_identify_secs = 1;
+    if (config->led_identify_secs > 3600) config->led_identify_secs = 3600;
     json_get_str(json, "timezone", config->timezone, sizeof(config->timezone));
     json_get_bool(json, "force_shutdown", &config->force_shutdown);
     json_get_int(json, "guest_shutdown_timeout", &config->guest_shutdown_timeout);

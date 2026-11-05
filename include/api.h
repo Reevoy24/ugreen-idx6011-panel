@@ -37,6 +37,7 @@ typedef struct {
     char led_night_start[8], led_night_end[8], timezone[40];
     int  has_led_colors;      /* 0 = no LED config we can edit, hide the row */
     int  has_identify;        /* 1 = a bay LED can be blinked to find it (leds_identify) */
+    int  identify_secs;       /* how long it blinks */
     leds_colors_t led_colors;
 
     /* wallpaper options */

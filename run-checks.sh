@@ -23,6 +23,9 @@ gcc -Iinclude -pthread -fsanitize=address,undefined \
     -o /tmp/fand-check
 /tmp/fand-check
 
+echo "=== LED backend (CLI paths, identify, night window) ==="
+bash tools/test-leds-backend.sh
+
 echo "=== mockups ==="
 bash build-mockups.sh >/dev/null
 ls mockups/*.png | head

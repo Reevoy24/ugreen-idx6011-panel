@@ -56,6 +56,7 @@ typedef struct {
     int debug;             /* verbose display probe logging */
     char led_night_start[8]; /* front LED night window start, "HH:MM" */
     char led_night_end[8];   /* front LED night window end, "HH:MM" */
+    int led_identify_secs;   /* how long a bay LED blinks to find it (1-3600, default 10) */
     char timezone[40];       /* panel time zone (e.g. "Europe/Berlin"); "" = system default */
     int force_shutdown;      /* 0 (default) = panel/web/button shutdown does a
                                 plain host poweroff; 1 = first gracefully stop
