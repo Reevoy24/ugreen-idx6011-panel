@@ -22,7 +22,7 @@
 #
 # Besides running as the monitor it answers two questions and exits:
 #   sh ugreen-leds-mon.sh --show-map      which disk sits behind which bay LED
-#   sh ugreen-leds-mon.sh --identify N    blink bay N blue for 10 s
+#   sh ugreen-leds-mon.sh --identify N    blink bay N blue (10 s, or UGREEN_IDENTIFY_SECS)
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 CLI="${UGREEN_LEDS_CLI:-/usr/local/bin/ugreen_leds_cli}"
@@ -361,9 +361,12 @@ if [ "$MODE" = identify ]; then
     }
     # Ctrl+C (or a kill) must not leave the bay blinking blue
     trap 'identify_restore; exit 130' INT TERM
-    echo "blinking bay $IDENT_BAY ($led, disk: $(bay_disk "$IDENT_BAY")) blue for 10 s"
-    "$CLI" "$led" -color 0 0 255 -blink 150 150 >/dev/null 2>&1
-    sleep "${UGREEN_IDENTIFY_SECS:-10}"
+    secs=${UGREEN_IDENTIFY_SECS:-10}
+    echo "blinking bay $IDENT_BAY ($led, disk: $(bay_disk "$IDENT_BAY")) blue for $secs s"
+    # -brightness goes after -blink: -blink switches the LED off first, which
+    # would drop a brightness set before it and leave the blink at 180
+    "$CLI" "$led" -color 0 0 255 -blink 150 150 -brightness 255 >/dev/null 2>&1
+    sleep "$secs"
     identify_restore
     exit 0
 fi
