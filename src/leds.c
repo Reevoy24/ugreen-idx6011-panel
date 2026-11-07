@@ -466,8 +466,10 @@ int leds_identify(int bay)
          * back in its idle color itself; without it the install's start
          * script re-applies everything. A bare CLI has neither, so its LED
          * is read first and written back afterwards, color and brightness
-         * too: the next "all -on" would light it blue otherwise. If that
-         * read fails, off still beats blinking on forever. */
+         * too: the next "all -on" would light it blue otherwise. An LED
+         * that is off reads as brightness 0, which is left out so it cannot
+         * replace what the next "on" uses. If that read fails, off still
+         * beats blinking on forever. */
         char dir[512], mon[600];
         snprintf(dir, sizeof(dir), "%s", static_script);
         char *slash = strrchr(dir, '/');
@@ -477,28 +479,29 @@ int leds_identify(int bay)
         int have_mon = path_exists(mon);
         int bare = !have_mon && !path_exists(static_script);
         led_state_t st;
-        char after[800];
-        if (bare && cli_read_led(led, &st) == 0)
+        char after[800], bright[24] = "";
+        if (bare && cli_read_led(led, &st) == 0) {
+            if (st.brightness > 0)
+                snprintf(bright, sizeof(bright), "-brightness %d ", st.brightness);
             snprintf(after, sizeof(after),
-                     "UGREEN_MODEL=idx6011 '%s' %s -color %d %d %d -brightness %d %s",
-                     cli_path, led, st.r, st.g, st.b, st.brightness,
+                     "UGREEN_MODEL=idx6011 '%s' %s -color %d %d %d %s%s",
+                     cli_path, led, st.r, st.g, st.b, bright,
                      lit && st.on ? "-on" : "-off");
-        else if (!lit || bare)
+        } else if (!lit || bare)
             snprintf(after, sizeof(after), "UGREEN_MODEL=idx6011 '%s' %s -off", cli_path, led);
         else if (!have_mon)
             snprintf(after, sizeof(after), "sh '%s'", static_script);
         else
             snprintf(after, sizeof(after), ":");
-        /* Full brightness whatever the LED was set to, or a dimmed bay is
-         * hard to spot; the monitor's own restore sets it back. */
+        /* -blink switches the LED off first, which drops its brightness to
+         * the MCU's own blink default, so full brightness has to come after it. */
         if (have_mon)
             snprintf(cmd, sizeof(cmd),
-                     "(UGREEN_MODEL=idx6011 '%s' %s -brightness 255; "
-                     "UGREEN_IDENTIFY_SECS=%d sh '%s' --identify %d; %s) >/dev/null 2>&1 &",
-                     cli_path, led, identify_secs, mon, bay, after);
+                     "(UGREEN_IDENTIFY_SECS=%d sh '%s' --identify %d; %s) >/dev/null 2>&1 &",
+                     identify_secs, mon, bay, after);
         else
             snprintf(cmd, sizeof(cmd),
-                     "(UGREEN_MODEL=idx6011 '%s' %s -color 0 0 255 -brightness 255 -blink 150 150; "
+                     "(UGREEN_MODEL=idx6011 '%s' %s -color 0 0 255 -blink 150 150 -brightness 255; "
                      "sleep %d; %s) >/dev/null 2>&1 &", cli_path, led, identify_secs, after);
     }
     run(cmd);

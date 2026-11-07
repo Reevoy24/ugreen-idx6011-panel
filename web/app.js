@@ -29,6 +29,7 @@ let brandFixed = false;
 let editing = false, editDomain = "cpu", editMode = "default", editPoints = [];
 let identBay = 0, identUntil = 0; // the bay whose LED is blinking for "identify"
 let identSecs = 10; // how long it blinks; the panel reports it, ug-fand has no LEDs
+const checkHold = {}; // switch id -> when polls may set it again after a click
 const BAYS = 6;
 
 const t = (k) => (STRINGS[lang] || STRINGS.en)[k] ?? STRINGS.en[k] ?? k;
@@ -259,7 +260,7 @@ function syncSelect(id, v) {
 function syncCheck(id, v) {
   if (v == null) return;
   const el = $(id);
-  if (!el || document.activeElement === el) return;
+  if (!el || Date.now() < (checkHold[id] || 0)) return;   // that poll may predate the click
   el.checked = !!v;
 }
 function syncVal(id, v) {
@@ -381,7 +382,8 @@ function getTimeValue(id) {
 function setTimeValue(id, val) {
   if (val == null) return;
   const el = $(id);
-  if (!el || el.contains(document.activeElement)) return;   // don't fight the user mid-edit
+  const editor = $("night-edit");
+  if (!el || (editor && !editor.hidden)) return;   // don't fight the user mid-edit
   el.dataset.val = val;
   writePicker(el, val);
 }
@@ -550,8 +552,12 @@ function wireControls() {
   };
   const sl2 = $("set-language"); if (sl2) sl2.addEventListener("change", (e) => changeLanguage(e.target.value));
   const tl2 = $("lang"); if (tl2) tl2.addEventListener("change", (e) => changeLanguage(e.target.value));
-  $("set-leds").addEventListener("change", (e) => postSettings({ leds_on: e.target.checked ? 1 : 0 }));
-  $("set-night").addEventListener("change", (e) => postSettings({ led_night: e.target.checked ? 1 : 0 }));
+  const postSwitch = (e, key) => {
+    checkHold[e.target.id] = Date.now() + 3000;
+    postSettings({ [key]: e.target.checked ? 1 : 0 });
+  };
+  $("set-leds").addEventListener("change", (e) => postSwitch(e, "leds_on"));
+  $("set-night").addEventListener("change", (e) => postSwitch(e, "led_night"));
 
   ["power", "disk", "netdev"].forEach((k) => {
     const inp = $("color-" + k);

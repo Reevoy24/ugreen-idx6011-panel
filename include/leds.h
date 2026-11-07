@@ -53,9 +53,9 @@ void leds_toggle(void);           /* LED row tapped */
 void leds_set_night(int enabled); /* night mode row tapped */
 void leds_set_window(const char *start, const char *end); /* change the night window times "HH:MM" */
 
-/* Find a drive bay from the front: its LED blinks blue at full brightness
- * for leds_identify_secs() (config: led_identify_secs), then goes back to what
- * it showed (or stays off while the LEDs are off). Runs in the background and
+/* Find a drive bay from the front: its LED blinks blue for
+ * leds_identify_secs() (config: led_identify_secs), then goes back to what it
+ * showed (or stays off while the LEDs are off). Runs in the background and
  * returns at once; a bay that is already blinking is left alone. Needs an LED
  * backend and a known bay layout (disk_stats_bay_layout). Returns 0 when
  * started, -1 otherwise. */

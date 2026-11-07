@@ -178,13 +178,13 @@ echo "== case 8: identify on a bare CLI puts a lit bay back as it was"
 cat > "$T/cli-only/ugreen_leds_cli" <<'EOF'
 #!/bin/sh
 echo "cli $@" >> /tmp/ledsbackend-test/calls.log
-case "$*" in *-status*) echo "$1: status = ${FAKE_STATUS:-on}, brightness = 64, color = RGB(255, 128, 0)" ;; esac
+case "$*" in *-status*) echo "$1: status = ${FAKE_STATUS:-on}, brightness = ${FAKE_BRIGHT:-64}, color = RGB(255, 128, 0)" ;; esac
 EOF
 : > "$T/calls.log"
 UG_PANELD_LEDS_DIR="$T/cli-only" "$T/stub" identify 1 >/dev/null 2>&1
 sleep 2
 check 'cli disk2 -status' "the LED's state is read first"
-check 'cli disk2 -color 0 0 255 -brightness 255 -blink 150 150' "it blinks blue at full brightness"
+check 'cli disk2 -color 0 0 255 -blink 150 150 -brightness 255' "it blinks blue, brightness after -blink (which resets it)"
 check 'cli disk2 -color 255 128 0 -brightness 64 -on' "color, brightness and on come back"
 
 echo
@@ -197,6 +197,11 @@ check 'cli disk2 -color 255 128 0 -brightness 64 -off' "a dark bay goes dark aga
 UG_PANELD_LEDS_DIR="$T/cli-only" "$T/stub" identify 0 >/dev/null 2>&1
 sleep 2
 check 'cli disk2 -color 255 128 0 -brightness 64 -off' "LEDs switched off win over the bay's last state"
+: > "$T/calls.log"
+FAKE_STATUS=off FAKE_BRIGHT=0 UG_PANELD_LEDS_DIR="$T/cli-only" "$T/stub" identify 1 >/dev/null 2>&1
+sleep 2
+check 'cli disk2 -color 255 128 0 -off' "an LED reading brightness 0 gets its color back"
+check_not 'brightness 0' "that 0 is not written back"
 
 echo
 echo "== case 10: no readable state still ends the blinking"
@@ -217,14 +222,13 @@ sleep 2
 [ "$(grep -c -- '-blink' "$T/calls.log")" = 1 ] && pass "it blinks once" || fail "it blinks once"
 
 echo
-echo "== case 12: the monitor gets the duration and a bright LED"
+echo "== case 12: the monitor gets the duration"
 cat > "$T/install/ugreen-leds-mon.sh" <<'EOF'
 echo "mon $@ secs=$UGREEN_IDENTIFY_SECS" >> /tmp/ledsbackend-test/calls.log
 EOF
 : > "$T/calls.log"
 UG_PANELD_LEDS_DIR="$T/install" "$T/stub" identify 1 >/dev/null 2>&1
 sleep 1
-check 'cli disk2 -brightness 255' "the LED goes to full brightness first"
 check 'mon --identify 2 secs=1' "the monitor blinks it for the configured time"
 check_not 'cli disk2 -status' "the monitor's restore needs no snapshot"
 rm -f "$T/install/ugreen-leds-mon.sh"

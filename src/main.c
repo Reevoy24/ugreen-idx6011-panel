@@ -373,8 +373,10 @@ static void publish_snapshot(const system_stats_t *sys, const net_stats_t *net,
     snprintf(g_snap.storage_path, sizeof(g_snap.storage_path), "%s", ui_state.storage_path);
     pthread_mutex_unlock(&settings_lock);
 
-    if (has_leds)
+    if (has_leds) {
+        g_snap.leds_on = leds_effective_on();
         snprintf(g_snap.led_night_window, sizeof(g_snap.led_night_window), "%s", leds_night_window());
+    }
     g_snap.has_led_colors = has_leds && leds_colors_supported();
     g_snap.has_identify = has_leds && leds_can_identify();
     g_snap.identify_secs = leds_identify_secs();
@@ -613,7 +615,9 @@ int main(int argc, char *argv[]) {
                 pthread_mutex_unlock(&settings_lock);
                 break;
             case API_CMD_LEDS_TOGGLE:
-                if (cmd.arg_int != leds_user_on()) leds_toggle();
+                /* the web switch shows the LEDs as they are, not the master
+                 * switch: during the night window those two differ */
+                if (cmd.arg_int != leds_effective_on()) leds_toggle();
                 pthread_mutex_lock(&settings_lock);
                 ui_state.leds_on = leds_user_on();
                 settings_save(&ui_state);
